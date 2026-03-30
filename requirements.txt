@@ -1,0 +1,11 @@
+PyQt6>=6.6.0
+mss>=9.0.0
+pyautogui>=0.9.54
+pygetwindow>=0.0.9
+pywin32>=306
+Pillow>=10.0.0
+loguru>=0.7.0
+pydantic>=2.5.0
+opencv-python>=4.9.0
+numpy>=1.26.0
+keyboard>=0.13.5

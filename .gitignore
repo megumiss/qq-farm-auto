@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Kiro
+.kiro/
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 运行时生成
+config.json
+logs/
+screenshots/
+
+# 内部文档
+docs/
+
+# OS
+Thumbs.db
+.DS_Store
