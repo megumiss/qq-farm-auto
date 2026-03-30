@@ -48,8 +48,8 @@
 ## 安装
 
 ```bash
-git clone https://github.com/Z7ANN/qq-farm-vision-bot.git
-cd qq-farm-vision-bot
+git clone https://github.com/Z7ANN/qq-farm-auto.git
+cd qq-farm-auto
 pip install -r requirements.txt
 ```
 
@@ -129,7 +129,7 @@ GUI 右侧三个标签页：
 ## 项目结构
 
 ```
-qq-farm-vision-bot/
+qq-farm-auto/
 ├── main.py                     # 程序入口
 ├── config.json                 # 运行时配置（自动生成）
 ├── templates/                  # 模板图片（用户采集 + 种子导入）
