@@ -153,12 +153,15 @@ class BotEngine(QObject):
             self.log_message.emit("未找到QQ农场窗口，请先打开微信小程序中的QQ农场")
             return False
 
-        w, h = self.config.planting.window_width, self.config.planting.window_height
-        if w > 0 and h > 0:
-            self.window_manager.resize_window(w, h)
-            time.sleep(0.5)
-            window = self.window_manager.refresh_window_info(self.config.window_title_keyword)
-            self.log_message.emit(f"窗口已调整为 {window.width}x{window.height}")
+        pos = getattr(self.config.planting, "window_position", "left_center")
+        pos_value = pos.value if hasattr(pos, "value") else str(pos)
+        self.window_manager.resize_window(pos_value)
+        time.sleep(0.5)
+        window = self.window_manager.refresh_window_info(self.config.window_title_keyword)
+        self.log_message.emit(
+            "窗口已调整（客户区目标 540x960）-> "
+            f"实际外框 {window.width}x{window.height}"
+        )
 
         rect = (window.left, window.top, window.width, window.height)
         self.action_executor = ActionExecutor(
