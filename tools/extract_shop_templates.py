@@ -13,21 +13,18 @@ from collections import defaultdict
 import argparse
 import csv
 import re
+import sys
 
 import cv2
 import numpy as np
 from PIL import Image
 
-try:
-    from rapidocr_onnxruntime import RapidOCR
-except ImportError as exc:  # pragma: no cover
-    raise SystemExit(
-        "Missing dependency `rapidocr_onnxruntime`. Install with:\n"
-        "  .\\.venv\\Scripts\\python -m pip install rapidocr_onnxruntime"
-    ) from exc
-
-
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from utils.ocr_utils import OCRTool
+
 DEFAULT_SCREENSHOT_GLOB = "PixPin_2026-03-31_19-50-*.png"
 OUTPUT_DIR = ROOT / "templates" / "shop_extracted_auto"
 DEBUG_DIR = ROOT / "screenshots" / "shop_extracted_auto_debug"
@@ -206,16 +203,17 @@ def resolve_name(raw_text: str, vocab: list[str]) -> tuple[str, float]:
     return text, best_score
 
 
-def ocr_title(ocr: RapidOCR, card_bgr: np.ndarray) -> tuple[str, float]:
+def ocr_title(ocr_tool: OCRTool, card_bgr: np.ndarray) -> tuple[str, float]:
     h, w = card_bgr.shape[:2]
     # Right-top title area on the original card.
-    roi = card_bgr[2 : int(h * 0.26), int(w * 0.35) : w - 6]
-    roi = cv2.resize(roi, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
-    roi = cv2.convertScaleAbs(roi, alpha=1.25, beta=0)
-    result, _ = ocr(roi)
-    if not result:
-        return "", 0.0
-    return str(result[0][1]), float(result[0][2])
+    return ocr_tool.detect_text(
+        card_bgr,
+        region=(int(w * 0.35), 2, w - 6, int(h * 0.26)),
+        scale=2.0,
+        alpha=1.25,
+        beta=0.0,
+        joiner="",
+    )
 
 
 def clean_output_dir() -> None:
@@ -237,7 +235,7 @@ def main() -> None:
     if not screenshots:
         raise SystemExit(f"No screenshots found by pattern: {args.glob}")
 
-    ocr = RapidOCR()
+    ocr_tool = OCRTool()
     vocab = collect_vocab()
 
     rows: list[dict[str, str | int]] = []
@@ -262,7 +260,7 @@ def main() -> None:
             if card.size == 0:
                 continue
 
-            raw_text, ocr_conf = ocr_title(ocr, card)
+            raw_text, ocr_conf = ocr_title(ocr_tool, card)
             resolved_name, match_score = resolve_name(raw_text, vocab)
             resolved_name = sanitize_name(resolved_name)
 
