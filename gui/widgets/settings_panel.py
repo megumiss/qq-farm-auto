@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import pyqtSignal
 
-from models.config import AppConfig, PlantMode, WindowPosition
+from models.config import AppConfig, PlantMode, WindowPosition, WindowPlatform
 from models.game_data import CROPS, get_crop_names, format_grow_time, get_best_crop_for_level
 
 
@@ -91,6 +91,10 @@ class SettingsPanel(QWidget):
         misc_group = QGroupBox("其他")
         mf = QFormLayout()
         mf.setSpacing(5)
+        self._window_platform = QComboBox()
+        self._window_platform.addItem("QQ", WindowPlatform.QQ.value)
+        self._window_platform.addItem("微信", WindowPlatform.WECHAT.value)
+        mf.addRow("平台:", self._window_platform)
         self._window_keyword = QLineEdit()
         mf.addRow("窗口关键词:", self._window_keyword)
         self._window_position = QComboBox()
@@ -125,6 +129,7 @@ class SettingsPanel(QWidget):
         self._strategy_combo.currentIndexChanged.connect(self._auto_save)
         self._crop_combo.currentIndexChanged.connect(self._auto_save)
         self._buy_quantity.valueChanged.connect(self._auto_save)
+        self._window_platform.currentIndexChanged.connect(self._auto_save)
         self._window_keyword.editingFinished.connect(self._auto_save)
         self._window_position.currentIndexChanged.connect(self._auto_save)
         self._farm_interval.valueChanged.connect(self._auto_save)
@@ -144,6 +149,7 @@ class SettingsPanel(QWidget):
         idx = self._crop_combo.currentIndex()
         if 0 <= idx < len(self._crop_names):
             c.planting.preferred_crop = self._crop_names[idx]
+        c.planting.window_platform = WindowPlatform(self._window_platform.currentData())
         c.window_title_keyword = self._window_keyword.text().strip()
         c.planting.window_position = WindowPosition(self._window_position.currentData())
         c.schedule.farm_check_minutes = self._farm_interval.value()
@@ -205,6 +211,10 @@ class SettingsPanel(QWidget):
             self._crop_combo.setCurrentIndex(
                 self._crop_names.index(c.planting.preferred_crop))
         self._on_level_changed(c.planting.player_level)
+        for i in range(self._window_platform.count()):
+            if self._window_platform.itemData(i) == c.planting.window_platform.value:
+                self._window_platform.setCurrentIndex(i)
+                break
         self._window_keyword.setText(c.window_title_keyword)
         for i in range(self._window_position.count()):
             if self._window_position.itemData(i) == c.planting.window_position.value:

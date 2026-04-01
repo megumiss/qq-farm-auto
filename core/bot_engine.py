@@ -155,11 +155,13 @@ class BotEngine(QObject):
 
         pos = getattr(self.config.planting, "window_position", "left_center")
         pos_value = pos.value if hasattr(pos, "value") else str(pos)
-        self.window_manager.resize_window(pos_value)
+        platform = getattr(self.config.planting, "window_platform", "qq")
+        platform_value = platform.value if hasattr(platform, "value") else str(platform)
+        self.window_manager.resize_window(pos_value, platform_value)
         time.sleep(0.5)
         window = self.window_manager.refresh_window_info(self.config.window_title_keyword)
         self.log_message.emit(
-            "窗口已调整（客户区目标 540x960）-> "
+            "窗口已调整（整窗外框目标：540x960 + 非客户区增量）-> "
             f"实际外框 {window.width}x{window.height}"
         )
 

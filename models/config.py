@@ -23,6 +23,11 @@ class WindowPosition(str, Enum):
     TOP_RIGHT = "top_right"
 
 
+class WindowPlatform(str, Enum):
+    QQ = "qq"
+    WECHAT = "wechat"
+
+
 class FeaturesConfig(BaseModel):
     auto_harvest: bool = True
     auto_plant: bool = True
@@ -67,6 +72,7 @@ class PlantingConfig(BaseModel):
     preferred_crop: str = "白萝卜"  # strategy=preferred 时使用
     player_level: int = 10
     buy_quantity: int = 50
+    window_platform: WindowPlatform = WindowPlatform.QQ
     window_position: WindowPosition = WindowPosition.LEFT_CENTER
 
 

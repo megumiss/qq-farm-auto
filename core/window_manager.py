@@ -1,6 +1,8 @@
 """窗口管理器 - 定位并管理微信小程序窗口"""
 import ctypes
 import ctypes.wintypes
+import json
+from pathlib import Path
 from dataclasses import dataclass
 from loguru import logger
 
@@ -17,12 +19,233 @@ class WindowInfo:
     height: int
 
 
+class MONITORINFO(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", ctypes.wintypes.DWORD),
+        ("rcMonitor", ctypes.wintypes.RECT),
+        ("rcWork", ctypes.wintypes.RECT),
+        ("dwFlags", ctypes.wintypes.DWORD),
+    ]
+
+
 class WindowManager:
     TARGET_CLIENT_WIDTH = 540
     TARGET_CLIENT_HEIGHT = 960
+    _NONCLIENT_JSON_PATH = Path(__file__).resolve().parent.parent / "models" / "window_nonclient_metrics.json"
+    _MONITOR_DEFAULTTONEAREST = 2
+    _SWP_NOZORDER = 0x0004
+    _SWP_NOOWNERZORDER = 0x0200
+    _GWL_STYLE = -16
+    _GWL_EXSTYLE = -20
 
     def __init__(self):
+        self._enable_dpi_awareness()
         self._cached_window: WindowInfo | None = None
+        self._nonclient_config = self._load_nonclient_config()
+
+    @staticmethod
+    def _enable_dpi_awareness() -> None:
+        """尽量开启 DPI 感知，减少尺寸虚拟化误差。"""
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+        except Exception:
+            try:
+                ctypes.windll.user32.SetProcessDPIAware()
+            except Exception:
+                pass
+
+    def _load_nonclient_config(self) -> dict:
+        """加载窗口边框/标题高度配置。"""
+        try:
+            with open(self._NONCLIENT_JSON_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+        except Exception as e:
+            logger.warning(f"加载 nonclient 配置失败: {e}")
+        return {}
+
+    @staticmethod
+    def _get_window_scale_percent(hwnd: int) -> int:
+        """读取窗口 DPI 对应的缩放百分比。"""
+        try:
+            dpi = int(ctypes.windll.user32.GetDpiForWindow(hwnd))
+        except Exception:
+            dpi = 96
+        scale = int(round((dpi / 96.0) * 100))
+        return max(50, min(scale, 500))
+
+    @staticmethod
+    def _get_window_rect(hwnd: int) -> tuple[int, int, int, int] | None:
+        rect = ctypes.wintypes.RECT()
+        ok = ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        if not ok:
+            return None
+        return int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)
+
+    @staticmethod
+    def _get_window_outer_size(hwnd: int) -> tuple[int, int] | None:
+        rect = WindowManager._get_window_rect(hwnd)
+        if not rect:
+            return None
+        return int(rect[2] - rect[0]), int(rect[3] - rect[1])
+
+    @staticmethod
+    def _get_client_size(hwnd: int) -> tuple[int, int] | None:
+        rect = ctypes.wintypes.RECT()
+        ok = ctypes.windll.user32.GetClientRect(hwnd, ctypes.byref(rect))
+        if not ok:
+            return None
+        return int(rect.right - rect.left), int(rect.bottom - rect.top)
+
+    @staticmethod
+    def _calc_outer_size_by_adjust_rect(hwnd: int, client_width: int, client_height: int) -> tuple[int, int, int] | None:
+        """参考 NIKKE change_resolution_compat：按窗口 style/exstyle + DPI 计算外框尺寸。"""
+        try:
+            user32 = ctypes.windll.user32
+            dpi = 96
+            try:
+                dpi = int(user32.GetDpiForWindow(hwnd))
+            except Exception:
+                dpi = 96
+
+            rect = ctypes.wintypes.RECT(0, 0, int(client_width), int(client_height))
+            style = int(user32.GetWindowLongW(hwnd, WindowManager._GWL_STYLE))
+            ex_style = int(user32.GetWindowLongW(hwnd, WindowManager._GWL_EXSTYLE))
+
+            ok = False
+            try:
+                ok = bool(user32.AdjustWindowRectExForDpi(ctypes.byref(rect), style, False, ex_style, int(dpi)))
+            except Exception:
+                ok = bool(user32.AdjustWindowRectEx(ctypes.byref(rect), style, False, ex_style))
+            if not ok:
+                return None
+
+            outer_w = int(rect.right - rect.left)
+            outer_h = int(rect.bottom - rect.top)
+            return outer_w, outer_h, int(dpi)
+        except Exception:
+            return None
+
+
+    def _get_work_area_for_window(self, hwnd: int) -> ctypes.wintypes.RECT | None:
+        user32 = ctypes.windll.user32
+        monitor = 0
+        try:
+            monitor = user32.MonitorFromWindow(ctypes.wintypes.HWND(hwnd), self._MONITOR_DEFAULTTONEAREST)
+        except Exception:
+            monitor = 0
+        if monitor:
+            monitor_info = MONITORINFO()
+            monitor_info.cbSize = ctypes.sizeof(MONITORINFO)
+            ok = bool(user32.GetMonitorInfoW(monitor, ctypes.byref(monitor_info)))
+            if ok:
+                return ctypes.wintypes.RECT(
+                    monitor_info.rcWork.left,
+                    monitor_info.rcWork.top,
+                    monitor_info.rcWork.right,
+                    monitor_info.rcWork.bottom,
+                )
+
+        work_area = ctypes.wintypes.RECT()
+        ok = bool(user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(work_area), 0))
+        if not ok:
+            return None
+        return work_area
+
+    def _set_window_outer_rect(self, hwnd: int, x: int, y: int, width: int, height: int) -> tuple[bool, str]:
+        user32 = ctypes.windll.user32
+        ok = bool(
+            user32.SetWindowPos(
+                hwnd,
+                0,
+                int(x),
+                int(y),
+                int(width),
+                int(height),
+                self._SWP_NOZORDER | self._SWP_NOOWNERZORDER,
+            )
+        )
+        if ok:
+            return True, "SetWindowPos"
+        ok = bool(user32.MoveWindow(hwnd, int(x), int(y), int(width), int(height), True))
+        if ok:
+            return True, "MoveWindow"
+        return False, "SetWindowPos/MoveWindow failed"
+
+    def _set_window_outer_size_with_retry(
+        self,
+        hwnd: int,
+        x: int,
+        y: int,
+        target_outer_width: int,
+        target_outer_height: int,
+        max_rounds: int = 6,
+        verbose_log: bool = False,
+    ) -> tuple[bool, str]:
+        """参考 debug 脚本：按外框误差迭代修正。"""
+        current_w = int(target_outer_width)
+        current_h = int(target_outer_height)
+        apply_method = "unknown"
+
+        for round_idx in range(1, max_rounds + 1):
+            ok, apply_method = self._set_window_outer_rect(hwnd, x, y, current_w, current_h)
+            if not ok:
+                return False, f"resize failed at round {round_idx}: {apply_method}"
+
+            outer_size = self._get_window_outer_size(hwnd)
+            if not outer_size:
+                return False, f"resize failed at round {round_idx}: cannot read window rect"
+
+            err_w = int(target_outer_width - outer_size[0])
+            err_h = int(target_outer_height - outer_size[1])
+            if verbose_log:
+                logger.info(
+                    f"[wechat-resize][outer] round={round_idx} "
+                    f"request={current_w}x{current_h} actual={outer_size[0]}x{outer_size[1]} "
+                    f"err=({err_w},{err_h}) apply={apply_method}"
+                )
+            if err_w == 0 and err_h == 0:
+                return True, (
+                    f"resize success in {round_idx} rounds; "
+                    f"actual_outer={outer_size[0]}x{outer_size[1]}; apply={apply_method}"
+                )
+
+            current_w = max(120, int(current_w + err_w))
+            current_h = max(120, int(current_h + err_h))
+
+        final_outer = self._get_window_outer_size(hwnd)
+        if not final_outer:
+            return False, "resize reached max rounds; cannot read final outer size"
+        return False, (
+            f"resize reached max rounds; final_outer={final_outer[0]}x{final_outer[1]}, "
+            f"target_outer={target_outer_width}x{target_outer_height}; apply={apply_method}"
+        )
+
+    def _get_nonclient_metrics(self, platform: str, scale_percent: int) -> tuple[int, int, int]:
+        """按平台+缩放取边框/标题高度；缩放值使用最近匹配。"""
+        cfg = self._nonclient_config or {}
+        platforms = cfg.get("platforms", {}) if isinstance(cfg, dict) else {}
+        platform_key = (platform or "").strip().lower()
+        if platform_key not in platforms:
+            platform_key = str(cfg.get("default_platform", "qq")).lower()
+        platform_cfg = platforms.get(platform_key, {})
+        scales = platform_cfg.get("scales", {}) if isinstance(platform_cfg, dict) else {}
+
+        valid_pairs: list[tuple[int, dict]] = []
+        for k, v in scales.items():
+            try:
+                valid_pairs.append((int(k), v))
+            except Exception:
+                continue
+        if not valid_pairs:
+            # 兜底：QQ 100%
+            return 1, 39, 100
+
+        matched_scale, matched_value = min(valid_pairs, key=lambda item: abs(item[0] - int(scale_percent)))
+        border = int(matched_value.get("border_width", 1))
+        title = int(matched_value.get("title_height", 39))
+        return border, title, matched_scale
 
     def find_window(self, title_keyword: str = "QQ经典农场") -> WindowInfo | None:
         """通过标题关键词查找窗口"""
@@ -123,58 +346,128 @@ class WindowManager:
         y = max(wa_top, min(y, wa_bottom - window_height))
         return x, y
 
-    def resize_window(self, position: str = "left_center") -> bool:
-        """按客户区大小调整窗口并放置到指定位置（目标 540x960）"""
+    def resize_window(self, position: str = "left_center", platform: str = "qq") -> bool:
+        """设置窗口分辨率与位置。微信分支按 change_resolution_compat 思路实现。"""
         if not self._cached_window:
             return False
         try:
             hwnd = self._cached_window.hwnd
-            client_width = self.TARGET_CLIENT_WIDTH
-            client_height = self.TARGET_CLIENT_HEIGHT
+            base_width = self.TARGET_CLIENT_WIDTH
+            base_height = self.TARGET_CLIENT_HEIGHT
 
-            user32 = ctypes.windll.user32
-            # 获取当前窗口 style / ex_style
-            style = user32.GetWindowLongW(hwnd, -16)    # GWL_STYLE
-            ex_style = user32.GetWindowLongW(hwnd, -20)  # GWL_EXSTYLE
+            scale_percent = self._get_window_scale_percent(hwnd)
+            border_width, title_height, matched_scale = self._get_nonclient_metrics(platform, scale_percent)
+            platform_key = (platform or "").strip().lower()
+            is_wechat = platform_key in ("wechat", "wx", "weixin")
+            target_client_w = int(base_width)
 
-            # 计算包含边框与标题栏后的窗口尺寸
-            rect = ctypes.wintypes.RECT(0, 0, int(client_width), int(client_height))
-            adjusted = False
-            try:
-                get_dpi_for_window = user32.GetDpiForWindow
-                adjust_for_dpi = user32.AdjustWindowRectExForDpi
-                dpi = int(get_dpi_for_window(hwnd))
-                adjusted = bool(adjust_for_dpi(ctypes.byref(rect), style, False, ex_style, dpi))
-                if not adjusted:
-                    logger.warning("AdjustWindowRectExForDpi 调用失败，回退到 AdjustWindowRectEx")
-            except Exception:
-                adjusted = False
+            width_add = int(border_width * 2)
+            height_add = int(border_width * 2 + title_height)
+            if is_wechat:
+                # 微信高度单独调整，宽度仍沿用原有外框换算逻辑
+                target_client_h = int(base_height + border_width + title_height)
+                configured_outer_w = int(target_client_w + width_add)
+                configured_outer_h = int(target_client_h + height_add)
+            else:
+                target_client_h = int(base_height)
+                configured_outer_w = int(target_client_w + width_add)
+                configured_outer_h = int(target_client_h + height_add)
 
-            if not adjusted:
-                ok = user32.AdjustWindowRectEx(ctypes.byref(rect), style, False, ex_style)
+            work_area = self._get_work_area_for_window(hwnd)
+            if not work_area:
+                logger.error("调整窗口大小失败: 无法获取工作区")
+                return False
+
+            if is_wechat:
+                # 参考 change_resolution_compat：优先使用 AdjustWindowRectExForDpi 计算外框。
+                compat_outer = self._calc_outer_size_by_adjust_rect(hwnd, target_client_w, target_client_h)
+                if compat_outer:
+                    target_outer_w, target_outer_h, compat_dpi = compat_outer
+                else:
+                    target_outer_w, target_outer_h, compat_dpi = configured_outer_w, configured_outer_h, 96
+                logger.info(
+                    f"[wechat-resize][compat] adjust_outer={target_outer_w}x{target_outer_h} "
+                    f"dpi={compat_dpi} configured_outer={configured_outer_w}x{configured_outer_h}"
+                )
+            else:
+                target_outer_w, target_outer_h = configured_outer_w, configured_outer_h
+
+            pos_x, pos_y = self._calculate_position(work_area, target_outer_w, target_outer_h, position)
+
+            if is_wechat:
+                before_outer = self._get_window_outer_size(hwnd)
+                before_client = self._get_client_size(hwnd)
+                before_outer_text = f"{before_outer[0]}x{before_outer[1]}" if before_outer else "unknown"
+                before_client_text = f"{before_client[0]}x{before_client[1]}" if before_client else "unknown"
+                logger.info(
+                    f"[wechat-resize][begin] before_outer={before_outer_text} "
+                    f"before_client={before_client_text} "
+                    f"target_outer={target_outer_w}x{target_outer_h} target_client={target_client_w}x{target_client_h} "
+                    f"position={position} target_xy=({pos_x},{pos_y})"
+                )
+
+            if is_wechat:
+                ok, apply_method = self._set_window_outer_rect(
+                    hwnd=hwnd, x=pos_x, y=pos_y, width=target_outer_w, height=target_outer_h
+                )
                 if not ok:
-                    logger.error("调整窗口大小失败: AdjustWindowRectEx 调用失败")
+                    logger.error(f"调整窗口大小失败: {apply_method}")
+                    return False
+                actual_outer = self._get_window_outer_size(hwnd)
+                if not actual_outer:
+                    logger.error("调整窗口大小失败: 无法读取窗口外框")
+                    return False
+                resize_msg = (
+                    f"resize applied once; actual_outer={actual_outer[0]}x{actual_outer[1]}; apply={apply_method}"
+                )
+            else:
+                ok, resize_msg = self._set_window_outer_size_with_retry(
+                    hwnd=hwnd,
+                    x=pos_x,
+                    y=pos_y,
+                    target_outer_width=target_outer_w,
+                    target_outer_height=target_outer_h,
+                    max_rounds=6,
+                    verbose_log=False,
+                )
+                if not ok:
+                    logger.error(f"调整窗口大小失败: {resize_msg}")
                     return False
 
-            window_width = rect.right - rect.left
-            window_height = rect.bottom - rect.top
+            final_rect = self._get_window_rect(hwnd)
+            final_client = self._get_client_size(hwnd)
+            if final_rect:
+                self._cached_window.left = int(final_rect[0])
+                self._cached_window.top = int(final_rect[1])
+                self._cached_window.width = int(final_rect[2] - final_rect[0])
+                self._cached_window.height = int(final_rect[3] - final_rect[1])
+            else:
+                self._cached_window.left = pos_x
+                self._cached_window.top = pos_y
+                self._cached_window.width = target_outer_w
+                self._cached_window.height = target_outer_h
 
-            # 获取主屏工作区域（排除任务栏）
-            work_area = ctypes.wintypes.RECT()
-            user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(work_area), 0)
-
-            pos_x, pos_y = self._calculate_position(
-                work_area, window_width, window_height, position
-            )
-            user32.MoveWindow(hwnd, pos_x, pos_y, window_width, window_height, True)
-            self._cached_window.left = pos_x
-            self._cached_window.top = pos_y
-            self._cached_window.width = window_width
-            self._cached_window.height = window_height
+            actual_client_text = f"{final_client[0]}x{final_client[1]}" if final_client else "unknown"
+            if is_wechat:
+                err_w = int(target_client_w - final_client[0]) if final_client else 0
+                err_h = int(target_client_h - final_client[1]) if final_client else 0
+                logger.info(
+                    f"[wechat-resize][end] final_outer={self._cached_window.width}x{self._cached_window.height} "
+                    f"final_client={actual_client_text} err_client=({err_w},{err_h})"
+                )
 
             logger.info(
-                f"窗口客户区设置为 {client_width}x{client_height}，"
-                f"窗口外框 {window_width}x{window_height}，位置({pos_x},{pos_y}) [{position}]"
+                f"窗口客户区目标 {target_client_w}x{target_client_h}，"
+                f"平台={platform}，dpi_scale={scale_percent}% (matched={matched_scale}%)，"
+                f"累加: width+={width_add}, height+={height_add} "
+                f"(border={border_width}, title={title_height})，"
+                f"配置外框 {configured_outer_w}x{configured_outer_h}，"
+                f"目标外框 {target_outer_w}x{target_outer_h}，"
+                f"实际外框 {self._cached_window.width}x{self._cached_window.height}，"
+                f"实际客户区 {actual_client_text}"
+            )
+            logger.info(
+                f"窗口位置({self._cached_window.left},{self._cached_window.top}) [{position}]，{resize_msg}"
             )
             return True
         except Exception as e:
