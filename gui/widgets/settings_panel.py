@@ -103,6 +103,8 @@ class SettingsPanel(QWidget):
         self._window_position.addItem("右侧居中", WindowPosition.RIGHT_CENTER.value)
         self._window_position.addItem("左上", WindowPosition.TOP_LEFT.value)
         self._window_position.addItem("右上", WindowPosition.TOP_RIGHT.value)
+        self._window_position.addItem("左下", WindowPosition.LEFT_BOTTOM.value)
+        self._window_position.addItem("右下", WindowPosition.RIGHT_BOTTOM.value)
         mf.addRow("窗口位置:", self._window_position)
         row_sched = QHBoxLayout()
         self._farm_interval = QSpinBox()

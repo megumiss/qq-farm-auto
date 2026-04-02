@@ -336,6 +336,12 @@ class WindowManager:
         elif position == "top_right":
             x = wa_right - window_width
             y = wa_top
+        elif position == "left_bottom":
+            x = wa_left
+            y = wa_bottom - window_height
+        elif position == "right_bottom":
+            x = wa_right - window_width
+            y = wa_bottom - window_height
         else:
             # 默认：左侧中央
             x = wa_left
@@ -347,7 +353,7 @@ class WindowManager:
         return x, y
 
     def resize_window(self, position: str = "left_center", platform: str = "qq") -> bool:
-        """设置窗口分辨率与位置。微信分支按 change_resolution_compat 思路实现。"""
+        """设置窗口分辨率与位置。"""
         if not self._cached_window:
             return False
         try:
@@ -360,79 +366,74 @@ class WindowManager:
             platform_key = (platform or "").strip().lower()
             is_wechat = platform_key in ("wechat", "wx", "weixin")
             target_client_w = int(base_width)
+            target_client_h = int(base_height)
+            before_outer = self._get_window_outer_size(hwnd)
+            before_client = self._get_client_size(hwnd)
 
-            width_add = int(border_width * 2)
-            height_add = int(border_width * 2 + title_height)
+            if not before_outer or not before_client:
+                logger.error("调整窗口大小失败: 无法读取当前窗口 outer/client 尺寸")
+                return False
+
+            # tools/resize_window.py: 动态 nonclient
+            nonclient_w = max(0, int(before_outer[0] - before_client[0]))
+            nonclient_h = max(0, int(before_outer[1] - before_client[1]))
+
+            # 目标物理尺寸（target_physical_w/h）
+            # 1) 微信: 540 x (960 + border + title)
+            # 2) QQ  : (540 + border*2) x (960 + border*2 + title)
             if is_wechat:
-                # 微信高度单独调整，宽度仍沿用原有外框换算逻辑
-                target_client_h = int(base_height + border_width + title_height)
-                configured_outer_w = int(target_client_w + width_add)
-                configured_outer_h = int(target_client_h + height_add)
+                target_physical_w = int(base_width)
+                target_physical_h = int(base_height + border_width + title_height)
+
+                # tools: 微信最终尺寸 = target_physical + 当前 nonclient
+                target_outer_w = int(target_physical_w + nonclient_w)
+                target_outer_h = int(target_physical_h + nonclient_h)
+
+                width_add = 0
+                height_add = int(border_width + title_height)
+                formula_desc = "wechat(tools): final=(target_physical + nonclient)"
             else:
-                target_client_h = int(base_height)
-                configured_outer_w = int(target_client_w + width_add)
-                configured_outer_h = int(target_client_h + height_add)
+                target_physical_w = int(base_width + border_width * 2)
+                target_physical_h = int(base_height + border_width * 2 + title_height)
+
+                # tools: QQ 最终尺寸 = target_physical（不额外加 nonclient）
+                target_outer_w = int(target_physical_w)
+                target_outer_h = int(target_physical_h)
+
+                width_add = int(border_width * 2)
+                height_add = int(border_width * 2 + title_height)
+                formula_desc = "qq(tools): final=target_physical"
 
             work_area = self._get_work_area_for_window(hwnd)
             if not work_area:
                 logger.error("调整窗口大小失败: 无法获取工作区")
                 return False
 
-            if is_wechat:
-                # 参考 change_resolution_compat：优先使用 AdjustWindowRectExForDpi 计算外框。
-                compat_outer = self._calc_outer_size_by_adjust_rect(hwnd, target_client_w, target_client_h)
-                if compat_outer:
-                    target_outer_w, target_outer_h, compat_dpi = compat_outer
-                else:
-                    target_outer_w, target_outer_h, compat_dpi = configured_outer_w, configured_outer_h, 96
-                logger.info(
-                    f"[wechat-resize][compat] adjust_outer={target_outer_w}x{target_outer_h} "
-                    f"dpi={compat_dpi} configured_outer={configured_outer_w}x{configured_outer_h}"
-                )
-            else:
-                target_outer_w, target_outer_h = configured_outer_w, configured_outer_h
-
             pos_x, pos_y = self._calculate_position(work_area, target_outer_w, target_outer_h, position)
 
-            if is_wechat:
-                before_outer = self._get_window_outer_size(hwnd)
-                before_client = self._get_client_size(hwnd)
-                before_outer_text = f"{before_outer[0]}x{before_outer[1]}" if before_outer else "unknown"
-                before_client_text = f"{before_client[0]}x{before_client[1]}" if before_client else "unknown"
-                logger.info(
-                    f"[wechat-resize][begin] before_outer={before_outer_text} "
-                    f"before_client={before_client_text} "
-                    f"target_outer={target_outer_w}x{target_outer_h} target_client={target_client_w}x{target_client_h} "
-                    f"position={position} target_xy=({pos_x},{pos_y})"
-                )
+            before_outer_text = f"{before_outer[0]}x{before_outer[1]}" if before_outer else "unknown"
+            before_client_text = f"{before_client[0]}x{before_client[1]}" if before_client else "unknown"
+            logger.info(
+                f"[resize][begin] formula={formula_desc} before_outer={before_outer_text} "
+                f"before_client={before_client_text} target_outer={target_outer_w}x{target_outer_h} "
+                f"target_client={target_client_w}x{target_client_h} "
+                f"nonclient={nonclient_w}x{nonclient_h} position={position} target_xy=({pos_x},{pos_y})"
+            )
 
-            if is_wechat:
-                ok, apply_method = self._set_window_outer_rect(
-                    hwnd=hwnd, x=pos_x, y=pos_y, width=target_outer_w, height=target_outer_h
-                )
-                if not ok:
-                    logger.error(f"调整窗口大小失败: {apply_method}")
-                    return False
-                actual_outer = self._get_window_outer_size(hwnd)
-                if not actual_outer:
-                    logger.error("调整窗口大小失败: 无法读取窗口外框")
-                    return False
-                resize_msg = (
-                    f"resize applied once; actual_outer={actual_outer[0]}x{actual_outer[1]}; apply={apply_method}"
-                )
-            else:
-                ok, resize_msg = self._set_window_outer_size_with_retry(
-                    hwnd=hwnd,
-                    x=pos_x,
-                    y=pos_y,
-                    target_outer_width=target_outer_w,
-                    target_outer_height=target_outer_h,
-                    max_rounds=6,
-                    verbose_log=False,
-                )
-                if not ok:
-                    logger.error(f"调整窗口大小失败: {resize_msg}")
-                    return False
+            ok, apply_method = self._set_window_outer_rect(
+                hwnd=hwnd,
+                x=pos_x,
+                y=pos_y,
+                width=target_outer_w,
+                height=target_outer_h,
+            )
+            if not ok:
+                logger.error(f"调整窗口大小失败: {apply_method}")
+                return False
+
+            resize_msg = (
+                f"resize applied once; actual_outer={target_outer_w}x{target_outer_h}; apply={apply_method}"
+            )
 
             final_rect = self._get_window_rect(hwnd)
             final_client = self._get_client_size(hwnd)
@@ -448,20 +449,18 @@ class WindowManager:
                 self._cached_window.height = target_outer_h
 
             actual_client_text = f"{final_client[0]}x{final_client[1]}" if final_client else "unknown"
-            if is_wechat:
-                err_w = int(target_client_w - final_client[0]) if final_client else 0
-                err_h = int(target_client_h - final_client[1]) if final_client else 0
-                logger.info(
-                    f"[wechat-resize][end] final_outer={self._cached_window.width}x{self._cached_window.height} "
-                    f"final_client={actual_client_text} err_client=({err_w},{err_h})"
-                )
+            err_w = int(target_client_w - final_client[0]) if final_client else 0
+            err_h = int(target_client_h - final_client[1]) if final_client else 0
+            logger.info(
+                f"[resize][end] final_outer={self._cached_window.width}x{self._cached_window.height} "
+                f"final_client={actual_client_text} err_client=({err_w},{err_h})"
+            )
 
             logger.info(
                 f"窗口客户区目标 {target_client_w}x{target_client_h}，"
                 f"平台={platform}，dpi_scale={scale_percent}% (matched={matched_scale}%)，"
                 f"累加: width+={width_add}, height+={height_add} "
                 f"(border={border_width}, title={title_height})，"
-                f"配置外框 {configured_outer_w}x{configured_outer_h}，"
                 f"目标外框 {target_outer_w}x{target_outer_h}，"
                 f"实际外框 {self._cached_window.width}x{self._cached_window.height}，"
                 f"实际客户区 {actual_client_text}"

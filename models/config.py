@@ -21,6 +21,8 @@ class WindowPosition(str, Enum):
     RIGHT_CENTER = "right_center"
     TOP_LEFT = "top_left"
     TOP_RIGHT = "top_right"
+    LEFT_BOTTOM = "left_bottom"
+    RIGHT_BOTTOM = "right_bottom"
 
 
 class WindowPlatform(str, Enum):
