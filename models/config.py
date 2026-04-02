@@ -2,7 +2,7 @@
 import json
 import os
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class PlantMode(str, Enum):
@@ -12,7 +12,6 @@ class PlantMode(str, Enum):
 
 class SellMode(str, Enum):
     BATCH_ALL = "batch_all"        # 批量全部出售
-    SELECTIVE = "selective"        # 选择性出售（只卖勾选的作物）
 
 
 class FeaturesConfig(BaseModel):
@@ -32,7 +31,11 @@ class FeaturesConfig(BaseModel):
 
 class SellConfig(BaseModel):
     mode: SellMode = SellMode.BATCH_ALL
-    sell_crops: list[str] = []  # selective 模式下要出售的作物名称列表
+
+    @field_validator("mode", mode="before")
+    @classmethod
+    def _force_batch_mode(cls, _value):
+        return SellMode.BATCH_ALL
 
 
 class SafetyConfig(BaseModel):
