@@ -6,9 +6,13 @@ from models.farm_state import ActionType
 from core.cv_detector import DetectResult
 from core.scene_detector import Scene, identify_scene
 from core.strategies.base import BaseStrategy
+from utils.shop_item_ocr import ShopItemOCR
 
 
 class PlantStrategy(BaseStrategy):
+    def __init__(self, cv_detector):
+        super().__init__(cv_detector)
+        self.shop_ocr = ShopItemOCR()
 
     def plant_all(self, rect: tuple, crop_name: str,
                   buy_qty: int = 50) -> list[str]:
@@ -111,7 +115,7 @@ class PlantStrategy(BaseStrategy):
                 cv_check, _, _ = self.capture(rect)
                 if cv_check is not None:
                     shop_close = self.cv_detector.detect_single_template(
-                        cv_check, "btn_shop_close", threshold=0.8)
+                        cv_check, "btn_shop_close", threshold=0.75)
                     if shop_close:
                         logger.info("播种流程: 种子已用完，进入购买流程")
                         self._close_shop_and_buy(rect, crop_name, buy_qty, actions_done)
@@ -190,7 +194,7 @@ class PlantStrategy(BaseStrategy):
 
     def _buy_seeds(self, rect: tuple, crop_name: str,
                    buy_qty: int) -> str | None:
-        """购买种子流程：打开商店 → 用 shop_xx 模板匹配找种子 → 点击 → 确认购买"""
+        """购买种子流程：打开商店 → OCR识别物品名找坐标 → 点击 → 确认购买"""
         logger.info("购买流程: 打开商店")
         if self.stopped:
             return None
@@ -221,19 +225,47 @@ class PlantStrategy(BaseStrategy):
                 continue
 
             logger.info("购买流程: 商店已打开，查找种子")
-            seed_dets = self.cv_detector.detect_single_template(
-                cv_img, f"shop_{crop_name}", threshold=0.9)
+            # 商店已打开后，增加 OCR 匹配重试，避免瞬时渲染导致漏检
+            match_retry = 3
+            matched_item = None
+            for match_attempt in range(match_retry):
+                if self.stopped:
+                    return None
+                ocr_match = self.shop_ocr.find_item(cv_img, crop_name, min_similarity=0.70)
+                if ocr_match.target:
+                    matched_item = ocr_match.target
+                    break
 
-            if seed_dets:
-                det = seed_dets[0]
-                logger.info(f"购买流程: 找到 '{crop_name}' ({det.confidence:.0%})")
-                self.click(det.x, det.y, f"选择{crop_name}")
+                parsed_names = [it.name for it in ocr_match.parsed_items[:8]]
+                best_desc = "none"
+                if ocr_match.best:
+                    best_desc = (
+                        f"{ocr_match.best.name}"
+                        f"(raw={ocr_match.best.raw_name},sim={ocr_match.best_similarity:.2f})"
+                    )
+                logger.warning(
+                    f"购买流程: OCR未命中 '{crop_name}'，"
+                    f"重试({match_attempt+1}/{match_retry}) best={best_desc} parsed={parsed_names}"
+                )
+                if match_attempt < match_retry - 1:
+                    time.sleep(0.3)
+                    cv_img, dets, _ = self.capture(rect)
+                    if cv_img is None:
+                        return None
+
+            if matched_item:
+                logger.info(
+                    f"购买流程: OCR找到 '{crop_name}' "
+                    f"(name={matched_item.name}, raw={matched_item.raw_name}, "
+                    f"score={matched_item.ocr_score:.2f}, sim={matched_item.name_similarity:.2f})"
+                )
+                self.click(matched_item.center_x, matched_item.center_y, f"选择{crop_name}")
                 time.sleep(1.0)  # 等待购买弹窗出现
                 break
-            else:
-                logger.warning(f"购买流程: 商店中未找到 'shop_{crop_name}' 模板")
-                self._close_shop(rect)
-                return None
+
+            logger.warning(f"购买流程: OCR未找到 '{crop_name}'")
+            self._close_shop(rect)
+            return None
         else:
             logger.warning("购买流程: 商店加载超时")
             self._close_shop(rect)

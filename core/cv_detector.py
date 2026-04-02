@@ -38,7 +38,6 @@ TEMPLATE_CATEGORIES = {
     "ui": "ui_element",
     "land": "land",
     "seed": "seed",
-    "shop": "shop",
 }
 
 
@@ -57,41 +56,59 @@ class CVDetector:
             logger.warning(f"模板目录 {self._templates_dir} 为空，请先采集模板")
             return
 
+        self._templates = {}
         count = 0
-        for filename in os.listdir(self._templates_dir):
-            if not filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-                continue
+        ignored_top_dirs = {"__pycache__"}
+        for root, dirs, files in os.walk(self._templates_dir):
+            rel = os.path.relpath(root, self._templates_dir)
+            if rel == ".":
+                dirs[:] = [d for d in dirs if d.lower() not in ignored_top_dirs]
+            else:
+                top_dir = rel.split(os.sep)[0].lower()
+                if top_dir in ignored_top_dirs:
+                    continue
+                dirs[:] = [d for d in dirs if d.lower() not in ignored_top_dirs]
 
-            filepath = os.path.join(self._templates_dir, filename)
-            # cv2.imread 不支持中文路径，用 numpy 中转
-            template = cv2.imdecode(
-                np.fromfile(filepath, dtype=np.uint8), cv2.IMREAD_UNCHANGED
-            )
-            if template is None:
-                logger.warning(f"无法读取模板: {filename}")
-                continue
+            for filename in files:
+                if not filename.lower().endswith((".png", ".jpg", ".jpeg")):
+                    continue
 
-            name = os.path.splitext(filename)[0]
-            # 从文件名前缀判断类别: btn_harvest.png -> button
-            prefix = name.split("_")[0]
-            category = TEMPLATE_CATEGORIES.get(prefix, "unknown")
+                filepath = os.path.join(root, filename)
+                # cv2.imread 不支持中文路径，用 numpy 中转
+                template = cv2.imdecode(
+                    np.fromfile(filepath, dtype=np.uint8), cv2.IMREAD_UNCHANGED
+                )
+                if template is None:
+                    logger.warning(f"无法读取模板: {filepath}")
+                    continue
 
-            # 处理带alpha通道的模板（用于mask匹配）
-            mask = None
-            if template.shape[2] == 4:
-                mask = template[:, :, 3]
-                template = template[:, :, :3]
+                name = os.path.splitext(filename)[0]
+                # 从文件名前缀判断类别: btn_harvest.png -> button
+                prefix = name.split("_")[0]
+                category = TEMPLATE_CATEGORIES.get(prefix, "unknown")
 
-            if category not in self._templates:
-                self._templates[category] = []
+                # 处理带alpha通道的模板（用于mask匹配）
+                mask = None
+                if template.ndim == 3 and template.shape[2] == 4:
+                    alpha = template[:, :, 3]
+                    # alpha 全不透明时无需 mask；直接用 mask 会让 TM_CCOEFF_NORMED
+                    # 在部分 OpenCV 环境产生 NaN/Inf，导致误命中。
+                    if not np.all(alpha == 255):
+                        mask = alpha
+                    template = template[:, :, :3]
+                elif template.ndim == 2:
+                    template = cv2.cvtColor(template, cv2.COLOR_GRAY2BGR)
 
-            self._templates[category].append({
-                "name": name,
-                "image": template,
-                "mask": mask,
-                "category": category,
-            })
-            count += 1
+                if category not in self._templates:
+                    self._templates[category] = []
+
+                self._templates[category].append({
+                    "name": name,
+                    "image": template,
+                    "mask": mask,
+                    "category": category,
+                })
+                count += 1
 
         self._loaded = True
         logger.info(f"已加载 {count} 个模板，分 {len(self._templates)} 个类别")
@@ -107,8 +124,14 @@ class CVDetector:
 
         for category, templates in self._templates.items():
             for tpl in templates:
-                matches = self._match_template(
+                matches, best_score = self._match_template_with_best(
                     screenshot, gray_screen, tpl, threshold
+                )
+                self._log_template_probe(
+                    template_name=tpl["name"],
+                    threshold=threshold,
+                    best_score=best_score,
+                    hit_count=len(matches),
                 )
                 results.extend(matches)
 
@@ -130,8 +153,14 @@ class CVDetector:
 
         templates = self._templates.get(category, [])
         for tpl in templates:
-            matches = self._match_template(
+            matches, best_score = self._match_template_with_best(
                 screenshot, gray_screen, tpl, threshold
+            )
+            self._log_template_probe(
+                template_name=tpl["name"],
+                threshold=threshold,
+                best_score=best_score,
+                hit_count=len(matches),
             )
             results.extend(matches)
 
@@ -151,20 +180,53 @@ class CVDetector:
         for category, templates in self._templates.items():
             for tpl in templates:
                 if tpl["name"] == name:
-                    results = self._match_template(
+                    results, best_score = self._match_template_with_best(
                         screenshot, gray_screen, tpl, threshold
                     )
                     results = self._nms(results, iou_threshold=0.5)
                     results.sort(key=lambda r: r.confidence, reverse=True)
+                    self._log_template_probe(
+                        template_name=name,
+                        threshold=threshold,
+                        best_score=best_score,
+                        hit_count=len(results),
+                    )
                     return results
+        self._log_template_probe(
+            template_name=name,
+            threshold=threshold,
+            best_score=0.0,
+            hit_count=0,
+        )
         return []
+
+    @staticmethod
+    def _log_template_probe(template_name: str,
+                            threshold: float,
+                            best_score: float,
+                            hit_count: int) -> None:
+        logger.debug(
+            f"模板识别: 模板={template_name}, 阈值={threshold:.3f}, "
+            f"最大分数={best_score:.3f}, 命中数={int(hit_count)}"
+        )
 
     def _match_template(self, screenshot: np.ndarray,
                         gray_screen: np.ndarray,
                         tpl: dict,
                         threshold: float) -> list[DetectResult]:
         """对单个模板执行多尺度匹配"""
+        results, _ = self._match_template_with_best(
+            screenshot, gray_screen, tpl, threshold
+        )
+        return results
+
+    def _match_template_with_best(self, screenshot: np.ndarray,
+                                  gray_screen: np.ndarray,
+                                  tpl: dict,
+                                  threshold: float) -> tuple[list[DetectResult], float]:
+        """对单个模板执行多尺度匹配，并返回最佳分数（不受阈值限制）。"""
         results = []
+        best_score = 0.0
         tpl_img = tpl["image"]
         tpl_mask = tpl["mask"]
         th, tw = tpl_img.shape[:2]
@@ -196,6 +258,17 @@ class CVDetector:
                     gray_screen, gray_tpl, cv2.TM_CCOEFF_NORMED
                 )
 
+            finite = np.isfinite(match_result)
+            if not finite.all():
+                # 屏蔽 NaN/Inf：避免被阈值筛选命中并污染置信度。
+                match_result = np.where(finite, match_result, -1.0)
+                finite = np.isfinite(match_result)
+
+            if finite.any():
+                scale_best = float(match_result[finite].max())
+                if scale_best > best_score:
+                    best_score = scale_best
+
             # 找到所有超过阈值的匹配位置
             locations = np.where(match_result >= threshold)
             for pt_y, pt_x in zip(*locations):
@@ -217,7 +290,7 @@ class CVDetector:
             if scale == 1.0 and any(r.confidence > 0.95 for r in results):
                 break
 
-        return results
+        return results, best_score
 
     @staticmethod
     def _nms(results: list[DetectResult],

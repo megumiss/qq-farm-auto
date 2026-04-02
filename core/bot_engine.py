@@ -11,7 +11,9 @@
   P0  收益:     harvest   — 一键收获 + 自动出售
   P1  维护:     maintain  — 一键除草/除虫/浇水
   P2  生产:     plant     — 播种 + 购买种子 + 施肥
-  P3  资源:     expand    — 扩建土地 + 领取任务
+  P3  资源:     expand    — 扩建土地
+  P3.2 出售:    sell      — 仓库批量出售
+  P3.5 任务:    task      — 领取任务奖励
   P4  社交:     friend    — 好友巡查/帮忙/偷菜/同意好友
 """
 import time
@@ -34,7 +36,7 @@ from core.scene_detector import Scene, identify_scene
 from utils.run_mode_decorator import Config as DecoratorConfig, UNSET
 from core.strategies import (
     PopupStrategy, HarvestStrategy, MaintainStrategy,
-    PlantStrategy, ExpandStrategy, FriendStrategy, TaskStrategy,
+    PlantStrategy, ExpandStrategy, SellStrategy, TaskStrategy, FriendStrategy,
 )
 
 
@@ -85,10 +87,11 @@ class BotEngine(QObject):
         self.maintain = MaintainStrategy(self.cv_detector)  # P1
         self.plant = PlantStrategy(self.cv_detector)        # P2
         self.expand = ExpandStrategy(self.cv_detector)      # P3
+        self.sell = SellStrategy(self.cv_detector)          # P3.2
         self.task = TaskStrategy(self.cv_detector)          # P3.5
         self.friend = FriendStrategy(self.cv_detector)      # P4
         self._strategies = [self.popup, self.harvest, self.maintain,
-                            self.plant, self.expand, self.task, self.friend]
+                            self.plant, self.expand, self.sell, self.task, self.friend]
 
         # [4] 操作执行层
         self.action_executor: ActionExecutor | None = None
@@ -110,11 +113,9 @@ class BotEngine(QObject):
             s.action_executor = self.action_executor
             s.set_capture_fn(self._capture_and_detect)
             s._stop_requested = False
-        self.task.sell_config = self.config.sell
 
     def update_config(self, config: AppConfig):
         self.config = config
-        self.task.sell_config = config.sell
         if self.action_executor:
             self.action_executor.update_run_mode(config.safety.run_mode)
 
@@ -144,12 +145,24 @@ class BotEngine(QObject):
         """
         if not self.action_executor:
             return
-        w, h = rect[2], rect[3]
-        sky_x = w // 2
-        sky_y = int(h * 0.05)
+
+        platform = getattr(self.config.planting, "window_platform", "qq")
+        platform_value = platform.value if hasattr(platform, "value") else str(platform)
+        if not rect or len(rect) != 4:
+            logger.warning("清屏点击跳过: capture rect 不可用")
+            return
+
+        cap_left, cap_top, cap_w, cap_h = [int(v) for v in rect]
+        x1, y1, crop_w, crop_h = self.window_manager.get_preview_crop_box(
+            raw_width=cap_w,
+            raw_height=cap_h,
+            platform=platform_value,
+        )
+        sky_x = int(cap_left + x1 + crop_w // 2)
+        sky_y = int(cap_top + y1 + max(10, int(crop_h * 0.05)))
+
         for _ in range(2):
-            self.action_executor.click(
-                *self.action_executor.relative_to_absolute(sky_x, sky_y))
+            self.action_executor.click(sky_x, sky_y)
             time.sleep(0.3)
 
 
@@ -197,21 +210,31 @@ class BotEngine(QObject):
         return self._prepare_start_window_foreground(window)
 
     def _prepare_start_window_foreground(self, window):
-        return self._resize_window_if_needed(window)
+        prepared = self._prepare_start_window_common(window)
+        if not prepared:
+            return None
+        self.window_manager.activate_window()
+        time.sleep(0.2)
+        return prepared
 
     def _prepare_start_window_background(self, window):
-        return self._resize_window_if_needed(window)
+        return self._prepare_start_window_common(window)
 
-    def _resize_window_if_needed(self, window):
-        w, h = self.config.planting.window_width, self.config.planting.window_height
-        if w > 0 and h > 0:
-            self.window_manager.resize_window(w, h)
-            time.sleep(0.5)
-            refreshed = self.window_manager.refresh_window_info(self.config.window_title_keyword)
-            if refreshed:
-                self.log_message.emit(f"窗口已调整为 {refreshed.width}x{refreshed.height}")
-                return refreshed
-        return window
+    def _prepare_start_window_common(self, window):
+        pos = getattr(self.config.planting, "window_position", "left_center")
+        pos_value = pos.value if hasattr(pos, "value") else str(pos)
+        platform = getattr(self.config.planting, "window_platform", "qq")
+        platform_value = platform.value if hasattr(platform, "value") else str(platform)
+        self.window_manager.resize_window(pos_value, platform_value)
+        time.sleep(0.5)
+        refreshed = self.window_manager.refresh_window_info(self.config.window_title_keyword)
+        if not refreshed:
+            return None
+        self.log_message.emit(
+            "窗口已调整（整窗外框目标：540x960 + 非客户区增量）-> "
+            f"实际外框 {refreshed.width}x{refreshed.height}"
+        )
+        return refreshed
 
     def stop(self):
         for s in self._strategies:
@@ -303,6 +326,14 @@ class BotEngine(QObject):
     def _prepare_window_focus_background(self):
         return None
 
+    def _crop_preview_image(self, image: PILImage.Image | None) -> PILImage.Image | None:
+        """仅用于左侧预览显示：按 nonclient 配置裁掉窗口边框/标题栏。"""
+        if image is None:
+            return None
+        platform = getattr(self.config.planting, "window_platform", "qq")
+        platform_value = platform.value if hasattr(platform, "value") else str(platform)
+        return self.window_manager.crop_window_image_for_preview(image, platform_value)
+
     def _capture_and_detect(self, rect: tuple, prefix: str = "farm",
                             categories: list[str] | None = None,
                             save: bool = True
@@ -310,7 +341,9 @@ class BotEngine(QObject):
         image = self._capture_image_by_mode(rect, prefix, save)
         if image is None:
             return None, [], None
-        self.screenshot_updated.emit(image)
+        preview_image = self._crop_preview_image(image)
+        if preview_image is not None:
+            self.screenshot_updated.emit(preview_image)
         cv_image = self.cv_detector.pil_to_cv2(image)
 
         if categories is not None:
@@ -321,7 +354,7 @@ class BotEngine(QObject):
         else:
             detections = []
             for cat in self.cv_detector._templates:
-                if cat in ("seed", "shop"):
+                if cat in ("seed",):
                     continue
                 if cat == "land":
                     thresh = 0.89
@@ -365,7 +398,10 @@ class BotEngine(QObject):
         if detections:
             annotated = self.cv_detector.draw_results(cv_image, detections)
             annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
-            self.detection_result.emit(PILImage.fromarray(annotated_rgb))
+            annotated_pil = PILImage.fromarray(annotated_rgb)
+            preview_annotated = self._crop_preview_image(annotated_pil)
+            if preview_annotated is not None:
+                self.detection_result.emit(preview_annotated)
 
     def _record_stat(self, action_type: str):
         type_map = {
@@ -398,6 +434,7 @@ class BotEngine(QObject):
 
         idle_rounds = 0
         max_idle = 3
+        sold_this_round = False
 
         for round_num in range(1, 51):
             if self.popup.stopped:
@@ -455,7 +492,17 @@ class BotEngine(QObject):
                 if not action_desc and features.get("auto_upgrade", True):
                     action_desc = self.expand.try_expand(rect, detections)
 
-                # P3.5 任务：领取奖励 / 售卖果实
+                # P3.2 出售：仓库批量出售（独立于任务）
+                if (not action_desc
+                        and features.get("auto_sell", True)
+                        and not sold_this_round):
+                    sa = self.sell.try_sell(rect, detections)
+                    if sa:
+                        sold_this_round = True
+                        result["actions_done"].extend(sa)
+                        action_desc = sa[-1]
+
+                # P3.5 任务：领取任务奖励
                 if not action_desc and features.get("auto_task", True):
                     ta = self.task.try_task(rect, detections)
                     if ta:
