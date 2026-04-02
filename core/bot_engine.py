@@ -132,12 +132,24 @@ class BotEngine(QObject):
         """
         if not self.action_executor:
             return
-        w, h = rect[2], rect[3]
-        sky_x = w // 2
-        sky_y = int(h * 0.05)
+
+        platform = getattr(self.config.planting, "window_platform", "qq")
+        platform_value = platform.value if hasattr(platform, "value") else str(platform)
+        if not rect or len(rect) != 4:
+            logger.warning("清屏点击跳过: capture rect 不可用")
+            return
+
+        cap_left, cap_top, cap_w, cap_h = [int(v) for v in rect]
+        x1, y1, crop_w, crop_h = self.window_manager.get_preview_crop_box(
+            raw_width=cap_w,
+            raw_height=cap_h,
+            platform=platform_value,
+        )
+        sky_x = int(cap_left + x1 + crop_w // 2)
+        sky_y = int(cap_top + y1 + max(10, int(crop_h * 0.05)))
+
         for _ in range(2):
-            self.action_executor.click(
-                *self.action_executor.relative_to_absolute(sky_x, sky_y))
+            self.action_executor.click(sky_x, sky_y)
             time.sleep(0.3)
 
 

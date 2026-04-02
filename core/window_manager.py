@@ -286,49 +286,59 @@ class WindowManager:
         if image is None:
             return image
         width, height = image.size
-        target_w = int(self.TARGET_CLIENT_WIDTH)
-        target_h = int(self.TARGET_CLIENT_HEIGHT)
+        x1, y1, crop_w, crop_h = self.get_preview_crop_box(width, height, platform)
+        x2 = x1 + crop_w
+        y2 = y1 + crop_h
+        cropped = image.crop((x1, y1, x2, y2))
+        right = max(0, width - x2)
+        bottom = max(0, height - y2)
 
-        # 统一逻辑：尺寸足够时，直接裁成 540x960。
-        if width >= target_w and height >= target_h:
-            left_pref, top_pref, _, _ = self.get_preview_crop_margins(platform)
-            x1 = min(max(0, int(left_pref)), max(0, width - target_w))
-            y1 = min(max(0, int(top_pref)), max(0, height - target_h))
-            x2 = x1 + target_w
-            y2 = y1 + target_h
-            cropped = image.crop((x1, y1, x2, y2))
-            right = max(0, width - x2)
-            bottom = max(0, height - y2)
-            log_key = (
-                "target_crop",
-                platform,
-                width,
-                height,
-                cropped.size[0],
-                cropped.size[1],
-                x1,
-                y1,
-                right,
-                bottom,
-            )
+        if crop_w == width and crop_h == height and x1 == 0 and y1 == 0:
+            log_key = ("no_crop_small", platform, width, height)
             if log_key != self._last_preview_crop_log_key:
                 self._last_preview_crop_log_key = log_key
                 logger.info(
                     f"预览裁切: platform={platform}, raw={width}x{height}, "
-                    f"crop={cropped.size[0]}x{cropped.size[1]}, "
-                    f"margins(l,t,r,b)=({x1},{y1},{right},{bottom})"
+                    f"crop={width}x{height}, margins(l,t,r,b)=(0,0,0,0)"
                 )
-            return cropped
+            return image
 
-        # 尺寸不足时保留原图（避免越界裁切）。
-        log_key = ("no_crop_small", platform, width, height)
+        log_key = (
+            "target_crop",
+            platform,
+            width,
+            height,
+            crop_w,
+            crop_h,
+            x1,
+            y1,
+            right,
+            bottom,
+        )
         if log_key != self._last_preview_crop_log_key:
             self._last_preview_crop_log_key = log_key
             logger.info(
                 f"预览裁切: platform={platform}, raw={width}x{height}, "
-                f"crop={width}x{height}, margins(l,t,r,b)=(0,0,0,0)"
+                f"crop={crop_w}x{crop_h}, "
+                f"margins(l,t,r,b)=({x1},{y1},{right},{bottom})"
             )
-        return image
+        return cropped
+
+    def get_preview_crop_box(self, raw_width: int, raw_height: int, platform: str = "qq") -> tuple[int, int, int, int]:
+        """按预览裁切规则返回裁切框 (x1, y1, width, height)。"""
+        width = int(raw_width)
+        height = int(raw_height)
+        target_w = int(self.TARGET_CLIENT_WIDTH)
+        target_h = int(self.TARGET_CLIENT_HEIGHT)
+
+        # 与 crop_window_image_for_preview 保持一致：尺寸足够则裁成目标尺寸，否则不裁切
+        if width >= target_w and height >= target_h:
+            left_pref, top_pref, _, _ = self.get_preview_crop_margins(platform)
+            x1 = min(max(0, int(left_pref)), max(0, width - target_w))
+            y1 = min(max(0, int(top_pref)), max(0, height - target_h))
+            return x1, y1, target_w, target_h
+
+        return 0, 0, width, height
 
     def find_window(self, title_keyword: str = "QQ经典农场") -> WindowInfo | None:
         """通过标题关键词查找窗口"""
