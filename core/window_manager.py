@@ -42,6 +42,8 @@ class WindowManager:
         self._enable_dpi_awareness()
         self._cached_window: WindowInfo | None = None
         self._nonclient_config = self._load_nonclient_config()
+        self._last_preview_crop_log_key: tuple | None = None
+        self._last_capture_rect_is_client: bool = False
 
     @staticmethod
     def _enable_dpi_awareness() -> None:
@@ -97,6 +99,22 @@ class WindowManager:
         if not ok:
             return None
         return int(rect.right - rect.left), int(rect.bottom - rect.top)
+
+    @staticmethod
+    def _get_client_rect_screen(hwnd: int) -> tuple[int, int, int, int] | None:
+        """返回客户区在屏幕坐标中的矩形 (left, top, width, height)。"""
+        user32 = ctypes.windll.user32
+        rect = ctypes.wintypes.RECT()
+        if not bool(user32.GetClientRect(hwnd, ctypes.byref(rect))):
+            return None
+        width = int(rect.right - rect.left)
+        height = int(rect.bottom - rect.top)
+        if width <= 0 or height <= 0:
+            return None
+        pt = ctypes.wintypes.POINT(0, 0)
+        if not bool(user32.ClientToScreen(hwnd, ctypes.byref(pt))):
+            return None
+        return int(pt.x), int(pt.y), width, height
 
     @staticmethod
     def _calc_outer_size_by_adjust_rect(hwnd: int, client_width: int, client_height: int) -> tuple[int, int, int] | None:
@@ -247,6 +265,71 @@ class WindowManager:
         title = int(matched_value.get("title_height", 39))
         return border, title, matched_scale
 
+    def get_preview_crop_margins(self, platform: str = "qq") -> tuple[int, int, int, int]:
+        """返回基于 nonclient json 的预览裁切边距 (left, top, right, bottom)。"""
+        if not self._cached_window:
+            return 0, 0, 0, 0
+        try:
+            hwnd = self._cached_window.hwnd
+            scale_percent = self._get_window_scale_percent(hwnd)
+            border_width, title_height, _ = self._get_nonclient_metrics(platform, scale_percent)
+            left = max(0, int(border_width))
+            right = max(0, int(border_width))
+            top = max(0, int(title_height + border_width))
+            bottom = max(0, int(border_width))
+            return left, top, right, bottom
+        except Exception:
+            return 0, 0, 0, 0
+
+    def crop_window_image_for_preview(self, image, platform: str = "qq"):
+        """统一按目标分辨率裁切预览图（优先落到 540x960）。"""
+        if image is None:
+            return image
+        width, height = image.size
+        target_w = int(self.TARGET_CLIENT_WIDTH)
+        target_h = int(self.TARGET_CLIENT_HEIGHT)
+
+        # 统一逻辑：尺寸足够时，直接裁成 540x960。
+        if width >= target_w and height >= target_h:
+            left_pref, top_pref, _, _ = self.get_preview_crop_margins(platform)
+            x1 = min(max(0, int(left_pref)), max(0, width - target_w))
+            y1 = min(max(0, int(top_pref)), max(0, height - target_h))
+            x2 = x1 + target_w
+            y2 = y1 + target_h
+            cropped = image.crop((x1, y1, x2, y2))
+            right = max(0, width - x2)
+            bottom = max(0, height - y2)
+            log_key = (
+                "target_crop",
+                platform,
+                width,
+                height,
+                cropped.size[0],
+                cropped.size[1],
+                x1,
+                y1,
+                right,
+                bottom,
+            )
+            if log_key != self._last_preview_crop_log_key:
+                self._last_preview_crop_log_key = log_key
+                logger.info(
+                    f"预览裁切: platform={platform}, raw={width}x{height}, "
+                    f"crop={cropped.size[0]}x{cropped.size[1]}, "
+                    f"margins(l,t,r,b)=({x1},{y1},{right},{bottom})"
+                )
+            return cropped
+
+        # 尺寸不足时保留原图（避免越界裁切）。
+        log_key = ("no_crop_small", platform, width, height)
+        if log_key != self._last_preview_crop_log_key:
+            self._last_preview_crop_log_key = log_key
+            logger.info(
+                f"预览裁切: platform={platform}, raw={width}x{height}, "
+                f"crop={width}x{height}, margins(l,t,r,b)=(0,0,0,0)"
+            )
+        return image
+
     def find_window(self, title_keyword: str = "QQ经典农场") -> WindowInfo | None:
         """通过标题关键词查找窗口"""
         try:
@@ -297,6 +380,34 @@ class WindowManager:
             return None
         w = self._cached_window
         return (w.left, w.top, w.width, w.height)
+
+    def get_capture_rect(self) -> tuple[int, int, int, int] | None:
+        """获取截图区域，优先客户区，失败时回退整窗。"""
+        if not self._cached_window:
+            return None
+
+        hwnd = self._cached_window.hwnd
+        client_rect = self._get_client_rect_screen(hwnd)
+        if client_rect:
+            self._last_capture_rect_is_client = True
+            return client_rect
+
+        outer_rect = self._get_window_rect(hwnd)
+        if outer_rect:
+            self._last_capture_rect_is_client = False
+            return (
+                int(outer_rect[0]),
+                int(outer_rect[1]),
+                int(outer_rect[2] - outer_rect[0]),
+                int(outer_rect[3] - outer_rect[1]),
+            )
+
+        self._last_capture_rect_is_client = False
+        w = self._cached_window
+        return (w.left, w.top, w.width, w.height)
+
+    def is_capture_rect_client(self) -> bool:
+        return bool(self._last_capture_rect_is_client)
 
     def activate_window(self) -> bool:
         """激活并置顶窗口"""

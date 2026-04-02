@@ -165,7 +165,9 @@ class BotEngine(QObject):
             f"实际外框 {window.width}x{window.height}"
         )
 
-        rect = (window.left, window.top, window.width, window.height)
+        rect = self.window_manager.get_capture_rect()
+        if not rect:
+            rect = (window.left, window.top, window.width, window.height)
         self.action_executor = ActionExecutor(
             window_rect=rect,
             delay_min=self.config.safety.random_delay_min,
@@ -249,10 +251,20 @@ class BotEngine(QObject):
             return None
         self.window_manager.activate_window()
         time.sleep(0.3)
-        rect = (window.left, window.top, window.width, window.height)
+        rect = self.window_manager.get_capture_rect()
+        if not rect:
+            rect = (window.left, window.top, window.width, window.height)
         if self.action_executor:
             self.action_executor.update_window_rect(rect)
         return rect
+
+    def _crop_preview_image(self, image: PILImage.Image | None) -> PILImage.Image | None:
+        """仅用于左侧预览显示：按 nonclient 配置裁掉窗口边框/标题栏。"""
+        if image is None:
+            return None
+        platform = getattr(self.config.planting, "window_platform", "qq")
+        platform_value = platform.value if hasattr(platform, "value") else str(platform)
+        return self.window_manager.crop_window_image_for_preview(image, platform_value)
 
     def _capture_and_detect(self, rect: tuple, prefix: str = "farm",
                             categories: list[str] | None = None,
@@ -264,7 +276,9 @@ class BotEngine(QObject):
             image = self.screen_capture.capture_region(rect)
         if image is None:
             return None, [], None
-        self.screenshot_updated.emit(image)
+        preview_image = self._crop_preview_image(image)
+        if preview_image is not None:
+            self.screenshot_updated.emit(preview_image)
         cv_image = self.cv_detector.pil_to_cv2(image)
 
         if categories is not None:
@@ -294,7 +308,10 @@ class BotEngine(QObject):
         if detections:
             annotated = self.cv_detector.draw_results(cv_image, detections)
             annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
-            self.detection_result.emit(PILImage.fromarray(annotated_rgb))
+            annotated_pil = PILImage.fromarray(annotated_rgb)
+            preview_annotated = self._crop_preview_image(annotated_pil)
+            if preview_annotated is not None:
+                self.detection_result.emit(preview_annotated)
 
     def _record_stat(self, action_type: str):
         type_map = {
