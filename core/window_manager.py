@@ -42,7 +42,6 @@ class WindowManager:
         self._enable_dpi_awareness()
         self._cached_window: WindowInfo | None = None
         self._nonclient_config = self._load_nonclient_config()
-        self._last_preview_crop_log_key: tuple | None = None
         self._last_capture_rect_is_client: bool = False
 
     @staticmethod
@@ -209,24 +208,18 @@ class WindowManager:
         for round_idx in range(1, max_rounds + 1):
             ok, apply_method = self._set_window_outer_rect(hwnd, x, y, current_w, current_h)
             if not ok:
-                return False, f"resize failed at round {round_idx}: {apply_method}"
+                return False, f"第{round_idx}轮调整失败: {apply_method}"
 
             outer_size = self._get_window_outer_size(hwnd)
             if not outer_size:
-                return False, f"resize failed at round {round_idx}: cannot read window rect"
+                return False, f"第{round_idx}轮调整失败: 无法读取窗口外框"
 
             err_w = int(target_outer_width - outer_size[0])
             err_h = int(target_outer_height - outer_size[1])
-            if verbose_log:
-                logger.info(
-                    f"[wechat-resize][outer] round={round_idx} "
-                    f"request={current_w}x{current_h} actual={outer_size[0]}x{outer_size[1]} "
-                    f"err=({err_w},{err_h}) apply={apply_method}"
-                )
             if err_w == 0 and err_h == 0:
                 return True, (
-                    f"resize success in {round_idx} rounds; "
-                    f"actual_outer={outer_size[0]}x{outer_size[1]}; apply={apply_method}"
+                    f"{round_idx}轮调整成功; "
+                    f"实际外框={outer_size[0]}x{outer_size[1]}; 应用={apply_method}"
                 )
 
             current_w = max(120, int(current_w + err_w))
@@ -234,10 +227,10 @@ class WindowManager:
 
         final_outer = self._get_window_outer_size(hwnd)
         if not final_outer:
-            return False, "resize reached max rounds; cannot read final outer size"
+            return False, "达到最大轮次，且无法读取最终外框"
         return False, (
-            f"resize reached max rounds; final_outer={final_outer[0]}x{final_outer[1]}, "
-            f"target_outer={target_outer_width}x{target_outer_height}; apply={apply_method}"
+            f"达到最大轮次; 最终外框={final_outer[0]}x{final_outer[1]}, "
+            f"目标外框={target_outer_width}x{target_outer_height}; 应用={apply_method}"
         )
 
     def _get_nonclient_metrics(self, platform: str, scale_percent: int) -> tuple[int, int, int]:
@@ -287,42 +280,11 @@ class WindowManager:
             return image
         width, height = image.size
         x1, y1, crop_w, crop_h = self.get_preview_crop_box(width, height, platform)
+        if crop_w == width and crop_h == height and x1 == 0 and y1 == 0:
+            return image
         x2 = x1 + crop_w
         y2 = y1 + crop_h
-        cropped = image.crop((x1, y1, x2, y2))
-        right = max(0, width - x2)
-        bottom = max(0, height - y2)
-
-        if crop_w == width and crop_h == height and x1 == 0 and y1 == 0:
-            log_key = ("no_crop_small", platform, width, height)
-            if log_key != self._last_preview_crop_log_key:
-                self._last_preview_crop_log_key = log_key
-                logger.info(
-                    f"预览裁切: platform={platform}, raw={width}x{height}, "
-                    f"crop={width}x{height}, margins(l,t,r,b)=(0,0,0,0)"
-                )
-            return image
-
-        log_key = (
-            "target_crop",
-            platform,
-            width,
-            height,
-            crop_w,
-            crop_h,
-            x1,
-            y1,
-            right,
-            bottom,
-        )
-        if log_key != self._last_preview_crop_log_key:
-            self._last_preview_crop_log_key = log_key
-            logger.info(
-                f"预览裁切: platform={platform}, raw={width}x{height}, "
-                f"crop={crop_w}x{crop_h}, "
-                f"margins(l,t,r,b)=({x1},{y1},{right},{bottom})"
-            )
-        return cropped
+        return image.crop((x1, y1, x2, y2))
 
     def get_preview_crop_box(self, raw_width: int, raw_height: int, platform: str = "qq") -> tuple[int, int, int, int]:
         """按预览裁切规则返回裁切框 (x1, y1, width, height)。"""
@@ -492,7 +454,7 @@ class WindowManager:
             before_client = self._get_client_size(hwnd)
 
             if not before_outer or not before_client:
-                logger.error("调整窗口大小失败: 无法读取当前窗口 outer/client 尺寸")
+                logger.error("调整窗口大小失败: 无法读取当前窗口外框/客户区尺寸")
                 return False
 
             # tools/resize_window.py: 动态 nonclient
@@ -512,7 +474,7 @@ class WindowManager:
 
                 width_add = 0
                 height_add = int(border_width + title_height)
-                formula_desc = "wechat(tools): final=(target_physical + nonclient)"
+                formula_desc = "微信公式: 最终外框=目标物理尺寸+当前非客户区"
             else:
                 target_physical_w = int(base_width + border_width * 2)
                 target_physical_h = int(base_height + border_width * 2 + title_height)
@@ -523,7 +485,7 @@ class WindowManager:
 
                 width_add = int(border_width * 2)
                 height_add = int(border_width * 2 + title_height)
-                formula_desc = "qq(tools): final=target_physical"
+                formula_desc = "QQ公式: 最终外框=目标物理尺寸"
 
             work_area = self._get_work_area_for_window(hwnd)
             if not work_area:
@@ -534,11 +496,11 @@ class WindowManager:
 
             before_outer_text = f"{before_outer[0]}x{before_outer[1]}" if before_outer else "unknown"
             before_client_text = f"{before_client[0]}x{before_client[1]}" if before_client else "unknown"
-            logger.info(
-                f"[resize][begin] formula={formula_desc} before_outer={before_outer_text} "
-                f"before_client={before_client_text} target_outer={target_outer_w}x{target_outer_h} "
-                f"target_client={target_client_w}x{target_client_h} "
-                f"nonclient={nonclient_w}x{nonclient_h} position={position} target_xy=({pos_x},{pos_y})"
+            logger.debug(
+                f"[窗口调整][开始] 公式={formula_desc} 调整前外框={before_outer_text} "
+                f"调整前客户区={before_client_text} 目标外框={target_outer_w}x{target_outer_h} "
+                f"目标客户区={target_client_w}x{target_client_h} "
+                f"非客户区={nonclient_w}x{nonclient_h} 位置={position} 目标坐标=({pos_x},{pos_y})"
             )
 
             ok, apply_method = self._set_window_outer_rect(
@@ -552,9 +514,7 @@ class WindowManager:
                 logger.error(f"调整窗口大小失败: {apply_method}")
                 return False
 
-            resize_msg = (
-                f"resize applied once; actual_outer={target_outer_w}x{target_outer_h}; apply={apply_method}"
-            )
+            resize_msg = f"单次应用完成; 目标外框={target_outer_w}x{target_outer_h}; 应用={apply_method}"
 
             final_rect = self._get_window_rect(hwnd)
             final_client = self._get_client_size(hwnd)
@@ -569,25 +529,72 @@ class WindowManager:
                 self._cached_window.width = target_outer_w
                 self._cached_window.height = target_outer_h
 
+            actual_outer_w = int(self._cached_window.width)
+            actual_outer_h = int(self._cached_window.height)
             actual_client_text = f"{final_client[0]}x{final_client[1]}" if final_client else "unknown"
-            err_w = int(target_client_w - final_client[0]) if final_client else 0
-            err_h = int(target_client_h - final_client[1]) if final_client else 0
-            logger.info(
-                f"[resize][end] final_outer={self._cached_window.width}x{self._cached_window.height} "
-                f"final_client={actual_client_text} err_client=({err_w},{err_h})"
+            outer_err_w = int(target_outer_w - actual_outer_w)
+            outer_err_h = int(target_outer_h - actual_outer_h)
+            client_err_w = int(target_client_w - final_client[0]) if final_client else 0
+            client_err_h = int(target_client_h - final_client[1]) if final_client else 0
+
+            # 某些窗口上 GetClientRect 可能返回整窗尺寸（与外框一致），此时按外框校验更可靠。
+            client_same_as_outer = bool(
+                final_client
+                and int(final_client[0]) == actual_outer_w
+                and int(final_client[1]) == actual_outer_h
+            )
+            has_nonclient_add = bool(int(width_add) > 0 or int(height_add) > 0)
+            use_outer_as_primary = (not final_client) or (client_same_as_outer and has_nonclient_add)
+            if use_outer_as_primary:
+                judged_by = "外框"
+                judge_err_w, judge_err_h = outer_err_w, outer_err_h
+            else:
+                judged_by = "客户区"
+                judge_err_w, judge_err_h = client_err_w, client_err_h
+
+            # 微信分支下，客户区高度可能按 (960 + 边框 + 标题) 呈现；外框命中时视为正常。
+            wechat_client_expected_w = int(target_client_w + width_add)
+            wechat_client_expected_h = int(target_client_h + height_add)
+            wechat_client_match = bool(
+                is_wechat
+                and final_client
+                and int(final_client[0]) == wechat_client_expected_w
+                and int(final_client[1]) == wechat_client_expected_h
+            )
+            if wechat_client_match and outer_err_w == 0 and outer_err_h == 0:
+                judged_by = "外框(微信规则)"
+                judge_err_w, judge_err_h = 0, 0
+
+            logger.debug(
+                f"[窗口调整][结束] 最终外框={self._cached_window.width}x{self._cached_window.height} "
+                f"最终客户区={actual_client_text} 客户区误差=({client_err_w},{client_err_h}) "
+                f"外框误差=({outer_err_w},{outer_err_h}) 校验基准={judged_by}"
             )
 
-            logger.info(
-                f"窗口客户区目标 {target_client_w}x{target_client_h}，"
-                f"平台={platform}，dpi_scale={scale_percent}% (matched={matched_scale}%)，"
-                f"累加: width+={width_add}, height+={height_add} "
-                f"(border={border_width}, title={title_height})，"
-                f"目标外框 {target_outer_w}x{target_outer_h}，"
-                f"实际外框 {self._cached_window.width}x{self._cached_window.height}，"
-                f"实际客户区 {actual_client_text}"
+            logger.debug(
+                f"[窗口调整][细节] 目标客户区={target_client_w}x{target_client_h}, "
+                f"平台={platform}, DPI缩放={scale_percent}% (匹配={matched_scale}%), "
+                f"增量=(宽+{width_add},高+{height_add},边框={border_width},标题={title_height}), "
+                f"目标外框={target_outer_w}x{target_outer_h}, 实际外框={self._cached_window.width}x{self._cached_window.height}, "
+                f"实际客户区={actual_client_text}"
             )
-            logger.info(
-                f"窗口位置({self._cached_window.left},{self._cached_window.top}) [{position}]，{resize_msg}"
+
+            if judge_err_w != 0 or judge_err_h != 0:
+                logger.warning(
+                    f"窗口调整完成但{judged_by}存在偏差: "
+                    f"目标客户区={target_client_w}x{target_client_h}, 实际客户区={actual_client_text}, "
+                    f"目标外框={target_outer_w}x{target_outer_h}, 实际外框={actual_outer_w}x{actual_outer_h}, "
+                    f"{judged_by}误差=({judge_err_w},{judge_err_h}), "
+                    f"位置=({self._cached_window.left},{self._cached_window.top}) [{position}]"
+                )
+            else:
+                logger.info(
+                    f"窗口调整完成: 客户区={actual_client_text}, "
+                    f"外框={actual_outer_w}x{actual_outer_h}, 校验={judged_by}, "
+                    f"位置=({self._cached_window.left},{self._cached_window.top}) [{position}]"
+                )
+            logger.debug(
+                f"[窗口调整][应用] {resize_msg}"
             )
             return True
         except Exception as e:
