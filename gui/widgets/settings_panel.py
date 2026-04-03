@@ -53,11 +53,6 @@ class SettingsPanel(QWidget):
         self._crop_names = get_crop_names()
         pf.addRow("作物:", self._crop_combo)
 
-        self._buy_quantity = QSpinBox()
-        self._buy_quantity.setRange(1, 999)
-        self._buy_quantity.setFixedWidth(80)
-        pf.addRow("购买数量:", self._buy_quantity)
-
         self._player_level.valueChanged.connect(self._on_level_changed)
         self._player_level.valueChanged.connect(self._update_auto_crop_label)
         self._strategy_combo.currentIndexChanged.connect(self._on_strategy_changed)
@@ -130,7 +125,6 @@ class SettingsPanel(QWidget):
         self._player_level.valueChanged.connect(self._auto_save)
         self._strategy_combo.currentIndexChanged.connect(self._auto_save)
         self._crop_combo.currentIndexChanged.connect(self._auto_save)
-        self._buy_quantity.valueChanged.connect(self._auto_save)
         self._window_platform.currentIndexChanged.connect(self._auto_save)
         self._window_keyword.editingFinished.connect(self._auto_save)
         self._window_position.currentIndexChanged.connect(self._auto_save)
@@ -146,7 +140,6 @@ class SettingsPanel(QWidget):
             return
         c = self.config
         c.planting.player_level = self._player_level.value()
-        c.planting.buy_quantity = self._buy_quantity.value()
         c.planting.strategy = PlantMode(self._strategy_combo.currentData())
         idx = self._crop_combo.currentIndex()
         if 0 <= idx < len(self._crop_names):
@@ -204,7 +197,6 @@ class SettingsPanel(QWidget):
     def _load_config(self):
         c = self.config
         self._player_level.setValue(c.planting.player_level)
-        self._buy_quantity.setValue(c.planting.buy_quantity)
         strategy_idx = 0 if c.planting.strategy == PlantMode.BEST_EXP_RATE else 1
         self._strategy_combo.setCurrentIndex(strategy_idx)
         self._on_strategy_changed(strategy_idx)

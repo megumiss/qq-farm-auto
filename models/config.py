@@ -76,7 +76,6 @@ class PlantingConfig(BaseModel):
     strategy: PlantMode = PlantMode.BEST_EXP_RATE
     preferred_crop: str = "白萝卜"  # strategy=preferred 时使用
     player_level: int = 10
-    buy_quantity: int = 50
     window_platform: WindowPlatform = WindowPlatform.QQ
     window_position: WindowPosition = WindowPosition.LEFT_CENTER
 

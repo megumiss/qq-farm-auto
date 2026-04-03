@@ -345,7 +345,6 @@ class BotEngine(QObject):
     def check_farm(self) -> dict:
         result = {"success": False, "actions_done": [], "next_check_seconds": 5}
         features = self.config.features.model_dump()
-        buy_qty = self.config.planting.buy_quantity
 
         rect = self._prepare_window()
         if not rect:
@@ -406,7 +405,7 @@ class BotEngine(QObject):
 
                 # P2 生产：播种
                 if not action_desc and features.get("auto_plant", True):
-                    pa = self.plant.plant_all(rect, self._resolve_crop_name(), buy_qty)
+                    pa = self.plant.plant_all(rect, self._resolve_crop_name())
                     if pa:
                         result["actions_done"].extend(pa)
                         action_desc = pa[-1]

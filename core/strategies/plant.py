@@ -15,8 +15,7 @@ class PlantStrategy(BaseStrategy):
         super().__init__(cv_detector)
         self.shop_ocr = ShopItemOCR()
 
-    def plant_all(self, rect: tuple, crop_name: str,
-                  buy_qty: int = 50) -> list[str]:
+    def plant_all(self, rect: tuple, crop_name: str) -> list[str]:
         """快速播种所有空地：点击空地弹出种子列表 → 按住种子拖拽到所有空地"""
         all_actions = []
 
@@ -50,11 +49,11 @@ class PlantStrategy(BaseStrategy):
         if not seed_det:
             # 没找到种子，直接去商店买（种子列表弹窗不影响商店按钮）
             logger.info(f"播种流程: 未找到 '{crop_name}' 种子，去商店购买")
-            buy_result = self._buy_seeds(rect, crop_name, buy_qty)
+            buy_result = self._buy_seeds(rect, crop_name)
             if buy_result:
                 all_actions.append(buy_result)
                 # 买完后重新尝试播种
-                return all_actions + self.plant_all(rect, crop_name, buy_qty)
+                return all_actions + self.plant_all(rect, crop_name)
             return all_actions
 
         # 第四步：按住种子，拖拽到每块空地
@@ -93,7 +92,7 @@ class PlantStrategy(BaseStrategy):
                 cv_check, "btn_shop_close", threshold=0.8)
             if shop_close:
                 logger.info("播种流程: 种子用完，进入购买流程")
-                self._close_shop_and_buy(rect, crop_name, buy_qty, all_actions)
+                self._close_shop_and_buy(rect, crop_name, all_actions)
 
             fert = self.cv_detector.detect_single_template(
                 cv_check, "btn_fertilize_popup", threshold=0.7)
@@ -104,7 +103,7 @@ class PlantStrategy(BaseStrategy):
         return all_actions
 
     def _plant_one(self, rect: tuple, land_det: DetectResult,
-                   crop_name: str, buy_qty: int) -> list[str]:
+                   crop_name: str) -> list[str]:
         """播种单块空地"""
         actions_done = []
         self.click(land_det.x, land_det.y, "点击空地")
@@ -134,7 +133,7 @@ class PlantStrategy(BaseStrategy):
                         cv_check, "btn_shop_close", threshold=0.75)
                     if shop_close:
                         logger.info("播种流程: 种子已用完，进入购买流程")
-                        self._close_shop_and_buy(rect, crop_name, buy_qty, actions_done)
+                        self._close_shop_and_buy(rect, crop_name, actions_done)
                         return actions_done
 
                     fert = self.cv_detector.detect_single_template(
@@ -159,7 +158,7 @@ class PlantStrategy(BaseStrategy):
 
             if scene == Scene.SHOP_PAGE:
                 logger.info("播种流程: 检测到商店页面，种子已用完")
-                self._close_shop_and_buy(rect, crop_name, buy_qty, actions_done)
+                self._close_shop_and_buy(rect, crop_name, actions_done)
                 return actions_done
 
         else:
@@ -168,21 +167,21 @@ class PlantStrategy(BaseStrategy):
             time.sleep(0.3)
 
         # 去商店买
-        buy_result = self._buy_seeds(rect, crop_name, buy_qty)
+        buy_result = self._buy_seeds(rect, crop_name)
         if buy_result:
             actions_done.append(buy_result)
             self._retry_plant_after_buy(rect, crop_name, actions_done)
         return actions_done
 
 
-    def _close_shop_and_buy(self, rect, crop_name, buy_qty, actions_done):
+    def _close_shop_and_buy(self, rect, crop_name, actions_done):
         """关闭自动弹出的商店，再手动购买"""
         from core.strategies.popup import PopupStrategy
         ps = PopupStrategy(self.cv_detector)
         ps.action_executor = self.action_executor
         ps.set_capture_fn(self._capture_fn)
         ps.close_shop(rect)
-        buy_result = self._buy_seeds(rect, crop_name, buy_qty)
+        buy_result = self._buy_seeds(rect, crop_name)
         if buy_result:
             actions_done.append(buy_result)
 
@@ -208,8 +207,7 @@ class PlantStrategy(BaseStrategy):
                        f"播种{crop_name}", ActionType.PLANT)
             actions_done.append(f"播种{crop_name}")
 
-    def _buy_seeds(self, rect: tuple, crop_name: str,
-                   buy_qty: int) -> str | None:
+    def _buy_seeds(self, rect: tuple, crop_name: str) -> str | None:
         """购买种子流程：打开商店 → OCR识别物品名找坐标 → 点击 → 确认购买"""
         logger.info("购买流程: 打开商店")
         if self.stopped:
@@ -287,11 +285,10 @@ class PlantStrategy(BaseStrategy):
             self._close_shop(rect)
             return None
 
-        return self._confirm_purchase(rect, crop_name, buy_qty)
+        return self._confirm_purchase(rect, crop_name)
 
-    def _confirm_purchase(self, rect: tuple, crop_name: str,
-                          buy_qty: int) -> str | None:
-        """购买确认：点加号设置数量 → 点确定"""
+    def _confirm_purchase(self, rect: tuple, crop_name: str) -> str | None:
+        """购买确认：直接点确定（不再调整购买数量）"""
         for attempt in range(5):
             if self.stopped:
                 return None
@@ -301,26 +298,12 @@ class PlantStrategy(BaseStrategy):
 
             scene = identify_scene(dets, self.cv_detector, cv_img)
             if scene == Scene.BUY_CONFIRM:
-                if buy_qty > 1:
-                    max_btn = self.find_by_name(dets, "btn_buy_max")
-                    if max_btn and self.action_executor:
-                        clicks = buy_qty - 1
-                        logger.info(f"购买流程: 点击加号 {clicks} 次")
-                        abs_x, abs_y = self.action_executor.relative_to_absolute(
-                            max_btn.x, max_btn.y)
-                        for _ in range(clicks):
-                            if self.stopped:
-                                return None
-                            pyautogui.click(abs_x, abs_y)
-                            time.sleep(0.1)
-                        time.sleep(0.3)  # 等待数量更新
-
                 confirm = self.find_by_name(dets, "btn_buy_confirm")
                 if confirm:
-                    self.click(confirm.x, confirm.y, f"确定购买{crop_name}×{buy_qty}")
+                    self.click(confirm.x, confirm.y, f"确定购买{crop_name}")
                     time.sleep(0.3)  # 等待购买完成动画
                     self._close_shop(rect)
-                    return f"购买{crop_name}×{buy_qty}"
+                    return f"购买{crop_name}"
 
             elif scene == Scene.POPUP:
                 from core.strategies.popup import PopupStrategy
