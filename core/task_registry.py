@@ -3,8 +3,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
-from models.config import AppConfig
+if TYPE_CHECKING:
+    from models.config import AppConfig
 
 
 @dataclass
@@ -45,7 +47,7 @@ class TaskSnapshot:
     waiting_tasks: list[TaskItem]
 
 
-def build_default_tasks(config: AppConfig) -> dict[str, TaskItem]:
+def build_default_tasks(config: "AppConfig") -> dict[str, TaskItem]:
     now = datetime.now()
     friend_enabled = bool(config.features.auto_help or config.features.auto_steal)
     default_success = max(1, int(config.executor.default_success_interval))

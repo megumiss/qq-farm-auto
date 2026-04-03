@@ -95,7 +95,7 @@
   - “立即执行”按钮触发 `task_call('farm_main')`
 
 ## 7. 测试与验收（执行器专项）
-- [ ] 单元测试：
+- [x] 单元测试：
   - `pending/waiting` 分类
   - `task_delay/task_call` 结果
   - 失败计数与熔断
@@ -114,10 +114,10 @@
 
 ## 9. 改造执行步骤（可直接开工）
 1. [ ] 冻结现状与基线：记录当前 `legacy` 路径的行为、耗时与停止响应时间。
-2. [ ] 建任务模型与注册表：落地 `TaskItem/TaskResult/TaskSnapshot`。
-3. [ ] 建任务队列与调度接口：实现 `get_next_task/snapshot/task_delay/task_call`。
-4. [ ] 建执行器主循环：支持 stop/pause、空队列策略、失败计数。
-5. [ ] 接入 BotEngine 灰度开关：打通 `engine_mode=legacy|executor`。
-6. [ ] 首批迁移任务：先迁 `farm_main`、`friend` 为 `run_once(ctx)->TaskResult`。
-7. [ ] UI 与配置对齐：补执行器配置项，显示 `running/pending/waiting`。
+2. [x] 建任务模型与注册表：落地 `TaskItem/TaskResult/TaskSnapshot`。
+3. [x] 建任务队列与调度接口：实现 `get_next_task/snapshot/task_delay/task_call`。
+4. [x] 建执行器主循环：支持 stop/pause、空队列策略、失败计数。
+5. [x] 接入 BotEngine 灰度开关：打通 `engine_mode=legacy|executor`。
+6. [x] 首批迁移任务：先迁 `farm_main`、`friend` 为 `run_once(ctx)->TaskResult`。
+7. [x] UI 与配置对齐：补执行器配置项，显示 `running/pending/waiting`。
 8. [ ] 回归与切换：单测+集测通过后默认切 `executor`，保留 `legacy` 回滚。
