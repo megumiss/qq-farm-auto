@@ -29,11 +29,6 @@ class WindowPlatform(str, Enum):
     WECHAT = "wechat"
 
 
-class EngineMode(str, Enum):
-    LEGACY = "legacy"
-    EXECUTOR = "executor"
-
-
 class FeaturesConfig(BaseModel):
     auto_harvest: bool = True
     auto_plant: bool = True
@@ -78,7 +73,7 @@ class ScheduleConfig(BaseModel):
 
 
 class ExecutorConfig(BaseModel):
-    enabled: bool = False
+    enabled: bool = True
     empty_queue_policy: str = "stay"
     default_success_interval: int = 30
     default_failure_interval: int = 30
@@ -103,7 +98,6 @@ class PlantingConfig(BaseModel):
 
 class AppConfig(BaseModel):
     window_title_keyword: str = "QQ经典农场"
-    engine_mode: EngineMode = EngineMode.LEGACY
     features: FeaturesConfig = Field(default_factory=FeaturesConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
     screenshot: ScreenshotConfig = Field(default_factory=ScreenshotConfig)

@@ -2,7 +2,7 @@
 
 ## 1. 改造目标与边界
 - [x] 把“定时器触发 + 大循环扫描”改成“任务队列 + 任务执行器 + 任务级调度”。
-- [x] 在不破坏现有策略能力的前提下，实现可灰度切换（保留旧 `BotWorker/check_farm` 入口）。
+- [x] 在不破坏现有策略能力的前提下，完成执行器改造并移除旧 `BotWorker/check_farm` 入口。
 - [x] 统一中断语义：点击、等待、截图、页面确认都可被 `stop_event` 及时打断。
 - [x] 引入队列可观测性：运行中、待执行、等待中三态可见。
 
@@ -63,9 +63,8 @@
   - `BaseStrategy.sleep`、`ActionExecutor._sleep_interruptible`、执行器 wait 共用 stop 检查
 
 ### 4.4 与 `BotEngine` 的集成（修改 `core/bot_engine.py`）
-- [x] 新增模式开关：`engine_mode = legacy|executor`（默认 `legacy`）
+- [x] 固定执行器模式：移除 `legacy` 分支，仅保留 `executor`
 - [x] `start()` 路由：
-  - `legacy`：沿用 `TaskScheduler + BotWorker`
   - `executor`：启动 `TaskExecutor` 线程
 - [x] `stop/pause/resume/run_once` 统一语义：
   - `run_once` => `task_call('farm_main')`
@@ -109,15 +108,15 @@
 ## 8. 最近可执行项（仅任务执行器）
 - [x] 建 `core/task_registry.py`（`TaskItem/TaskResult/TaskSnapshot`）
 - [x] 建 `core/task_executor.py` 最小循环（先接 `farm_main/friend`）
-- [x] 在 `BotEngine` 增加 `legacy|executor` 模式切换
+- [x] 在 `BotEngine` 固定 `executor` 运行模式
 - [x] 在状态页加队列简版展示（running/pending/waiting）
 
 ## 9. 改造执行步骤（可直接开工）
-1. [ ] 冻结现状与基线：记录当前 `legacy` 路径的行为、耗时与停止响应时间。
+1. [ ] 冻结现状与基线：记录当前 `executor` 路径的行为、耗时与停止响应时间。
 2. [x] 建任务模型与注册表：落地 `TaskItem/TaskResult/TaskSnapshot`。
 3. [x] 建任务队列与调度接口：实现 `get_next_task/snapshot/task_delay/task_call`。
 4. [x] 建执行器主循环：支持 stop/pause、空队列策略、失败计数。
-5. [x] 接入 BotEngine 灰度开关：打通 `engine_mode=legacy|executor`。
+5. [x] 接入 BotEngine：固定 `executor` 主循环。
 6. [x] 首批迁移任务：先迁 `farm_main`、`friend` 为 `run_once(ctx)->TaskResult`。
 7. [x] UI 与配置对齐：补执行器配置项，显示 `running/pending/waiting`。
-8. [ ] 回归与切换：单测+集测通过后默认切 `executor`，保留 `legacy` 回滚。
+8. [ ] 回归与收口：单测+集测通过后继续优化 `executor` 稳定性。
