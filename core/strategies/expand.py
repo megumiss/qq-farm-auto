@@ -22,7 +22,7 @@ class ExpandStrategy(BaseStrategy):
             return None
 
         self.click(btn.x, btn.y, "点击可扩建")
-        time.sleep(0.5)
+        self.sleep(0.5)
 
         for _ in range(5):
             if self.stopped:
@@ -34,7 +34,7 @@ class ExpandStrategy(BaseStrategy):
             confirm = self.find_by_name(dets, "btn_expand_confirm")
             if confirm:
                 self.click(confirm.x, confirm.y, "直接扩建")
-                time.sleep(0.5)
+                self.sleep(0.5)
                 self._expand_failed = False
                 cv_img2, dets2, _ = self.capture(rect)
                 if cv_img2 is not None:
@@ -42,7 +42,7 @@ class ExpandStrategy(BaseStrategy):
                     if close:
                         self.click(close.x, close.y, "关闭扩建弹窗", ActionType.CLOSE_POPUP)
                 return "直接扩建"
-            time.sleep(0.3)
+            self.sleep(0.3)
 
         self._expand_failed = True
         logger.info("扩建条件不满足，暂停扩建检测")
@@ -52,3 +52,4 @@ class ExpandStrategy(BaseStrategy):
         """自动领取任务奖励（待实现：需要 btn_task 模板）"""
         # TODO: 打开任务页面 → 检测可领取 → 点击领取
         return None
+

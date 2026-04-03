@@ -16,7 +16,7 @@ class SellStrategy(BaseStrategy):
 
         if not self.click(warehouse.x, warehouse.y, "打开仓库"):
             return []
-        time.sleep(0.8)
+        self.sleep(0.8)
         return self._batch_sell(rect)
 
     def _batch_sell(self, rect: tuple) -> list[str]:
@@ -33,9 +33,9 @@ class SellStrategy(BaseStrategy):
             )
             if batch_btn:
                 self.click(batch_btn[0].x, batch_btn[0].y, "批量出售")
-                time.sleep(0.5)
+                self.sleep(0.5)
                 break
-            time.sleep(0.3)
+            self.sleep(0.3)
         else:
             self._close_page(rect)
             return []
@@ -53,10 +53,10 @@ class SellStrategy(BaseStrategy):
             if confirm:
                 self.click(confirm[0].x, confirm[0].y, "确认出售", ActionType.SELL)
                 logger.info("出售: 批量出售完成")
-                time.sleep(0.5)
+                self.sleep(0.5)
                 self._close_page(rect)
                 return ["批量出售果实"]
-            time.sleep(0.3)
+            self.sleep(0.3)
 
         self._close_page(rect)
         return []
@@ -68,4 +68,5 @@ class SellStrategy(BaseStrategy):
         close = self.find_any(dets, ["btn_close", "btn_shop_close"])
         if close:
             self.click(close.x, close.y, "关闭页面", ActionType.CLOSE_POPUP)
-            time.sleep(0.3)
+            self.sleep(0.3)
+

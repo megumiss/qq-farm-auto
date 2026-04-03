@@ -29,7 +29,7 @@ class TaskStrategy(BaseStrategy):
             return []
 
         self.click(btn.x, btn.y, "点击任务")
-        time.sleep(1.0)  # 等待任务弹窗或页面跳转
+        self.sleep(1.0)  # 等待任务弹窗或页面跳转
 
         return self._handle_task_result(rect)
 
@@ -57,7 +57,7 @@ class TaskStrategy(BaseStrategy):
                     if claim:
                         self.click(claim.x, claim.y, "直接领取", ActionType.CLOSE_POPUP)
                         actions.append("领取任务奖励")
-                time.sleep(0.5)
+                self.sleep(0.5)
                 return actions
 
             # 其他弹窗 → 关闭
@@ -66,14 +66,15 @@ class TaskStrategy(BaseStrategy):
                 self.click(close.x, close.y, "关闭弹窗", ActionType.CLOSE_POPUP)
                 return actions
 
-            time.sleep(0.3)
+            self.sleep(0.3)
 
         return actions
 
     def _share_and_cancel(self, share_btn: DetectResult):
         """点分享 → 按 Escape 关闭微信窗口 → 拿双倍奖励"""
         self.click(share_btn.x, share_btn.y, "点击分享(双倍奖励)", ActionType.CLOSE_POPUP)
-        time.sleep(2.0)  # 等待微信分享窗口弹出
+        self.sleep(2.0)  # 等待微信分享窗口弹出
         pyautogui.press("escape")
-        time.sleep(1.0)  # 等待回到游戏
+        self.sleep(1.0)  # 等待回到游戏
         logger.info("任务: 分享→取消，领取双倍奖励")
+

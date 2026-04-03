@@ -23,6 +23,25 @@ class ActionExecutor:
         self._delay_min = delay_min
         self._delay_max = delay_max
         self._click_offset = click_offset
+        self._cancel_checker = None
+
+    def set_cancel_checker(self, fn):
+        self._cancel_checker = fn
+
+    def _is_cancelled(self) -> bool:
+        return bool(self._cancel_checker and self._cancel_checker())
+
+    def _sleep_interruptible(self, seconds: float, interval: float = 0.01) -> bool:
+        if seconds <= 0:
+            return not self._is_cancelled()
+        end_at = time.perf_counter() + seconds
+        while True:
+            if self._is_cancelled():
+                return False
+            remain = end_at - time.perf_counter()
+            if remain <= 0:
+                return True
+            time.sleep(min(interval, remain))
 
     def update_window_rect(self, rect: tuple[int, int, int, int]):
         self._window_left, self._window_top = rect[0], rect[1]
@@ -42,16 +61,25 @@ class ActionExecutor:
 
     def _random_delay(self):
         """操作间延迟"""
-        time.sleep(0.3)
+        if self._is_cancelled():
+            return
+        self._sleep_interruptible(0.3)
 
     def click(self, x: int, y: int) -> bool:
         """点击指定坐标"""
+        if self._is_cancelled():
+            return False
         try:
             ox, oy = self._random_offset()
             target_x = x + ox
             target_y = y + oy
             pyautogui.moveTo(target_x, target_y, duration=0.02)
-            time.sleep(0.05)
+            if self._is_cancelled():
+                return False
+            if not self._sleep_interruptible(0.05):
+                return False
+            if self._is_cancelled():
+                return False
             pyautogui.click(target_x, target_y)
             logger.debug(f"点击 ({target_x}, {target_y})")
             return True
@@ -61,6 +89,11 @@ class ActionExecutor:
 
     def execute_action(self, action: Action) -> OperationResult:
         """执行单个操作"""
+        if self._is_cancelled():
+            return OperationResult(
+                action=action, success=False,
+                message="执行已取消", timestamp=time.time()
+            )
         pos = action.click_position
         if not pos or "x" not in pos or "y" not in pos:
             return OperationResult(
@@ -96,6 +129,9 @@ class ActionExecutor:
         executed = 0
 
         for action in actions:
+            if self._is_cancelled():
+                logger.info("动作序列执行取消")
+                break
             if executed >= max_count:
                 logger.info(f"已达到单轮最大操作数 {max_count}，停止执行")
                 break

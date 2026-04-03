@@ -17,6 +17,7 @@
   P4  社交:     friend    — 好友巡查/帮忙/偷菜/同意好友
 """
 import time
+import threading
 import cv2
 import numpy as np
 from PIL import Image as PILImage
@@ -31,7 +32,7 @@ from core.window_manager import WindowManager
 from core.screen_capture import ScreenCapture
 from core.cv_detector import CVDetector, DetectResult
 from core.action_executor import ActionExecutor
-from core.task_scheduler import TaskScheduler, BotState
+from core.task_scheduler import TaskScheduler
 from core.scene_detector import Scene, identify_scene
 from core.strategies import (
     PopupStrategy, HarvestStrategy, MaintainStrategy,
@@ -40,26 +41,31 @@ from core.strategies import (
 
 
 class BotWorker(QThread):
-    finished = pyqtSignal(dict)
-    error = pyqtSignal(str)
+    finished = pyqtSignal(int, dict)
+    error = pyqtSignal(int, str)
 
-    def __init__(self, engine: "BotEngine", task_type: str = "farm"):
+    def __init__(self, engine: "BotEngine", session_id: int, task_type: str = "farm"):
         super().__init__()
         self.engine = engine
+        self.session_id = session_id
         self.task_type = task_type
 
     def run(self):
         try:
+            if self.isInterruptionRequested():
+                return
+            if self.engine.is_session_cancelled(self.session_id):
+                return
             if self.task_type == "farm":
-                result = self.engine.check_farm()
+                result = self.engine.check_farm(self.session_id)
             elif self.task_type == "friend":
-                result = self.engine.check_friends()
+                result = self.engine.check_friends(self.session_id)
             else:
                 result = {"success": False, "message": "未知任务类型"}
-            self.finished.emit(result)
+            self.finished.emit(self.session_id, result)
         except Exception as e:
             logger.exception(f"任务执行异常: {e}")
-            self.error.emit(str(e))
+            self.error.emit(self.session_id, str(e))
 
 
 class BotEngine(QObject):
@@ -72,6 +78,8 @@ class BotEngine(QObject):
     def __init__(self, config: AppConfig):
         super().__init__()
         self.config = config
+        self._session_id = 0
+        self._cancel_event = threading.Event()
 
         # [1] 窗口控制层
         self.window_manager = WindowManager()
@@ -98,7 +106,6 @@ class BotEngine(QObject):
         # 调度
         self.scheduler = TaskScheduler()
         self._worker: BotWorker | None = None
-        self._is_busy = False
 
         self.scheduler.farm_check_triggered.connect(self._on_farm_check)
         self.scheduler.friend_check_triggered.connect(self._on_friend_check)
@@ -111,6 +118,51 @@ class BotEngine(QObject):
             s.action_executor = self.action_executor
             s.set_capture_fn(self._capture_and_detect)
             s._stop_requested = False
+            s.set_cancel_checker(self._is_cancel_requested)
+
+    def _switch_session(self, cancelled: bool) -> int:
+        """切换到新会话，旧会话结果自动作废。"""
+        self._session_id += 1
+        self._cancel_event = threading.Event()
+        if cancelled:
+            self._cancel_event.set()
+        return self._session_id
+
+    def _is_cancel_requested(self, session_id: int | None = None) -> bool:
+        if session_id is not None and session_id != self._session_id:
+            return True
+        return self._cancel_event.is_set()
+
+    def is_session_cancelled(self, session_id: int) -> bool:
+        return self._is_cancel_requested(session_id)
+
+    def _worker_running(self) -> bool:
+        return bool(self._worker and self._worker.isRunning())
+
+    def _sleep_interruptible(self, seconds: float, session_id: int | None = None,
+                             interval: float = 0.02) -> bool:
+        if seconds <= 0:
+            return not self._is_cancel_requested(session_id)
+        end_at = time.perf_counter() + seconds
+        while True:
+            if self._is_cancel_requested(session_id):
+                return False
+            remain = end_at - time.perf_counter()
+            if remain <= 0:
+                return True
+            time.sleep(min(interval, remain))
+
+    def _spawn_worker(self, task_type: str):
+        if self._is_cancel_requested():
+            return
+        if self._worker_running():
+            logger.debug("上一轮操作尚未完成，跳过")
+            return
+        worker = BotWorker(self, session_id=self._session_id, task_type=task_type)
+        worker.finished.connect(self._on_task_finished)
+        worker.error.connect(self._on_task_error)
+        self._worker = worker
+        worker.start()
 
     def update_config(self, config: AppConfig):
         self.config = config
@@ -125,7 +177,7 @@ class BotEngine(QObject):
                 return best[0]
         return planting.preferred_crop
 
-    def _clear_screen(self, rect: tuple):
+    def _clear_screen(self, rect: tuple, session_id: int | None = None):
         """点击窗口顶部天空区域，关闭残留弹窗/菜单/土地信息
 
         点击位置：水平居中，垂直 5% 处（天空区域，不会触发任何游戏操作）。
@@ -150,11 +202,20 @@ class BotEngine(QObject):
         sky_y = int(cap_top + y1 + max(10, int(crop_h * 0.05)))
 
         for _ in range(2):
+            if self._is_cancel_requested(session_id):
+                break
             self.action_executor.click(sky_x, sky_y)
-            time.sleep(0.3)
+            if self._is_cancel_requested(session_id):
+                break
+            if not self._sleep_interruptible(0.3, session_id):
+                break
 
 
     def start(self) -> bool:
+        if self._worker_running():
+            self.log_message.emit("上一轮任务仍在停止中，请稍候再启动")
+            return False
+        self._switch_session(cancelled=False)
         self.cv_detector.load_templates()
         tpl_count = sum(len(v) for v in self.cv_detector._templates.values())
         if tpl_count == 0:
@@ -171,7 +232,7 @@ class BotEngine(QObject):
         platform = getattr(self.config.planting, "window_platform", "qq")
         platform_value = platform.value if hasattr(platform, "value") else str(platform)
         self.window_manager.resize_window(pos_value, platform_value)
-        time.sleep(0.5)
+        self._sleep_interruptible(0.5)
         window = self.window_manager.refresh_window_info(self.config.window_title_keyword)
         self.log_message.emit(
             "窗口已调整（整窗外框目标：540x960 + 非客户区增量）-> "
@@ -187,6 +248,7 @@ class BotEngine(QObject):
             delay_max=self.config.safety.random_delay_max,
             click_offset=self.config.safety.click_offset_range,
         )
+        self.action_executor.set_cancel_checker(self._is_cancel_requested)
         self._init_strategies()
 
         farm_ms = self.config.schedule.farm_check_minutes * 60 * 1000
@@ -196,53 +258,50 @@ class BotEngine(QObject):
         return True
 
     def stop(self):
-        for s in self._strategies:
-            s._stop_requested = True
+        self._switch_session(cancelled=True)
         self.scheduler.stop()
         if self._worker and self._worker.isRunning():
-            self._worker.quit()
-            self._worker.wait(3000)
-        self._is_busy = False
-        for s in self._strategies:
-            s._stop_requested = False
+            self._worker.requestInterruption()
+            if not self._worker.wait(80):
+                logger.debug("停止请求已发出，后台线程即将退出")
+        if self._worker and not self._worker.isRunning():
+            self._worker = None
         self.log_message.emit("Bot已停止")
 
     def pause(self):
-        for s in self._strategies:
-            s._stop_requested = True
+        self._switch_session(cancelled=True)
+        if self._worker and self._worker.isRunning():
+            self._worker.requestInterruption()
         self.scheduler.pause()
 
     def resume(self):
-        for s in self._strategies:
-            s._stop_requested = False
+        self._switch_session(cancelled=False)
         self.scheduler.resume()
 
     def run_once(self):
+        if self._is_cancel_requested():
+            self._switch_session(cancelled=False)
         self._on_farm_check()
 
     def _on_farm_check(self):
-        if self._is_busy:
-            logger.debug("上一轮操作尚未完成，跳过")
+        if self._is_cancel_requested():
             return
-        self._is_busy = True
-        self._worker = BotWorker(self, "farm")
-        self._worker.finished.connect(self._on_task_finished)
-        self._worker.error.connect(self._on_task_error)
-        self._worker.start()
+        self._spawn_worker("farm")
 
     def _on_friend_check(self):
-        if self._is_busy:
+        if self._is_cancel_requested():
             return
         if not self.config.features.auto_steal and not self.config.features.auto_help:
             return
-        self._is_busy = True
-        self._worker = BotWorker(self, "friend")
-        self._worker.finished.connect(self._on_task_finished)
-        self._worker.error.connect(self._on_task_error)
-        self._worker.start()
+        self._spawn_worker("friend")
 
-    def _on_task_finished(self, result: dict):
-        self._is_busy = False
+    def _on_task_finished(self, session_id: int, result: dict):
+        sender = self.sender()
+        if sender is self._worker:
+            self._worker = None
+        if session_id != self._session_id:
+            logger.debug(f"忽略过期任务结果: session={session_id}, current={self._session_id}")
+            return
         actions = result.get("actions_done", [])
         if actions:
             self.log_message.emit(f"本轮完成: {', '.join(actions)}")
@@ -250,8 +309,13 @@ class BotEngine(QObject):
         if next_sec > 0:
             self.scheduler.set_farm_interval(next_sec)
 
-    def _on_task_error(self, error_msg: str):
-        self._is_busy = False
+    def _on_task_error(self, session_id: int, error_msg: str):
+        sender = self.sender()
+        if sender is self._worker:
+            self._worker = None
+        if session_id != self._session_id:
+            logger.debug(f"忽略过期任务异常: session={session_id}, current={self._session_id}")
+            return
         self.log_message.emit(f"操作异常: {error_msg}")
 
     # ============================================================
@@ -263,7 +327,8 @@ class BotEngine(QObject):
         if not window:
             return None
         self.window_manager.activate_window()
-        time.sleep(0.3)
+        if not self._sleep_interruptible(0.3):
+            return None
         rect = self.window_manager.get_capture_rect()
         if not rect:
             rect = (window.left, window.top, window.width, window.height)
@@ -342,8 +407,11 @@ class BotEngine(QObject):
     # 主循环
     # ============================================================
 
-    def check_farm(self) -> dict:
+    def check_farm(self, session_id: int | None = None) -> dict:
         result = {"success": False, "actions_done": [], "next_check_seconds": 5}
+        if self._is_cancel_requested(session_id):
+            result["message"] = "停止中"
+            return result
         features = self.config.features.model_dump()
 
         rect = self._prepare_window()
@@ -352,14 +420,14 @@ class BotEngine(QObject):
             return result
 
         # 清屏：点击天空区域关闭残留弹窗/菜单
-        self._clear_screen(rect)
+        self._clear_screen(rect, session_id)
 
         idle_rounds = 0
         max_idle = 3
         sold_this_round = False
 
         for round_num in range(1, 51):
-            if self.popup.stopped:
+            if self._is_cancel_requested(session_id) or self.popup.stopped:
                 logger.info("收到停止/暂停信号，中断当前操作")
                 break
 
@@ -468,7 +536,8 @@ class BotEngine(QObject):
                 elif idle_rounds >= max_idle:
                     break
 
-            time.sleep(0.3)
+            if not self._sleep_interruptible(0.3, session_id):
+                break
 
         # 设置下次检查间隔
         # 有播种操作 → 5分钟后检查维护（除虫/除草/浇水）
@@ -489,7 +558,9 @@ class BotEngine(QObject):
         self.screen_capture.cleanup_old_screenshots(0)
         return result
 
-    def check_friends(self) -> dict:
+    def check_friends(self, session_id: int | None = None) -> dict:
+        if self._is_cancel_requested(session_id):
+            return {"success": False, "actions_done": [], "next_check_seconds": 1800, "message": "停止中"}
         result = {"success": True, "actions_done": [], "next_check_seconds": 1800}
         logger.info("好友巡查功能开发中...")
         return result

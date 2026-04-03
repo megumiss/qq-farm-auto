@@ -16,7 +16,7 @@ class FriendStrategy(BaseStrategy):
         if not btn:
             return []
         self.click(btn.x, btn.y, "好友求助")
-        time.sleep(0.5)
+        self.sleep(0.5)
         return self._help_in_friend_farm(rect)
 
     def _help_in_friend_farm(self, rect: tuple) -> list[str]:
@@ -43,7 +43,7 @@ class FriendStrategy(BaseStrategy):
                         self.click(btn.x, btn.y, desc, action_type)
                         actions_done.append(desc)
                         acted = True
-                        time.sleep(0.3)
+                        self.sleep(0.3)
                         break
 
                 if not acted:
@@ -51,7 +51,7 @@ class FriendStrategy(BaseStrategy):
                     if home:
                         self.click(home.x, home.y, "回家")
                         actions_done.append("回家")
-                        time.sleep(0.3)
+                        self.sleep(0.3)
                     break
 
             elif scene == Scene.POPUP:
@@ -59,11 +59,11 @@ class FriendStrategy(BaseStrategy):
                 ps = PopupStrategy(self.cv_detector)
                 ps.action_executor = self.action_executor
                 ps.handle_popup(dets)
-                time.sleep(0.3)
+                self.sleep(0.3)
             elif scene == Scene.FARM_OVERVIEW:
                 break
             else:
-                time.sleep(0.3)
+                self.sleep(0.3)
 
         return actions_done
 
@@ -76,3 +76,4 @@ class FriendStrategy(BaseStrategy):
         """自动同意好友申请（待实现：需要 btn_accept_friend 模板）"""
         # TODO: 检测好友申请弹窗 → 点击同意
         return None
+

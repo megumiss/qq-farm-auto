@@ -29,7 +29,7 @@ class PlantStrategy(BaseStrategy):
 
         # 第二步：点击第一块空地，弹出种子列表
         self.click(lands[0].x, lands[0].y, "点击空地")
-        time.sleep(0.3)
+        self.sleep(0.3)
 
         # 第三步：找到目标种子
         seed_det = None
@@ -44,7 +44,7 @@ class PlantStrategy(BaseStrategy):
             if seed_dets:
                 seed_det = seed_dets[0]
                 break
-            time.sleep(0.3)
+            self.sleep(0.3)
 
         if not seed_det:
             # 没找到种子，直接去商店买（种子列表弹窗不影响商店按钮）
@@ -65,9 +65,9 @@ class PlantStrategy(BaseStrategy):
         seed_abs_x, seed_abs_y = self.action_executor.relative_to_absolute(
             seed_det.x, seed_det.y)
         pyautogui.moveTo(seed_abs_x, seed_abs_y, duration=0.05)
-        time.sleep(0.1)
+        self.sleep(0.1)
         pyautogui.mouseDown()
-        time.sleep(0.1)
+        self.sleep(0.1)
 
         # 依次拖到每块空地
         planted_count = 0
@@ -76,7 +76,7 @@ class PlantStrategy(BaseStrategy):
                 break
             abs_x, abs_y = self.action_executor.relative_to_absolute(land.x, land.y)
             pyautogui.moveTo(abs_x, abs_y, duration=0.1)
-            time.sleep(0.15)
+            self.sleep(0.15)
             planted_count += 1
 
         # 松开鼠标
@@ -85,7 +85,7 @@ class PlantStrategy(BaseStrategy):
         all_actions.append(f"播种{crop_name}×{planted_count}")
 
         # 验证：检查是否弹出商店（种子用完）
-        time.sleep(0.5)
+        self.sleep(0.5)
         cv_check, _, _ = self.capture(rect)
         if cv_check is not None:
             shop_close = self.cv_detector.detect_single_template(
@@ -111,7 +111,7 @@ class PlantStrategy(BaseStrategy):
         for attempt in range(2):
             if self.stopped:
                 return actions_done
-            time.sleep(0.3)
+            self.sleep(0.3)
 
             cv_img, dets, _ = self.capture(rect)
             if cv_img is None:
@@ -126,7 +126,7 @@ class PlantStrategy(BaseStrategy):
                 self.click(seed.x, seed.y, f"播种{crop_name}", ActionType.PLANT)
 
                 # 验证
-                time.sleep(0.5)
+                self.sleep(0.5)
                 cv_check, _, _ = self.capture(rect)
                 if cv_check is not None:
                     shop_close = self.cv_detector.detect_single_template(
@@ -164,7 +164,7 @@ class PlantStrategy(BaseStrategy):
         else:
             logger.info(f"播种流程: 未找到 '{crop_name}' 种子，去商店购买")
             self.click_blank(rect)
-            time.sleep(0.3)
+            self.sleep(0.3)
 
         # 去商店买
         buy_result = self._buy_seeds(rect, crop_name)
@@ -187,7 +187,7 @@ class PlantStrategy(BaseStrategy):
 
     def _retry_plant_after_buy(self, rect, crop_name, actions_done):
         """购买完成后重新点空地播种"""
-        time.sleep(0.3)
+        self.sleep(0.3)
         cv_img, dets, _ = self.capture(rect)
         if cv_img is None:
             return
@@ -196,7 +196,7 @@ class PlantStrategy(BaseStrategy):
             return
         logger.info("播种流程: 购买完成，重新点击空地")
         self.click(land.x, land.y, "点击空地")
-        time.sleep(0.5)
+        self.sleep(0.5)
         cv_img2, _, _ = self.capture(rect)
         if cv_img2 is None:
             return
@@ -221,7 +221,7 @@ class PlantStrategy(BaseStrategy):
             logger.warning("购买流程: 未找到商店按钮")
             return None
         self.click(shop_btn.x, shop_btn.y, "打开商店")
-        time.sleep(1.0)  # 等待商店页面加载动画
+        self.sleep(1.0)  # 等待商店页面加载动画
 
         # 等待商店打开并查找种子
         for attempt in range(5):
@@ -235,7 +235,7 @@ class PlantStrategy(BaseStrategy):
                 cv_img, "btn_shop_close", threshold=0.8)
             if not shop_close:
                 logger.info(f"购买流程: 等待商店加载 ({attempt+1}/5)")
-                time.sleep(0.5)  # 等待页面渲染
+                self.sleep(0.5)  # 等待页面渲染
                 continue
 
             logger.info("购买流程: 商店已打开，查找种子")
@@ -262,7 +262,7 @@ class PlantStrategy(BaseStrategy):
                     f"重试({match_attempt+1}/{match_retry}) best={best_desc} parsed={parsed_names}"
                 )
                 if match_attempt < match_retry - 1:
-                    time.sleep(0.3)
+                    self.sleep(0.3)
                     cv_img, dets, _ = self.capture(rect)
                     if cv_img is None:
                         return None
@@ -274,7 +274,7 @@ class PlantStrategy(BaseStrategy):
                     f"score={matched_item.ocr_score:.2f}, sim={matched_item.name_similarity:.2f})"
                 )
                 self.click(matched_item.center_x, matched_item.center_y, f"选择{crop_name}")
-                time.sleep(1.0)  # 等待购买弹窗出现
+                self.sleep(1.0)  # 等待购买弹窗出现
                 break
 
             logger.warning(f"购买流程: OCR未找到 '{crop_name}'")
@@ -301,7 +301,7 @@ class PlantStrategy(BaseStrategy):
                 confirm = self.find_by_name(dets, "btn_buy_confirm")
                 if confirm:
                     self.click(confirm.x, confirm.y, f"确定购买{crop_name}")
-                    time.sleep(0.3)  # 等待购买完成动画
+                    self.sleep(0.3)  # 等待购买完成动画
                     self._close_shop(rect)
                     return f"购买{crop_name}"
 
@@ -310,11 +310,11 @@ class PlantStrategy(BaseStrategy):
                 ps = PopupStrategy(self.cv_detector)
                 ps.action_executor = self.action_executor
                 ps.handle_popup(dets)
-                time.sleep(0.3)  # 等待弹窗关闭
+                self.sleep(0.3)  # 等待弹窗关闭
                 continue
 
             logger.info(f"购买流程: 等待购买弹窗 ({attempt+1}/5)")
-            time.sleep(0.3)
+            self.sleep(0.3)
 
         logger.warning("购买流程: 购买弹窗超时")
         self._close_shop(rect)
@@ -326,3 +326,4 @@ class PlantStrategy(BaseStrategy):
         ps.action_executor = self.action_executor
         ps.set_capture_fn(self._capture_fn)
         ps.close_shop(rect)
+
