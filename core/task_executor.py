@@ -8,10 +8,10 @@ from typing import Callable
 
 from loguru import logger
 
-from core.task_registry import TaskItem, TaskResult, TaskSnapshot
+from core.task_registry import TaskContext, TaskItem, TaskResult, TaskSnapshot
 
 
-TaskRunner = Callable[[], TaskResult]
+TaskRunner = Callable[[TaskContext], TaskResult]
 SnapshotHook = Callable[[TaskSnapshot], None]
 TaskDoneHook = Callable[[str, TaskResult], None]
 IdleHook = Callable[[], None]
@@ -232,7 +232,7 @@ class TaskExecutor:
                 continue
 
             try:
-                result = runner()
+                result = runner(TaskContext(task_name=task.name, started_at=datetime.now()))
                 if not isinstance(result, TaskResult):
                     result = TaskResult(
                         success=False,

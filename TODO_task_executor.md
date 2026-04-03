@@ -3,7 +3,7 @@
 ## 1. 改造目标与边界
 - [x] 把“定时器触发 + 大循环扫描”改成“任务队列 + 任务执行器 + 任务级调度”。
 - [x] 在不破坏现有策略能力的前提下，实现可灰度切换（保留旧 `BotWorker/check_farm` 入口）。
-- [ ] 统一中断语义：点击、等待、截图、页面确认都可被 `stop_event` 及时打断。
+- [x] 统一中断语义：点击、等待、截图、页面确认都可被 `stop_event` 及时打断。
 - [x] 引入队列可观测性：运行中、待执行、等待中三态可见。
 
 ## 2. 当前现状（项目实际代码）
@@ -58,7 +58,7 @@
   - `goto_main`
 - [x] 失败熔断：
   - 连续失败达到阈值后降级延迟并上报 UI
-- [ ] 停止语义统一：
+- [x] 停止语义统一：
   - 执行器持有单一 `stop_event`
   - `BaseStrategy.sleep`、`ActionExecutor._sleep_interruptible`、执行器 wait 共用 stop 检查
 
@@ -76,11 +76,11 @@
 - [x] 第一批任务接入：
   - `farm_main`
   - `friend`
-- [ ] 迁移原则：
+- [x] 迁移原则：
   - 旧策略逻辑尽量不改行为，仅改调度归属
   - 统一任务签名：`run_once(ctx) -> TaskResult`
   - 禁止任务内部直接改全局调度周期
-- [ ] 清理旧耦合：
+- [x] 清理旧耦合：
   - `scheduler.set_farm_interval(...)` -> `task_delay('farm_main', seconds)`
   - `check_farm` 里的“下次检查时间”逻辑迁到任务结果处理层
 

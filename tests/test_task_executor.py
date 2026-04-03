@@ -19,7 +19,7 @@ if "loguru" not in sys.modules:
     sys.modules["loguru"] = types.SimpleNamespace(logger=_DummyLogger())
 
 from core.task_executor import TaskExecutor
-from core.task_registry import TaskItem, TaskResult
+from core.task_registry import TaskContext, TaskItem, TaskResult
 
 
 class TaskExecutorTests(unittest.TestCase):
@@ -102,7 +102,7 @@ class TaskExecutorTests(unittest.TestCase):
         )
         run_count = {"n": 0}
 
-        def runner() -> TaskResult:
+        def runner(_ctx: TaskContext) -> TaskResult:
             run_count["n"] += 1
             return TaskResult(success=False, error="mock fail")
 

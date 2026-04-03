@@ -47,6 +47,12 @@ class TaskSnapshot:
     waiting_tasks: list[TaskItem]
 
 
+@dataclass
+class TaskContext:
+    task_name: str
+    started_at: datetime
+
+
 def build_default_tasks(config: "AppConfig") -> dict[str, TaskItem]:
     now = datetime.now()
     friend_enabled = bool(config.features.auto_help or config.features.auto_steal)

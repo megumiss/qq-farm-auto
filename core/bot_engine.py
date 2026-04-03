@@ -36,7 +36,13 @@ from core.cv_detector import CVDetector, DetectResult
 from core.action_executor import ActionExecutor
 from core.task_scheduler import TaskScheduler
 from core.task_executor import TaskExecutor
-from core.task_registry import TaskItem, TaskResult, TaskSnapshot, build_default_tasks
+from core.task_registry import (
+    TaskContext,
+    TaskItem,
+    TaskResult,
+    TaskSnapshot,
+    build_default_tasks,
+)
 from core.scene_detector import Scene, identify_scene, SceneStabilityTracker
 from core.page_graph import PageId
 from core.navigator import Navigator
@@ -250,11 +256,11 @@ class BotEngine(QObject):
             executor.stop(wait_timeout=1.5)
         self._executor_tasks = {}
 
-    def _run_task_farm_main(self) -> TaskResult:
+    def _run_task_farm_main(self, _ctx: TaskContext) -> TaskResult:
         payload = self.check_farm(self._session_id)
         return TaskResult.from_legacy_dict(payload)
 
-    def _run_task_friend(self) -> TaskResult:
+    def _run_task_friend(self, _ctx: TaskContext) -> TaskResult:
         payload = self.check_friends(self._session_id)
         return TaskResult.from_legacy_dict(payload)
 
