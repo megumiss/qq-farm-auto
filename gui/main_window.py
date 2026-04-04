@@ -13,6 +13,7 @@
 """
 
 import os
+import time
 
 import keyboard
 from PIL import Image
@@ -106,12 +107,14 @@ def _make_btn(text: str, color: str, hover: str) -> QPushButton:
 
 class MainWindow(QMainWindow):
     """主窗口：组合预览、日志、任务面板并驱动 BotEngine。"""
+
     def __init__(self, config: AppConfig):
         """初始化主窗口与引擎，并注册全局热键。"""
         super().__init__()
         self.config = config
         self.engine = BotEngine(config)
         self._last_screenshot: Image.Image | None = None
+        self._last_screenshot_time = 0.0
         self._init_ui()
         self._connect_signals()
         keyboard.add_hotkey('F9', self._on_pause)
@@ -122,12 +125,14 @@ class MainWindow(QMainWindow):
         self.setWindowTitle('QQ Farm Vision Bot')
         icon_path = os.path.join(os.path.dirname(__file__), 'icons', 'app_icon.svg')
         self.setWindowIcon(QIcon(icon_path))
-        
+
         # 动态获取当前屏幕的 DPI 缩放比例
         ratio = self.devicePixelRatioF()
         
-        self.setMinimumSize(int(540 / ratio) + 500, int(960 / ratio) + 40)
-        self.resize(int(540 / ratio) + 620, int(960 / ratio) + 80)
+        # 不再写死窗口高度，仅限制最小宽度保证左右两侧能放得下
+        self.setMinimumWidth(int(540 / ratio) + 500)
+        # 设置一个合理的初始宽度，高度交由系统和内部内容自适应撑开
+        self.resize(int(540 / ratio) + 620, 100)
         self.setStyleSheet(STYLESHEET)
 
         # 根容器：左右分栏，左窄右宽。
@@ -139,11 +144,13 @@ class MainWindow(QMainWindow):
 
         # ========== 左侧：截图预览 ==========
         from PyQt6.QtWidgets import QSizePolicy
+
         self._screenshot_label = QLabel('启动后显示\n实时截图')
         self._screenshot_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._screenshot_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
-        # 保持物理宽度为 540 像素，高度随窗口自由拉伸，使得左右两边永远对齐
+        # 保持物理宽度
         self._screenshot_label.setFixedWidth(int(540 / ratio))
+        self._screenshot_label.setFixedHeight(int(960 / ratio))
         self._screenshot_label.setStyleSheet("""
             QLabel { background-color: #ffffff; border: 1px solid #e2e8f0;
                      border-radius: 10px; color: #94a3b8; font-size: 14px; }
@@ -212,9 +219,9 @@ class MainWindow(QMainWindow):
         """)
         self._status_panel = StatusPanel()
         self._log_panel = LogPanel()
-        
-        log_group = QGroupBox("运行日志")
-        log_group.setObjectName("logGroup")
+
+        log_group = QGroupBox('运行日志')
+        log_group.setObjectName('logGroup')
         log_group.setStyleSheet("""
             QGroupBox#logGroup {
                 border: 1px solid #e2e8f0;
@@ -266,8 +273,15 @@ class MainWindow(QMainWindow):
         self._task_panel.config_changed.connect(self._on_config_changed)
         self._feature_panel.config_changed.connect(self._on_config_changed)
 
-    def _update_screenshot(self, image: Image.Image):
-        """将 PIL 图像转为 QPixmap 并按预览区尺寸缩放显示。"""
+    def _update_screenshot(self, image: Image.Image, force: bool = False):
+        """将 PIL 图像转为 QPixmap 并按预览区尺寸缩放显示。
+        为避免高频截图导致界面卡顿，限制刷新率为最高 1 fps。
+        """
+        now = time.time()
+        if not force and now - self._last_screenshot_time < 1.0:
+            return
+        self._last_screenshot_time = now
+
         try:
             self._last_screenshot = image.copy()
             image = image.convert('RGB')
@@ -354,5 +368,4 @@ class MainWindow(QMainWindow):
         """窗口尺寸变化时重绘当前预览。"""
         super().resizeEvent(event)
         if self._last_screenshot is not None:
-            self._update_screenshot(self._last_screenshot)
-
+            self._update_screenshot(self._last_screenshot, force=True)
