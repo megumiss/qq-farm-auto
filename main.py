@@ -8,7 +8,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from PyQt6.QtWidgets import QApplication
 
-from gui.main_window import MainWindow
 from models.config import AppConfig
 from utils.logger import setup_logger
 
@@ -24,6 +23,9 @@ def main():
     # 启动GUI
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
+
+    # 延迟导入
+    from gui.main_window import MainWindow
 
     window = MainWindow(config)
     window.show()
