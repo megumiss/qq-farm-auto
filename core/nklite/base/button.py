@@ -106,10 +106,44 @@ class Button:
         if self._match_init:
             return
         if self.file and os.path.exists(str(self.file)):
-            image = cv2.imread(str(self.file), cv2.IMREAD_COLOR)
+            # 使用 imdecode 兼容中文路径；与 NIKKE 一样按 area 裁模板区域。
+            image = cv2.imdecode(np.fromfile(str(self.file), dtype=np.uint8), cv2.IMREAD_UNCHANGED)
             if image is not None:
-                self.image = image
+                if image.ndim == 2:
+                    image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+                elif image.shape[2] > 3:
+                    image = image[:, :, :3]
+                self.image = self._crop_like_pillow(image, self.area)
         self._match_init = True
+
+    @staticmethod
+    def _crop_like_pillow(image: np.ndarray, area: tuple[int, int, int, int]) -> np.ndarray:
+        """对齐 NIKKE utils.crop：超出边界部分用黑色补齐。"""
+        x1, y1, x2, y2 = [int(round(v)) for v in area]
+        h, w = image.shape[:2]
+
+        top = max(0, 0 - y1)
+        bottom = max(0, y2 - h)
+        left = max(0, 0 - x1)
+        right = max(0, x2 - w)
+
+        x1 = max(0, x1)
+        y1 = max(0, y1)
+        x2 = max(0, x2)
+        y2 = max(0, y2)
+
+        cropped = image[y1:y2, x1:x2].copy()
+        if top or bottom or left or right:
+            cropped = cv2.copyMakeBorder(
+                cropped,
+                top,
+                bottom,
+                left,
+                right,
+                borderType=cv2.BORDER_CONSTANT,
+                value=(0, 0, 0),
+            )
+        return cropped
 
     def match(self, image, offset=30, threshold=0.85, static=True) -> bool:
         if Button._match_provider is None:

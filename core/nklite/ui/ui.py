@@ -32,12 +32,10 @@ class UI(InfoHandler):
         device,
         crop_name_resolver: Callable[[], str],
         cancel_checker: Callable[[], bool],
-        goto_main_point_resolver: Callable[[tuple[int, int, int, int] | None], tuple[int, int]] | None = None,
     ):
         super().__init__(config=config, detector=detector, device=device)
         self._crop_name_resolver = crop_name_resolver
         self._cancel_checker = cancel_checker
-        self._goto_main_point_resolver = goto_main_point_resolver
         self.ui_current: Page = page_unknown
 
     def _is_cancelled(self) -> bool:
@@ -95,11 +93,6 @@ class UI(InfoHandler):
             return False
 
         x, y = GOTO_MAIN.location
-        if self._goto_main_point_resolver:
-            try:
-                x, y = self._goto_main_point_resolver(getattr(self.device, 'rect', None))
-            except Exception:
-                pass
 
         button = Button(
             area=(int(x), int(y), int(x) + 1, int(y) + 1),

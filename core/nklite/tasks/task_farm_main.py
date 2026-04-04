@@ -76,7 +76,7 @@ class TaskFarmMain:
                         break
                     continue
                 self.engine.popup.click_blank(rect)
-                result['actions_done'].append('点击空白处')
+                result['actions_done'].append('点击回主按钮')
                 if not self.engine._sleep_interruptible(0.2, session_id):
                     break
                 continue

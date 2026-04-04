@@ -292,7 +292,7 @@ class BotEngine(QObject):
         if not self.action_executor:
             return
 
-        goto_x, goto_y = self.resolve_capture_point(*GOTO_MAIN.location, rect=rect)
+        goto_x, goto_y = GOTO_MAIN.location
         for _ in range(2):
             if self._is_cancel_requested(session_id):
                 break
@@ -329,6 +329,12 @@ class BotEngine(QObject):
         x = max(0, min(x, cap_w - 1))
         y = max(0, min(y, cap_h - 1))
         return x, y
+
+    def resolve_live_click_point(self, x: int, y: int) -> tuple[int, int]:
+        rect = None
+        if self.nk_device is not None:
+            rect = getattr(self.nk_device, 'rect', None)
+        return self.resolve_capture_point(int(x), int(y), rect=rect)
 
     def _resolve_goto_main_point(self, rect: tuple[int, int, int, int] | None = None) -> tuple[int, int]:
         return self.resolve_capture_point(*GOTO_MAIN.location, rect=rect)
@@ -385,7 +391,6 @@ class BotEngine(QObject):
             device=self.nk_device,
             crop_name_resolver=self._resolve_crop_name_quiet,
             cancel_checker=self._is_cancel_requested,
-            goto_main_point_resolver=self._resolve_goto_main_point,
         )
         self.nk_task_farm_main = TaskFarmMain(engine=self, ui=self.nk_ui)
 
@@ -492,10 +497,11 @@ class BotEngine(QObject):
         if image is None:
             return None, None
         preview_image = self._crop_preview_image(image)
-        if preview_image is not None:
-            self.screenshot_updated.emit(preview_image)
-        cv_image = self.cv_detector.pil_to_cv2(image)
-        return cv_image, image
+        if preview_image is None:
+            return None, None
+        self.screenshot_updated.emit(preview_image)
+        cv_image = self.cv_detector.pil_to_cv2(preview_image)
+        return cv_image, preview_image
 
     def _capture_and_detect(
         self,
@@ -558,9 +564,10 @@ class BotEngine(QObject):
     def _nklite_click(self, x: int, y: int, desc: str) -> bool:
         if not self.action_executor:
             return False
+        rel_x, rel_y = self.resolve_live_click_point(int(x), int(y))
         action = Action(
             type=ActionType.NAVIGATE,
-            click_position={'x': int(x), 'y': int(y)},
+            click_position={'x': int(rel_x), 'y': int(rel_y)},
             priority=0,
             description=str(desc or 'nklite_click'),
         )
@@ -575,9 +582,7 @@ class BotEngine(QObject):
             annotated = self.cv_detector.draw_results(cv_image, detections)
             annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
             annotated_pil = PILImage.fromarray(annotated_rgb)
-            preview_annotated = self._crop_preview_image(annotated_pil)
-            if preview_annotated is not None:
-                self.detection_result.emit(preview_annotated)
+            self.detection_result.emit(annotated_pil)
 
     def _record_stat(self, action_type: str):
         type_map = {

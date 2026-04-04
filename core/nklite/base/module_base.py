@@ -40,56 +40,77 @@ class ModuleBase:
     ) -> tuple[bool, tuple[int, int, int, int] | None, float]:
         if image is None:
             return False, None, 0.0
-        name = button.template_name
-        tpl = self.cv_detector._templates_by_name.get(name)
-        if tpl is None:
+        button.ensure_template()
+        if button.image is None:
             return False, None, 0.0
 
-        gray_screen = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         search_img = image
-        search_gray = gray_screen
-        dx = 0
-        dy = 0
-
+        off = (0, 0, 0, 0)
         if static:
             off = self._norm_offset(offset)
-            x1, y1, x2, y2 = button.area
-            sx1 = x1 + off[0]
-            sy1 = y1 + off[1]
-            sx2 = x2 + off[2]
-            sy2 = y2 + off[3]
-            h, w = image.shape[:2]
-            sx1 = max(0, min(sx1, w - 1))
-            sy1 = max(0, min(sy1, h - 1))
-            sx2 = max(sx1 + 1, min(sx2, w))
-            sy2 = max(sy1 + 1, min(sy2, h))
-            search_img = image[sy1:sy2, sx1:sx2]
-            search_gray = gray_screen[sy1:sy2, sx1:sx2]
-            dx, dy = sx1, sy1
+            search_area = (
+                int(button.area[0] + off[0]),
+                int(button.area[1] + off[1]),
+                int(button.area[2] + off[2]),
+                int(button.area[3] + off[3]),
+            )
+            search_img = self._crop_like_pillow(image, search_area)
 
-        matches, best_score = self.cv_detector._match_template_with_best(
-            search_img,
-            search_gray,
-            tpl,
-            float(threshold),
-        )
-        if not matches:
-            return False, None, float(best_score)
+        # 对齐 NIKKE Button.match：直接模板匹配，不走 detector 多尺度分支。
+        result = cv2.matchTemplate(button.image, search_img, cv2.TM_CCOEFF_NORMED)
+        _, similarity, _, upper_left = cv2.minMaxLoc(result)
+        hit = float(similarity) > float(threshold)
+        if not hit:
+            return False, None, float(similarity)
 
-        best = max(matches, key=lambda m: m.confidence)
         if static:
-            center_x = best.x + dx
-            center_y = best.y + dy
-        else:
-            center_x = best.x
-            center_y = best.y
+            dx = int(off[0] + upper_left[0])
+            dy = int(off[1] + upper_left[1])
+            area = (
+                int(button._button[0] + dx),
+                int(button._button[1] + dy),
+                int(button._button[2] + dx),
+                int(button._button[3] + dy),
+            )
+            return True, area, float(similarity)
+
+        h = int(button.area[3] - button.area[1])
+        w = int(button.area[2] - button.area[0])
         area = (
-            int(center_x - best.w // 2),
-            int(center_y - best.h // 2),
-            int(center_x + best.w // 2),
-            int(center_y + best.h // 2),
+            int(upper_left[0]),
+            int(upper_left[1]),
+            int(upper_left[0] + w),
+            int(upper_left[1] + h),
         )
-        return True, area, float(best_score)
+        return True, area, float(similarity)
+
+    @staticmethod
+    def _crop_like_pillow(image: np.ndarray, area: tuple[int, int, int, int]) -> np.ndarray:
+        x1, y1, x2, y2 = [int(round(v)) for v in area]
+        h, w = image.shape[:2]
+
+        top = max(0, 0 - y1)
+        bottom = max(0, y2 - h)
+        left = max(0, 0 - x1)
+        right = max(0, x2 - w)
+
+        x1 = max(0, x1)
+        y1 = max(0, y1)
+        x2 = max(0, x2)
+        y2 = max(0, y2)
+
+        cropped = image[y1:y2, x1:x2].copy()
+        if top or bottom or left or right:
+            cropped = cv2.copyMakeBorder(
+                cropped,
+                top,
+                bottom,
+                left,
+                right,
+                borderType=cv2.BORDER_CONSTANT,
+                value=(0, 0, 0),
+            )
+        return cropped
 
     def appear_any(self, buttons, **kwargs):
         for btn in buttons:

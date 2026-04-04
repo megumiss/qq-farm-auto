@@ -32,6 +32,11 @@ class _OpsBase:
         if not self.engine.action_executor or self.stopped:
             return False
 
+        rel_x, rel_y = int(x), int(y)
+        resolver = getattr(self.engine, 'resolve_live_click_point', None)
+        if callable(resolver):
+            rel_x, rel_y = resolver(rel_x, rel_y)
+
         key = f'{action_type}:{desc}'
         now = time.perf_counter()
         allow_at = self._action_next_allowed.get(key, 0.0)
@@ -41,7 +46,7 @@ class _OpsBase:
 
         action = Action(
             type=action_type,
-            click_position={'x': int(x), 'y': int(y)},
+            click_position={'x': int(rel_x), 'y': int(rel_y)},
             priority=0,
             description=str(desc),
         )
@@ -67,12 +72,8 @@ class _OpsBase:
         return None
 
     def click_blank(self, rect: tuple[int, int, int, int]):
-        if hasattr(self.engine, 'resolve_capture_point'):
-            x, y = self.engine.resolve_capture_point(270, 144, rect=rect)
-        else:
-            w, h = rect[2], rect[3]
-            x, y = w // 2, int(h * 0.15)
-        self.click(x, y, '点击空白处')
+        _ = rect
+        self.click(270, 20, '点击回主按钮')
 
 
 class PopupOps(_OpsBase):
@@ -276,7 +277,11 @@ class PlantOps(_OpsBase):
         if not self.engine.action_executor:
             return all_actions
 
-        seed_abs_x, seed_abs_y = self.engine.action_executor.relative_to_absolute(seed_det.x, seed_det.y)
+        seed_x, seed_y = int(seed_det.x), int(seed_det.y)
+        resolver = getattr(self.engine, 'resolve_live_click_point', None)
+        if callable(resolver):
+            seed_x, seed_y = resolver(seed_x, seed_y)
+        seed_abs_x, seed_abs_y = self.engine.action_executor.relative_to_absolute(seed_x, seed_y)
         planted_count = 0
         dragging = False
         try:
@@ -293,7 +298,10 @@ class PlantOps(_OpsBase):
             for land in lands:
                 if self.stopped:
                     break
-                abs_x, abs_y = self.engine.action_executor.relative_to_absolute(land.x, land.y)
+                land_x, land_y = int(land.x), int(land.y)
+                if callable(resolver):
+                    land_x, land_y = resolver(land_x, land_y)
+                abs_x, abs_y = self.engine.action_executor.relative_to_absolute(land_x, land_y)
                 pyautogui.moveTo(abs_x, abs_y, duration=0.1)
                 if not self.sleep(0.15):
                     break
