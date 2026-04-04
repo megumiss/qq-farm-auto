@@ -7,6 +7,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QIcon
 
 from models.config import AppConfig
 from utils.logger import setup_logger
@@ -23,6 +24,8 @@ def main():
     # 启动GUI
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
+    icon_path = os.path.join(os.path.dirname(__file__), 'gui', 'icons', 'app_icon.svg')
+    app.setWindowIcon(QIcon(icon_path))
 
     # 延迟导入
     from gui.main_window import MainWindow

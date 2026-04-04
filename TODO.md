@@ -51,36 +51,36 @@
 ## 2. 当前项目到目标架构映射（按文件落地）
 
 ### 2.1 目标目录（新建）
-- [x] 新建 `core/nklite/base/`
-- [x] 新建 `core/nklite/ui/`
-- [x] 新建 `core/nklite/handler/`
-- [x] 新建 `core/nklite/tasks/`
+- [x] 新建 `core/base/`
+- [x] 新建 `core/ui/`
+- [x] 新建 `core/handler/`
+- [x] 新建 `core/tasks/`
 
 ### 2.2 映射关系
-- [x] `NIKKE/module/base/button.py` -> `core/nklite/base/button.py`
-- [x] `NIKKE/module/base/timer.py` -> `core/nklite/base/timer.py`（可复用现有 timer 实现但接口保持一致）
-- [x] `NIKKE/module/base/base.py` -> `core/nklite/base/module_base.py`
-- [x] `NIKKE/module/ui/page.py` -> `core/nklite/ui/page.py`
-- [x] `NIKKE/module/ui/ui.py` -> `core/nklite/ui/ui.py`
-- [x] `NIKKE/module/handler/info_handle.py` -> `core/nklite/handler/info_handler.py`
+- [x] `NIKKE/module/base/button.py` -> `core/base/button.py`
+- [x] `NIKKE/module/base/timer.py` -> `core/base/timer.py`（可复用现有 timer 实现但接口保持一致）
+- [x] `NIKKE/module/base/base.py` -> `core/base/module_base.py`
+- [x] `NIKKE/module/ui/page.py` -> `core/ui/page.py`
+- [x] `NIKKE/module/ui/ui.py` -> `core/ui/ui.py`
+- [x] `NIKKE/module/handler/info_handle.py` -> `core/handler/info_handler.py`
 
 ### 2.4 强制命名清单（类名 + 方法名）
-- [x] `core/nklite/base/button.py`
+- [x] `core/base/button.py`
   - 类名：`Button`
   - 方法名：`ensure_template`、`match`、`match_with_scale`、`appear_on`、`match_several`
-- [x] `core/nklite/base/module_base.py`
+- [x] `core/base/module_base.py`
   - 类名：`ModuleBase`
   - 方法名：`appear`、`appear_any`、`appear_then_click`、`appear_then_click_any`、`interval_reset`
-- [x] `core/nklite/ui/page.py`
+- [x] `core/ui/page.py`
   - 类名：`Page`
   - 方法名：`link`
-- [x] `core/nklite/ui/ui.py`
+- [x] `core/ui/ui.py`
   - 类名：`UI`
   - 方法名：`ui_page_appear`、`ui_get_current_page`、`ui_goto`、`ui_ensure`、`ui_additional`、`ui_goto_main`、`ui_wait_loading`
-- [x] `core/nklite/handler/info_handler.py`
+- [x] `core/handler/info_handler.py`
   - 类名：`InfoHandler`
   - 方法名：`handle_level_up`、`handle_reward`、`handle_announcement`、`handle_login_reward`、`handle_system_error`
-- [x] `core/nklite/tasks/*.py`
+- [x] `core/tasks/*.py`
   - 类名命名：`Task*`（示例：`TaskFarmMain`）
   - 方法名：`run`（统一任务入口）
 
@@ -117,7 +117,7 @@
 ## 4. 页面图与 UI 导航复刻
 
 ### 4.1 页面定义（精简农场版）
-- [x] 在 `core/nklite/ui/page.py` 定义 `Page` 类（与 NIKKE 同结构）
+- [x] 在 `core/ui/page.py` 定义 `Page` 类（与 NIKKE 同结构）
 - [ ] 页面最小集：
   - `page_unknown`
   - `page_main`
@@ -147,7 +147,7 @@
 ## 5. 场景处理与全局兜底复刻
 
 ### 5.1 InfoHandler 统一入口
-- [x] 新建 `core/nklite/handler/info_handler.py`
+- [x] 新建 `core/handler/info_handler.py`
 - [x] 迁移并统一：
   - 升级弹窗
   - 领取奖励弹窗
@@ -180,7 +180,7 @@
 - [x] `task_farm_reward`：任务奖励领取
 
 ### 6.3 旧策略迁移
-- [x] `core/strategies/*.py` 已整体下线，相关能力迁至 `core/nklite/ops`
+- [x] `core/strategies/*.py` 已整体下线，相关能力迁至 `core/ops`
 - [x] 页面基础设施职责已由 `nklite.ui + nklite.handler` 统一承担
 - [x] 任务已直接调用 `nklite` API（含 `ops`），策略层已移除
 
@@ -189,7 +189,7 @@
 ## 7. 资产与按钮定义复刻
 
 ### 7.1 按钮资产定义文件
-- [ ] 新建 `core/nklite/ui/assets.py`（农场版）
+- [ ] 新建 `core/ui/assets.py`（农场版）
 - [ ] 每个按钮包含：`area/color/button/file`
 - [ ] 按钮命名风格对齐 NIKKE（`MAIN_CHECK`, `MAIN_GOTO_XXX`, `GOTO_BACK`）
 
@@ -235,9 +235,9 @@
 
 ## 11. 改造执行步骤（按序提交）
 
-1. [x] 建立 `core/nklite/base`：`button.py + timer.py + module_base.py`，并接入现有 device/capture。
-2. [x] 建立 `core/nklite/ui`：`assets.py + page.py + ui.py`，先完成 `ui_get_current_page/ui_goto/ui_ensure`。
-3. [x] 建立 `core/nklite/handler/info_handler.py`，把全局弹窗处理统一收口到 `ui_additional()`。
+1. [x] 建立 `core/base`：`button.py + timer.py + module_base.py`，并接入现有 device/capture。
+2. [x] 建立 `core/ui`：`assets.py + page.py + ui.py`，先完成 `ui_get_current_page/ui_goto/ui_ensure`。
+3. [x] 建立 `core/handler/info_handler.py`，把全局弹窗处理统一收口到 `ui_additional()`。
 4. [x] 在 `bot_engine` 接入 `nklite.ui`，把“页面识别/导航”入口改为 `ui_ensure`。
 5. [x] 迁移农场最小任务集（收获/维护/播种/出售/好友/奖励）为 `nklite.tasks` 风格。
 6. [x] 清理旧链路：移除 `page_checker/navigator/ui_guard` 的主路径职责，只留兼容或删除。
@@ -249,3 +249,4 @@
 
 - [ ] 本 TODO 为重置版，默认全部未完成。
 - [ ] 后续每完成一项，直接在本文件勾选并附对应提交号（`commit <sha>`）。
+

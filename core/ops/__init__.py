@@ -1,4 +1,4 @@
-from core.nklite.ops.farm_ops import ExpandOps, FriendOps, PlantOps, PopupOps, TaskOps
+from core.ops.farm_ops import ExpandOps, FriendOps, PlantOps, PopupOps, TaskOps
 
 __all__ = [
     "PopupOps",
@@ -7,4 +7,6 @@ __all__ = [
     "TaskOps",
     "FriendOps",
 ]
+
+
 

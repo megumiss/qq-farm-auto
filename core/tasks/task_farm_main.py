@@ -6,13 +6,13 @@ import time
 
 from loguru import logger
 
-from core.nklite.base.step_result import StepResult
-from core.nklite.tasks.task_farm_friend import TaskFarmFriend
-from core.nklite.tasks.task_farm_harvest import TaskFarmHarvest
-from core.nklite.tasks.task_farm_plant import TaskFarmPlant
-from core.nklite.tasks.task_farm_reward import TaskFarmReward
-from core.nklite.tasks.task_farm_sell import TaskFarmSell
-from core.nklite.ui.page import (
+from core.base.step_result import StepResult
+from core.tasks.task_farm_friend import TaskFarmFriend
+from core.tasks.task_farm_harvest import TaskFarmHarvest
+from core.tasks.task_farm_plant import TaskFarmPlant
+from core.tasks.task_farm_reward import TaskFarmReward
+from core.tasks.task_farm_sell import TaskFarmSell
+from core.ui.page import (
     page_friend,
     page_main,
     page_menu,
@@ -233,3 +233,5 @@ class TaskFarmMain:
         if page == page_friend:
             return StepResult.from_value(self.engine.friend._help_in_friend_farm(rect))
         return StepResult()
+
+

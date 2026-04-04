@@ -7,9 +7,9 @@ from typing import Any
 import cv2
 import numpy as np
 
-from core.cv_detector import CVDetector
-from core.nklite.base.button import Button
-from core.nklite.base.timer import Timer
+from core.vision.cv_detector import CVDetector
+from core.base.button import Button
+from core.base.timer import Timer
 
 
 class ModuleBase:
@@ -181,3 +181,5 @@ class ModuleBase:
         timer = self.interval_timer.get(key)
         if timer:
             timer.reset()
+
+

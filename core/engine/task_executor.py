@@ -9,7 +9,7 @@ from typing import Callable
 
 from loguru import logger
 
-from core.task_registry import TaskContext, TaskItem, TaskResult, TaskSnapshot
+from core.engine.task_registry import TaskContext, TaskItem, TaskResult, TaskSnapshot
 
 TaskRunner = Callable[[TaskContext], TaskResult]
 SnapshotHook = Callable[[TaskSnapshot], None]
@@ -248,3 +248,4 @@ class TaskExecutor:
 
             self._emit_snapshot()
             time.sleep(0.03)
+

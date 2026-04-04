@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from core.nklite.base.step_result import StepResult
-from core.nklite.ui.assets import BTN_FRIEND_HELP
+from core.base.step_result import StepResult
+from core.ui.assets import BTN_FRIEND_HELP
 
 
 class TaskFarmFriend:
@@ -19,3 +19,5 @@ class TaskFarmFriend:
         self.engine._sleep_interruptible(0.4)
         out = StepResult.from_value(self.engine.friend._help_in_friend_farm(rect))
         return out
+
+

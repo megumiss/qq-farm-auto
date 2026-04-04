@@ -7,7 +7,7 @@ import time
 import pyautogui
 from loguru import logger
 
-from core.cv_detector import DetectResult
+from core.vision.cv_detector import DetectResult
 from models.farm_state import Action, ActionType
 from utils.shop_item_ocr import ShopItemOCR
 
@@ -421,3 +421,4 @@ class PlantOps(_OpsBase):
                 return
             self.click(close_btn.x, close_btn.y, '关闭商店', ActionType.CLOSE_POPUP)
             self.sleep(0.3)
+

@@ -7,7 +7,7 @@ from typing import Callable
 
 import numpy as np
 
-from core.nklite.base.button import Button
+from core.base.button import Button
 
 
 class NKLiteDevice:
@@ -69,3 +69,5 @@ class NKLiteDevice:
 
     def get_orientation(self):
         return 0
+
+

@@ -12,10 +12,12 @@
   Border:     #e2e8f0
 """
 
+import os
+
 import keyboard
 from PIL import Image
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtGui import QIcon, QImage, QPixmap
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -27,7 +29,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from core.bot_engine import BotEngine
+from core.engine.bot_engine import BotEngine
 from gui.widgets.feature_panel import FeaturePanel
 from gui.widgets.log_panel import LogPanel
 from gui.widgets.settings_panel import SettingsPanel
@@ -111,6 +113,8 @@ class MainWindow(QMainWindow):
 
     def _init_ui(self):
         self.setWindowTitle('QQ Farm Vision Bot')
+        icon_path = os.path.join(os.path.dirname(__file__), 'icons', 'app_icon.svg')
+        self.setWindowIcon(QIcon(icon_path))
         self.setMinimumSize(960, 680)
         self.resize(1060, 740)
         self.setStyleSheet(STYLESHEET)
@@ -255,3 +259,4 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         self.engine.stop()
         super().closeEvent(event)
+

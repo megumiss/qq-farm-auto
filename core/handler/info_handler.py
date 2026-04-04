@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pyautogui
 
-from core.nklite.base.button import Button
-from core.nklite.base.module_base import ModuleBase
+from core.base.button import Button
+from core.base.module_base import ModuleBase
 
 
 def _btn(name: str, area: tuple[int, int, int, int]):
@@ -76,3 +76,5 @@ class InfoHandler(ModuleBase):
 
     def handle_shop_residual(self):
         return self.appear_then_click(BTN_SHOP_CLOSE, offset=(30, 30), interval=0.2, threshold=0.8, static=False)
+
+

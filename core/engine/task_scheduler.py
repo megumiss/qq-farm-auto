@@ -1,11 +1,12 @@
-"""任务调度器 - 管理自动化任务的执行周期"""
+"""运行态统计与状态管理（不再负责任务触发）。"""
+
+from __future__ import annotations
 
 import time
 from datetime import datetime
 from enum import Enum
 
-from loguru import logger
-from PyQt6.QtCore import QObject, QTimer, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal
 
 
 class BotState(str, Enum):
@@ -19,23 +20,15 @@ class BotState(str, Enum):
 
 
 class TaskScheduler(QObject):
-    """基于QTimer的任务调度器，与Qt事件循环集成"""
+    """只维护运行状态与统计展示，调度由 TaskExecutor 负责。"""
 
-    state_changed = pyqtSignal(str)  # 状态变化信号
-    farm_check_triggered = pyqtSignal()  # 农场检查触发
-    friend_check_triggered = pyqtSignal()  # 好友检查触发
-    stats_updated = pyqtSignal(dict)  # 统计数据更新
+    state_changed = pyqtSignal(str)
+    stats_updated = pyqtSignal(dict)
 
     def __init__(self):
         super().__init__()
         self._state = BotState.IDLE
-        self._farm_timer = QTimer(self)
-        self._friend_timer = QTimer(self)
-        self._farm_timer.timeout.connect(self._on_farm_timer)
-        self._friend_timer.timeout.connect(self._on_friend_timer)
-
-        # 统计
-        self._start_time: float = 0
+        self._start_time: float = 0.0
         self._stats = {
             'harvest': 0,
             'plant': 0,
@@ -46,8 +39,8 @@ class TaskScheduler(QObject):
             'sell': 0,
             'total_actions': 0,
         }
-        self._next_farm_check: float = 0
-        self._next_friend_check: float = 0
+        self._next_farm_check: float = 0.0
+        self._next_friend_check: float = 0.0
         self._runtime_metrics = {
             'current_page': '--',
             'current_task': '--',
@@ -67,82 +60,17 @@ class TaskScheduler(QObject):
         self._state = state
         self.state_changed.emit(state.value)
 
-    def start(self, farm_interval_ms: int = 300000, friend_interval_ms: int = 1800000):
-        """启动调度器"""
-        if self._state == BotState.RUNNING:
-            return
-        self._start_time = time.time()
-        self._set_state(BotState.RUNNING)
-
-        # 立即执行一次农场检查
-        self._farm_timer.start(farm_interval_ms)
-        self._friend_timer.start(friend_interval_ms)
-        self._next_farm_check = time.time()
-        self._next_friend_check = time.time() + friend_interval_ms / 1000
-
-        # 首次立即触发
-        QTimer.singleShot(500, self._on_farm_timer)
-        logger.info(f'调度器已启动 (农场:{farm_interval_ms // 1000}s, 好友:{friend_interval_ms // 1000}s)')
-
     def stop(self):
-        """停止调度器"""
-        self._farm_timer.stop()
-        self._friend_timer.stop()
         self._set_state(BotState.IDLE)
-        logger.info('调度器已停止')
-
-    def pause(self):
-        """暂停"""
-        if self._state == BotState.RUNNING:
-            self._farm_timer.stop()
-            self._friend_timer.stop()
-            self._set_state(BotState.PAUSED)
-            logger.info('调度器已暂停')
-
-    def resume(self):
-        """恢复"""
-        if self._state == BotState.PAUSED:
-            self._farm_timer.start()
-            self._friend_timer.start()
-            self._set_state(BotState.RUNNING)
-            logger.info('调度器已恢复')
-
-    def run_once(self):
-        """手动触发一次农场检查"""
-        logger.info('手动触发农场检查')
-        self.farm_check_triggered.emit()
-
-    def set_farm_interval(self, seconds: int):
-        """动态调整农场检查间隔（秒）"""
-        ms = max(3000, seconds * 1000)
-        self._farm_timer.setInterval(ms)
-        self._next_farm_check = time.time() + seconds
-        if seconds >= 60:
-            logger.info(f'农场检查间隔调整为 {seconds // 60}分{seconds % 60}秒')
-        else:
-            logger.info(f'农场检查间隔调整为 {seconds}秒')
-
-    def _on_farm_timer(self):
-        if self._state not in (BotState.RUNNING,):
-            return
-        self._next_farm_check = time.time() + self._farm_timer.interval() / 1000
-        self.farm_check_triggered.emit()
-
-    def _on_friend_timer(self):
-        if self._state not in (BotState.RUNNING,):
-            return
-        self._next_friend_check = time.time() + self._friend_timer.interval() / 1000
-        self.friend_check_triggered.emit()
+        self.stats_updated.emit(self.get_stats())
 
     def record_action(self, action_type: str, count: int = 1):
-        """记录操作统计"""
         if action_type in self._stats:
             self._stats[action_type] += count
         self._stats['total_actions'] += count
         self.stats_updated.emit(self.get_stats())
 
     def get_stats(self) -> dict:
-        """获取统计数据"""
         elapsed = time.time() - self._start_time if self._start_time else 0
         hours = int(elapsed // 3600)
         minutes = int((elapsed % 3600) // 60)
@@ -162,6 +90,7 @@ class TaskScheduler(QObject):
     def reset_stats(self):
         for key in self._stats:
             self._stats[key] = 0
+        self.stats_updated.emit(self.get_stats())
 
     def force_state(self, state: BotState | str):
         target = state

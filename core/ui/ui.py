@@ -6,10 +6,10 @@ from typing import Callable
 
 from loguru import logger
 
-from core.nklite.base.button import Button
-from core.nklite.base.timer import Timer
-from core.nklite.handler.info_handler import InfoHandler
-from core.nklite.ui.page import *
+from core.base.button import Button
+from core.base.timer import Timer
+from core.handler.info_handler import InfoHandler
+from core.ui.page import *
 
 
 class UI(InfoHandler):
@@ -208,3 +208,5 @@ class UI(InfoHandler):
                     overall_timer.start()
                 if overall_timer.reached():
                     return True
+
+

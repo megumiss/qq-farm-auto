@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from core.nklite.base.step_result import StepResult
-from core.nklite.ui.assets import (
+from core.base.step_result import StepResult
+from core.ui.assets import (
     BTN_BUG,
     BTN_HARVEST,
     BTN_WATER,
@@ -39,3 +39,5 @@ class TaskFarmHarvest:
                 return StepResult.from_value('一键浇水')
 
         return StepResult()
+
+

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from core.nklite.base.step_result import StepResult
-from core.nklite.ui.assets import (
+from core.base.step_result import StepResult
+from core.ui.assets import (
     BTN_BATCH_SELL,
     BTN_CLOSE,
     BTN_CONFIRM,
@@ -54,3 +54,5 @@ class TaskFarmSell:
         self.ui.device.screenshot()
         self.ui.appear_then_click(BTN_CLOSE, offset=(30, 30), interval=0.2, threshold=0.8, static=False)
         self.ui.appear_then_click(BTN_CLOSE, offset=(30, 30), interval=0.2, threshold=0.8, static=False)
+
+

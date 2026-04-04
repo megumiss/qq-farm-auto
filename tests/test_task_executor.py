@@ -18,8 +18,8 @@ if "loguru" not in sys.modules:
 
     sys.modules["loguru"] = types.SimpleNamespace(logger=_DummyLogger())
 
-from core.task_executor import TaskExecutor
-from core.task_registry import TaskContext, TaskItem, TaskResult
+from core.engine.task_executor import TaskExecutor
+from core.engine.task_registry import TaskContext, TaskItem, TaskResult
 
 
 class TaskExecutorTests(unittest.TestCase):
@@ -121,3 +121,4 @@ class TaskExecutorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -24,7 +24,7 @@ def check_legacy_removed() -> None:
 
 
 def check_nklite_pages() -> None:
-    src = Path("core/nklite/ui/page.py").read_text(encoding="utf-8")
+    src = Path("core/ui/page.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
     links: set[tuple[str, str]] = set()
     for node in ast.walk(tree):
@@ -58,12 +58,12 @@ def check_nklite_pages() -> None:
 
 def check_nklite_tasks() -> None:
     task_files = [
-        "core/nklite/tasks/task_farm_harvest.py",
-        "core/nklite/tasks/task_farm_plant.py",
-        "core/nklite/tasks/task_farm_sell.py",
-        "core/nklite/tasks/task_farm_reward.py",
-        "core/nklite/tasks/task_farm_friend.py",
-        "core/nklite/tasks/task_farm_main.py",
+        "core/tasks/task_farm_harvest.py",
+        "core/tasks/task_farm_plant.py",
+        "core/tasks/task_farm_sell.py",
+        "core/tasks/task_farm_reward.py",
+        "core/tasks/task_farm_friend.py",
+        "core/tasks/task_farm_main.py",
     ]
     for rel in task_files:
         src = Path(rel).read_text(encoding="utf-8")
@@ -75,9 +75,9 @@ def check_nklite_tasks() -> None:
 
 
 def check_engine_tokens() -> None:
-    bot_engine = Path("core/bot_engine.py").read_text(encoding="utf-8")
+    bot_engine = Path("core/engine/bot_engine.py").read_text(encoding="utf-8")
 
-    task_main = Path("core/nklite/tasks/task_farm_main.py").read_text(encoding="utf-8")
+    task_main = Path("core/tasks/task_farm_main.py").read_text(encoding="utf-8")
     for token in ("detect_ms", "action_ms", "tick_ms", "task=farm_main page="):
         assert token in task_main, f"missing performance token: {token}"
 
@@ -96,3 +96,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+

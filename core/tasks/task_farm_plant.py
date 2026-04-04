@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from core.nklite.base.step_result import StepResult
-from core.nklite.ui.assets import LAND_EMPTY, LAND_EMPTY_2, LAND_EMPTY_3
+from core.base.step_result import StepResult
+from core.ui.assets import LAND_EMPTY, LAND_EMPTY_2, LAND_EMPTY_3
 
 
 class TaskFarmPlant:
@@ -26,3 +26,5 @@ class TaskFarmPlant:
             return StepResult()
         out = StepResult.from_value(self.engine.plant.plant_all(rect, self.engine._resolve_crop_name()))
         return out
+
+

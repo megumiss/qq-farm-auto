@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import traceback
 
-from core.nklite.base.button import Button
-from core.nklite.ui.assets import *
+from core.base.button import Button
+from core.ui.assets import *
 
 # nklite 项目约定：未知页面回主界面统一点击固定坐标 (270, 20)。
 GOTO_MAIN = Button(
@@ -78,3 +78,5 @@ page_wiki.link(button=BTN_CLOSE, destination=page_main)
 
 page_main.link(button=MAIN_GOTO_MENU, destination=page_menu)
 page_menu.link(button=MENU_GOTO_MAIN, destination=page_main)
+
+

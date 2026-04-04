@@ -32,7 +32,8 @@ class MONITORINFO(ctypes.Structure):
 class WindowManager:
     TARGET_CLIENT_WIDTH = 540
     TARGET_CLIENT_HEIGHT = 960
-    _NONCLIENT_JSON_PATH = Path(__file__).resolve().parent.parent / 'models' / 'window_nonclient_metrics.json'
+    _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+    _NONCLIENT_JSON_PATH = _PROJECT_ROOT / 'models' / 'nonclient_metrics.json'
     _MONITOR_DEFAULTTONEAREST = 2
     _SWP_NOZORDER = 0x0004
     _SWP_NOOWNERZORDER = 0x0200
@@ -64,7 +65,7 @@ class WindowManager:
             if isinstance(data, dict):
                 return data
         except Exception as e:
-            logger.warning(f'加载 nonclient 配置失败: {e}')
+            logger.warning(f'加载 nonclient 配置失败: {self._NONCLIENT_JSON_PATH}, {e}')
         return {}
 
     @staticmethod
@@ -608,3 +609,4 @@ class WindowManager:
     def refresh_window_info(self, title_keyword: str = 'QQ农场') -> WindowInfo | None:
         """刷新窗口位置信息"""
         return self.find_window(title_keyword)
+

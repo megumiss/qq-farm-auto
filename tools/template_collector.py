@@ -24,8 +24,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import cv2
 import numpy as np
 
-from core.screen_capture import ScreenCapture
-from core.window_manager import WindowManager
+from core.platform.screen_capture import ScreenCapture
+from core.platform.window_manager import WindowManager
 
 # 显示窗口的最大尺寸（适配屏幕）
 MAX_DISPLAY_WIDTH = 1280
@@ -217,3 +217,4 @@ class TemplateCollector:
 if __name__ == '__main__':
     collector = TemplateCollector()
     collector.run()
+

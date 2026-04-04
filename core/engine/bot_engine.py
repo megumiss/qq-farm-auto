@@ -26,31 +26,31 @@ from loguru import logger
 from PIL import Image as PILImage
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from core.action_executor import ActionExecutor
-from core.cv_detector import CVDetector, DetectResult
-from core.nklite.device import NKLiteDevice
-from core.nklite.ops import ExpandOps, FriendOps, PlantOps, PopupOps, TaskOps
-from core.nklite.tasks.task_farm_reward import TaskFarmReward
-from core.nklite.tasks.task_farm_main import TaskFarmMain
-from core.nklite.ui.page import (
+from core.platform.action_executor import ActionExecutor
+from core.vision.cv_detector import CVDetector, DetectResult
+from core.platform.device import NKLiteDevice
+from core.ops import ExpandOps, FriendOps, PlantOps, PopupOps, TaskOps
+from core.tasks.task_farm_reward import TaskFarmReward
+from core.tasks.task_farm_main import TaskFarmMain
+from core.ui.page import (
     GOTO_MAIN,
     page_friend,
     page_main,
     page_menu,
     page_shop,
 )
-from core.nklite.ui.ui import UI as NKLiteUI
-from core.screen_capture import ScreenCapture
-from core.task_executor import TaskExecutor
-from core.task_registry import (
+from core.ui.ui import UI as NKLiteUI
+from core.platform.screen_capture import ScreenCapture
+from core.engine.task_executor import TaskExecutor
+from core.engine.task_registry import (
     TaskContext,
     TaskItem,
     TaskResult,
     TaskSnapshot,
     build_default_tasks,
 )
-from core.task_scheduler import TaskScheduler
-from core.window_manager import WindowManager
+from core.engine.task_scheduler import TaskScheduler
+from core.platform.window_manager import WindowManager
 from models.config import AppConfig, PlantMode, TaskTriggerType
 from models.farm_state import Action, ActionType
 from models.game_data import get_best_crop_for_level
@@ -841,3 +841,7 @@ class BotEngine(QObject):
         result = {'success': True, 'actions_done': [], 'next_check_seconds': friend_interval}
         logger.info('好友巡查功能开发中...')
         return result
+
+
+
+

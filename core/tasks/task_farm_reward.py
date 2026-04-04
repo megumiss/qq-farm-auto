@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from core.nklite.base.step_result import StepResult
-from core.nklite.ui.assets import TASK_CHECK
+from core.base.step_result import StepResult
+from core.ui.assets import TASK_CHECK
 
 
 class TaskFarmReward:
@@ -19,3 +19,5 @@ class TaskFarmReward:
         self.engine._sleep_interruptible(0.6)
         out = StepResult.from_value(self.engine.task._handle_task_result(rect))
         return out
+
+
