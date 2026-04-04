@@ -15,13 +15,13 @@ BTN_EXPAND_CONFIRM = Button(area=(0, 0, 133, 41), color=(165, 191, 23), button=(
 BTN_EXPAND_DIRECT_CONFIRM = Button(area=(0, 0, 200, 66), color=(187, 202, 64), button=(0, 0, 200, 66), file='templates/btn/btn_expand_direct_confirm.png', name='btn_expand_direct_confirm')
 BTN_FERTILIZE_POPUP = Button(area=(0, 0, 63, 55), color=(199, 152, 86), button=(0, 0, 63, 55), file='templates/btn/btn_fertilize_popup.png', name='btn_fertilize_popup')
 BTN_FRIEND_HELP = Button(area=(0, 0, 162, 73), color=(224, 221, 180), button=(0, 0, 162, 73), file='templates/btn/btn_friend_help.png', name='btn_friend_help')  # 好友求助
-BTN_HARVEST = Button(area=(0, 0, 58, 60), color=(205, 158, 113), button=(0, 0, 58, 60), file='templates/btn/btn_harvest.png', name='btn_harvest')  # 一键收获
+BTN_HARVEST = Button(area=(246, 688, 287, 720), color=(221, 169, 139), button=(246, 688, 287, 720), file='templates/btn/btn_harvest.png', name='btn_harvest')  # 一键收获
 BTN_HOME = Button(area=(0, 0, 78, 74), color=(155, 133, 67), button=(0, 0, 78, 74), file='templates/btn/btn_home.png', name='btn_home')  # 回家
+BTN_MATURE = Button(area=(261, 457, 278, 479), color=(201, 181, 78), button=(261, 457, 278, 479), file='templates/btn/btn_mature.png', name='btn_mature')
 BTN_SELL = Button(area=(0, 0, 137, 43), color=(235, 179, 26), button=(0, 0, 137, 43), file='templates/btn/btn_sell.png', name='btn_sell')
 BTN_WATER = Button(area=(160, 683, 200, 717), color=(167, 157, 156), button=(160, 683, 200, 717), file='templates/btn/btn_water.png', name='btn_water')  # 一键浇水
 BTN_WEED = Button(area=(246, 683, 286, 717), color=(161, 158, 110), button=(246, 683, 286, 717), file='templates/btn/btn_weed.png', name='btn_weed')  # 一键除草
 FRIEND_CHECK = Button(area=(241, 69, 299, 98), color=(225, 186, 159), button=(241, 69, 299, 98), file='templates/ui/friend_check.png', name='friend_check')
-ICON_MATURE = Button(area=(0, 0, 36, 37), color=(195, 205, 100), button=(0, 0, 36, 37), file='templates/icon/icon_mature.png', name='icon_mature')  # 成熟图标
 LAND_EMPTY = Button(area=(0, 0, 30, 25), color=(183, 135, 77), button=(0, 0, 30, 25), file='templates/land/land_empty.png', name='land_empty')  # 空地
 LAND_EMPTY_2 = Button(area=(0, 0, 47, 23), color=(186, 139, 79), button=(0, 0, 47, 23), file='templates/land/land_empty_2.png', name='land_empty_2')  # 空地2
 LAND_EMPTY_3 = Button(area=(0, 0, 33, 26), color=(184, 137, 78), button=(0, 0, 33, 26), file='templates/land/land_empty_3.png', name='land_empty_3')  # 空地3
@@ -59,11 +59,11 @@ ASSET_NAME_TO_CONST = {
     'btn_friend_help': BTN_FRIEND_HELP,
     'btn_harvest': BTN_HARVEST,
     'btn_home': BTN_HOME,
+    'btn_mature': BTN_MATURE,
     'btn_sell': BTN_SELL,
     'btn_water': BTN_WATER,
     'btn_weed': BTN_WEED,
     'friend_check': FRIEND_CHECK,
-    'icon_mature': ICON_MATURE,
     'land_empty': LAND_EMPTY,
     'land_empty_2': LAND_EMPTY_2,
     'land_empty_3': LAND_EMPTY_3,

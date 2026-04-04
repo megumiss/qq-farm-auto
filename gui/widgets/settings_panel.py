@@ -2,10 +2,8 @@
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QFormLayout,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -68,38 +66,6 @@ class SettingsPanel(QWidget):
         plant_group.setLayout(pf)
         layout.addWidget(plant_group)
 
-        # ===== 功能开关 =====
-        feat_group = QGroupBox('功能')
-        grid = QGridLayout()
-        grid.setSpacing(6)
-        grid.setContentsMargins(8, 4, 8, 4)
-        self._cb_harvest = QCheckBox('收获')
-        self._cb_plant = QCheckBox('播种')
-        self._cb_water = QCheckBox('浇水')
-        self._cb_weed = QCheckBox('除草')
-        self._cb_bug = QCheckBox('除虫')
-        self._cb_sell = QCheckBox('出售')
-        self._cb_steal = QCheckBox('偷菜')
-        self._cb_help = QCheckBox('帮忙')
-        self._cb_task = QCheckBox('任务')
-        self._cb_upgrade = QCheckBox('扩建')
-        cbs = [
-            self._cb_harvest,
-            self._cb_plant,
-            self._cb_water,
-            self._cb_weed,
-            self._cb_bug,
-            self._cb_sell,
-            self._cb_steal,
-            self._cb_help,
-            self._cb_task,
-            self._cb_upgrade,
-        ]
-        for i, cb in enumerate(cbs):
-            grid.addWidget(cb, i // 5, i % 5)
-        feat_group.setLayout(grid)
-        layout.addWidget(feat_group)
-
         # ===== 其他 =====
         misc_group = QGroupBox('其他')
         mf = QFormLayout()
@@ -119,21 +85,6 @@ class SettingsPanel(QWidget):
         self._window_position.addItem('左下', WindowPosition.LEFT_BOTTOM.value)
         self._window_position.addItem('右下', WindowPosition.RIGHT_BOTTOM.value)
         mf.addRow('窗口位置:', self._window_position)
-        row_sched = QHBoxLayout()
-        self._farm_interval = QSpinBox()
-        self._farm_interval.setRange(1, 120)
-        self._farm_interval.setSuffix('分')
-        self._farm_interval.setFixedWidth(80)
-        row_sched.addWidget(QLabel('农场'))
-        row_sched.addWidget(self._farm_interval)
-        self._friend_interval = QSpinBox()
-        self._friend_interval.setRange(5, 180)
-        self._friend_interval.setSuffix('分')
-        self._friend_interval.setFixedWidth(80)
-        row_sched.addWidget(QLabel('好友'))
-        row_sched.addWidget(self._friend_interval)
-        row_sched.addStretch()
-        mf.addRow('检查间隔:', row_sched)
         misc_group.setLayout(mf)
         layout.addWidget(misc_group)
 
@@ -146,21 +97,6 @@ class SettingsPanel(QWidget):
         self._window_platform.currentIndexChanged.connect(self._auto_save)
         self._window_keyword.editingFinished.connect(self._auto_save)
         self._window_position.currentIndexChanged.connect(self._auto_save)
-        self._farm_interval.valueChanged.connect(self._auto_save)
-        self._friend_interval.valueChanged.connect(self._auto_save)
-        for cb in (
-            self._cb_harvest,
-            self._cb_plant,
-            self._cb_water,
-            self._cb_weed,
-            self._cb_bug,
-            self._cb_sell,
-            self._cb_steal,
-            self._cb_help,
-            self._cb_task,
-            self._cb_upgrade,
-        ):
-            cb.toggled.connect(self._auto_save)
 
     def _auto_save(self):
         if self._loading:
@@ -175,18 +111,6 @@ class SettingsPanel(QWidget):
         c.window_title_keyword = self._window_keyword.text().strip()
         c.planting.window_position = WindowPosition(self._window_position.currentData())
         c.executor.enabled = True
-        c.schedule.farm_check_minutes = self._farm_interval.value()
-        c.schedule.friend_check_minutes = self._friend_interval.value()
-        c.features.auto_harvest = self._cb_harvest.isChecked()
-        c.features.auto_plant = self._cb_plant.isChecked()
-        c.features.auto_water = self._cb_water.isChecked()
-        c.features.auto_weed = self._cb_weed.isChecked()
-        c.features.auto_bug = self._cb_bug.isChecked()
-        c.features.auto_sell = self._cb_sell.isChecked()
-        c.features.auto_steal = self._cb_steal.isChecked()
-        c.features.auto_help = self._cb_help.isChecked()
-        c.features.auto_task = self._cb_task.isChecked()
-        c.features.auto_upgrade = self._cb_upgrade.isChecked()
         c.save()
         self.config_changed.emit(c)
 
@@ -240,15 +164,3 @@ class SettingsPanel(QWidget):
             if self._window_position.itemData(i) == c.planting.window_position.value:
                 self._window_position.setCurrentIndex(i)
                 break
-        self._farm_interval.setValue(c.schedule.farm_check_minutes)
-        self._friend_interval.setValue(c.schedule.friend_check_minutes)
-        self._cb_harvest.setChecked(c.features.auto_harvest)
-        self._cb_plant.setChecked(c.features.auto_plant)
-        self._cb_water.setChecked(c.features.auto_water)
-        self._cb_weed.setChecked(c.features.auto_weed)
-        self._cb_bug.setChecked(c.features.auto_bug)
-        self._cb_sell.setChecked(c.features.auto_sell)
-        self._cb_steal.setChecked(c.features.auto_steal)
-        self._cb_help.setChecked(c.features.auto_help)
-        self._cb_task.setChecked(c.features.auto_task)
-        self._cb_upgrade.setChecked(c.features.auto_upgrade)

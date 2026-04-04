@@ -18,22 +18,22 @@ class TaskFarmHarvest:
         self.ui = ui
 
     def run(self, features) -> StepResult:
-        if features.get('auto_harvest', True):
+        if features.get('auto_harvest', False):
             if self.ui.appear_then_click(BTN_HARVEST, offset=(30, 30), interval=0.2, threshold=0.8, static=False):
                 self.engine._record_stat(ActionType.HARVEST)
                 return StepResult.from_value('一键收获')
 
-        if features.get('auto_weed', True):
+        if features.get('auto_weed', False):
             if self.ui.appear_then_click(BTN_WEED, offset=(30, 30), interval=0.2, threshold=0.8, static=False):
                 self.engine._record_stat(ActionType.WEED)
                 return StepResult.from_value('一键除草')
 
-        if features.get('auto_bug', True):
+        if features.get('auto_bug', False):
             if self.ui.appear_then_click(BTN_BUG, offset=(30, 30), interval=0.2, threshold=0.8, static=False):
                 self.engine._record_stat(ActionType.BUG)
                 return StepResult.from_value('一键除虫')
 
-        if features.get('auto_water', True):
+        if features.get('auto_water', False):
             if self.ui.appear_then_click(BTN_WATER, offset=(30, 30), interval=0.2, threshold=0.8, static=False):
                 self.engine._record_stat(ActionType.WATER)
                 return StepResult.from_value('一键浇水')

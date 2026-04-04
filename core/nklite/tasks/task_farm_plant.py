@@ -12,7 +12,7 @@ class TaskFarmPlant:
         self.ui = ui
 
     def run(self, rect, features) -> StepResult:
-        if not features.get('auto_plant', True):
+        if not features.get('auto_plant', False):
             return StepResult()
 
         # seed 模板识别保持原有流程：由 plant.plant_all -> detect_seed_template 处理。

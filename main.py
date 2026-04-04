@@ -18,7 +18,7 @@ def main():
     setup_logger()
 
     # 加载配置
-    config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+    config_path = os.path.join(os.path.dirname(__file__), 'configs', 'config.json')
     config = AppConfig.load(config_path)
 
     # 启动GUI

@@ -28,10 +28,11 @@ from PyQt6.QtWidgets import (
 )
 
 from core.bot_engine import BotEngine
+from gui.widgets.feature_panel import FeaturePanel
 from gui.widgets.log_panel import LogPanel
-from gui.widgets.sell_panel import SellPanel
 from gui.widgets.settings_panel import SettingsPanel
 from gui.widgets.status_panel import StatusPanel
+from gui.widgets.task_panel import TaskPanel
 from models.config import AppConfig
 from utils.logger import get_log_signal
 
@@ -182,10 +183,12 @@ class MainWindow(QMainWindow):
         status_layout.addWidget(self._status_panel)
         status_layout.addWidget(_card(self._log_panel), 1)
         tabs.addTab(status_page, '状态')
+        self._task_panel = TaskPanel(self.config)
+        tabs.addTab(self._task_panel, '任务调度')
+        self._feature_panel = FeaturePanel(self.config)
+        tabs.addTab(self._feature_panel, '任务设置')
         self._settings_panel = SettingsPanel(self.config)
         tabs.addTab(self._settings_panel, '设置')
-        self._sell_panel = SellPanel(self.config)
-        tabs.addTab(self._sell_panel, '出售')
         right_layout.addWidget(tabs)
 
         root.addWidget(right, 1)
@@ -198,7 +201,8 @@ class MainWindow(QMainWindow):
         self.engine.stats_updated.connect(self._status_panel.update_stats)
         get_log_signal().new_log.connect(self._log_panel.append_log)
         self._settings_panel.config_changed.connect(self._on_config_changed)
-        self._sell_panel.config_changed.connect(self._on_config_changed)
+        self._task_panel.config_changed.connect(self._on_config_changed)
+        self._feature_panel.config_changed.connect(self._on_config_changed)
 
     def _update_screenshot(self, image: Image.Image):
         try:

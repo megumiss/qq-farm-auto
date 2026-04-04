@@ -12,7 +12,7 @@ class TaskFarmFriend:
         self.ui = ui
 
     def run(self, rect, features) -> StepResult:
-        if not features.get('auto_help', True):
+        if not features.get('auto_help', False):
             return StepResult()
         if not self.ui.appear_then_click(BTN_FRIEND_HELP, offset=(30, 30), interval=0.2, threshold=0.8, static=False):
             return StepResult()

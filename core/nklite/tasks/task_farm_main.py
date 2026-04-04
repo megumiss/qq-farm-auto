@@ -37,7 +37,7 @@ class TaskFarmMain:
             result['message'] = '停止中'
             return result
 
-        features = self.engine.config.features.model_dump()
+        features = self.engine.get_task_features('farm_main')
         rect = self.engine._prepare_window()
         if not rect:
             result['message'] = '窗口未找到'
@@ -46,6 +46,10 @@ class TaskFarmMain:
 
         self.engine._clear_screen(rect, session_id)
         self.ui.ui_ensure(page_main, confirm_wait=0.5)
+
+        patrol_actions = self._run_self_farm_patrol(rect=rect, features=features, session_id=session_id)
+        if patrol_actions:
+            result['actions_done'].extend(patrol_actions)
 
         idle_rounds = 0
         max_idle = 3
@@ -145,7 +149,7 @@ class TaskFarmMain:
 
         has_planted = any('播种' in a for a in result.get('actions_done', []))
         if has_planted:
-            interval = self.engine.config.schedule.farm_check_minutes * 60
+            interval = max(1, int(self.engine.config.tasks.farm_main.interval_seconds))
             result['next_check_seconds'] = interval
         else:
             result['next_check_seconds'] = 30
@@ -160,15 +164,11 @@ class TaskFarmMain:
         features: dict,
         sold_this_round: bool,
     ) -> tuple[StepResult, bool]:
-        out = self.task_harvest.run(features=features)
-        if out.action:
-            return out, sold_this_round
-
         out = self.task_plant.run(rect=rect, features=features)
         if out.action:
             return out, sold_this_round
 
-        if features.get('auto_upgrade', True):
+        if features.get('auto_upgrade', False):
             cv_image = self.ui.device.image
             cur = self.engine._augment_detections(cv_image, [], ['btn_expand']) if cv_image is not None else []
             out = StepResult.from_value(self.engine.expand.try_expand(rect, cur))
@@ -185,6 +185,49 @@ class TaskFarmMain:
 
         out = self.task_friend.run(rect=rect, features=features)
         return out, sold_this_round
+
+    def _run_self_farm_patrol(
+        self,
+        rect: tuple[int, int, int, int],
+        features: dict,
+        session_id: int | None,
+    ) -> list[str]:
+        """自家农场巡查阶段：收获/除草/除虫/浇水，独立于主流程分发。"""
+        actions: list[str] = []
+        max_rounds = 8
+
+        for _ in range(max_rounds):
+            if self.engine._is_cancel_requested(session_id):
+                break
+
+            cv_image, _ = self.engine._capture_frame(rect, save=False)
+            if cv_image is None:
+                break
+            self.ui.device.set_image(cv_image)
+
+            if self.ui.ui_additional():
+                actions.append('处理弹窗')
+                if not self.engine._sleep_interruptible(0.2, session_id):
+                    break
+                continue
+
+            page = self.ui.ui_get_current_page(skip_first_screenshot=True, timeout=0.9)
+            if page != page_main:
+                if self.ui.ui_goto(page_main, confirm_wait=0.4, skip_first_screenshot=True):
+                    actions.append('导航回主界面')
+                    if not self.engine._sleep_interruptible(0.2, session_id):
+                        break
+                    continue
+                break
+
+            out = self.task_harvest.run(features=features)
+            if not out.action:
+                break
+            actions.extend(out.actions)
+            if not self.engine._sleep_interruptible(0.2, session_id):
+                break
+
+        return actions
 
     def _run_page_specific(self, page, rect: tuple[int, int, int, int]) -> StepResult:
         if page == page_friend:

@@ -12,7 +12,7 @@ class TaskFarmReward:
         self.ui = ui
 
     def run(self, rect, features) -> StepResult:
-        if not features.get('auto_task', True):
+        if not features.get('auto_task', False):
             return StepResult()
         if not self.ui.appear_then_click(TASK_CHECK, offset=(30, 30), interval=0.2, threshold=0.8, static=False):
             return StepResult()

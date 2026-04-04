@@ -18,7 +18,7 @@
 
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import cv2
 import numpy as np
@@ -30,6 +30,7 @@ from core.action_executor import ActionExecutor
 from core.cv_detector import CVDetector, DetectResult
 from core.nklite.device import NKLiteDevice
 from core.nklite.ops import ExpandOps, FriendOps, PlantOps, PopupOps, TaskOps
+from core.nklite.tasks.task_farm_reward import TaskFarmReward
 from core.nklite.tasks.task_farm_main import TaskFarmMain
 from core.nklite.ui.page import (
     GOTO_MAIN,
@@ -50,7 +51,7 @@ from core.task_registry import (
 )
 from core.task_scheduler import TaskScheduler
 from core.window_manager import WindowManager
-from models.config import AppConfig, PlantMode
+from models.config import AppConfig, PlantMode, TaskTriggerType
 from models.farm_state import Action, ActionType
 from models.game_data import get_best_crop_for_level
 
@@ -102,10 +103,54 @@ class BotEngine(QObject):
         return bool(self._task_executor and self._task_executor.is_running())
 
     @staticmethod
+    def _seconds_to_next_daily(daily_time: str, now: datetime | None = None) -> int:
+        current = now or datetime.now()
+        text = str(daily_time or '04:00')
+        try:
+            hour = int(text[:2])
+            minute = int(text[3:5])
+        except Exception:
+            hour, minute = 4, 0
+        target = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if target <= current:
+            target = target + timedelta(days=1)
+        return max(1, int((target - current).total_seconds()))
+
+    @staticmethod
     def _task_next_ts(item: TaskItem | None) -> float:
         if not item or not item.enabled:
             return 0.0
         return item.next_run.timestamp()
+
+    def _task_seconds_by_trigger(self, task_name: str, now: datetime | None = None) -> int:
+        current = now or datetime.now()
+        tasks_cfg = self.config.tasks
+        cfg = getattr(tasks_cfg, task_name, None)
+        if cfg is None:
+            return int(self.config.executor.default_success_interval)
+        if cfg.trigger == TaskTriggerType.DAILY:
+            return self._seconds_to_next_daily(cfg.daily_time, current)
+        return max(1, int(cfg.interval_seconds))
+
+    def get_task_features(self, task_name: str) -> dict[str, bool]:
+        cfg = getattr(self.config.tasks, task_name, None)
+        if cfg is None:
+            return {}
+        raw = getattr(cfg, 'features', {}) or {}
+        if not isinstance(raw, dict):
+            return {}
+        return {str(k): bool(v) for k, v in raw.items()}
+
+    def _merged_enabled_features(self) -> dict[str, bool]:
+        merged: dict[str, bool] = {}
+        task_names = list(type(self.config.tasks).model_fields.keys())
+        for task_name in task_names:
+            cfg = getattr(self.config.tasks, task_name, None)
+            if cfg is None or not bool(getattr(cfg, 'enabled', False)):
+                continue
+            for key, value in self.get_task_features(task_name).items():
+                merged[key] = bool(merged.get(key, False) or bool(value))
+        return merged
 
     def _sync_executor_tasks_from_config(self):
         if not self._executor_tasks:
@@ -113,45 +158,85 @@ class BotEngine(QObject):
         default_success = max(1, int(self.config.executor.default_success_interval))
         default_failure = max(1, int(self.config.executor.default_failure_interval))
         max_failures = max(1, int(self.config.executor.max_failures))
-        farm_success = max(default_success, int(self.config.schedule.farm_check_minutes) * 60)
-        friend_success = max(default_success, int(self.config.schedule.friend_check_minutes) * 60)
-        friend_enabled = bool(self.config.features.auto_help or self.config.features.auto_steal)
+        now = datetime.now()
+
+        farm_cfg = self.config.tasks.farm_main
+        friend_cfg = self.config.tasks.friend
+        share_cfg = self.config.tasks.share
+
+        farm_enabled = bool(farm_cfg.enabled)
+        friend_enabled = bool(friend_cfg.enabled)
+        share_enabled = bool(share_cfg.enabled)
+
+        farm_success = max(default_success, self._task_seconds_by_trigger('farm_main', now))
+        friend_success = max(default_success, self._task_seconds_by_trigger('friend', now))
+        share_success = max(default_success, self._task_seconds_by_trigger('share', now))
+        farm_failure = max(default_failure, int(farm_cfg.failure_interval_seconds))
+        friend_failure = max(default_failure, int(friend_cfg.failure_interval_seconds))
+        share_failure = max(default_failure, int(share_cfg.failure_interval_seconds))
+
+        share_next_run = (
+            now + timedelta(seconds=self._task_seconds_by_trigger('share', now))
+            if share_cfg.trigger == TaskTriggerType.DAILY
+            else now
+        )
 
         if self._task_executor:
             self._task_executor.set_empty_queue_policy(self.config.executor.empty_queue_policy)
             self._task_executor.update_task(
                 'farm_main',
-                enabled=True,
+                enabled=farm_enabled,
                 success_interval=farm_success,
-                failure_interval=default_failure,
+                failure_interval=farm_failure,
                 max_failures=max_failures,
             )
             self._task_executor.update_task(
                 'friend',
                 enabled=friend_enabled,
                 success_interval=friend_success,
-                failure_interval=max(default_failure, 60),
+                failure_interval=friend_failure,
                 max_failures=max_failures,
+            )
+            self._task_executor.update_task(
+                'share',
+                enabled=share_enabled,
+                success_interval=share_success,
+                failure_interval=share_failure,
+                max_failures=max_failures,
+                next_run=share_next_run,
             )
             if friend_enabled:
                 self._task_executor.task_call('friend', force_call=False)
+            if share_enabled and share_cfg.trigger == TaskTriggerType.INTERVAL:
+                self._task_executor.task_call('share', force_call=False)
             return
 
         farm_item = self._executor_tasks.get('farm_main')
         if farm_item:
-            farm_item.enabled = True
+            farm_item.enabled = farm_enabled
             farm_item.success_interval = farm_success
-            farm_item.failure_interval = default_failure
+            farm_item.failure_interval = farm_failure
             farm_item.max_failures = max_failures
 
         friend_item = self._executor_tasks.get('friend')
         if friend_item:
             friend_item.enabled = friend_enabled
             friend_item.success_interval = friend_success
-            friend_item.failure_interval = max(default_failure, 60)
+            friend_item.failure_interval = friend_failure
             friend_item.max_failures = max_failures
-            if friend_enabled and friend_item.next_run < datetime.now():
-                friend_item.next_run = datetime.now()
+            if friend_enabled and friend_item.next_run < now:
+                friend_item.next_run = now
+
+        share_item = self._executor_tasks.get('share')
+        if share_item:
+            share_item.enabled = share_enabled
+            share_item.success_interval = share_success
+            share_item.failure_interval = share_failure
+            share_item.max_failures = max_failures
+            if share_cfg.trigger == TaskTriggerType.DAILY:
+                share_item.next_run = share_next_run
+            elif share_item.next_run < now:
+                share_item.next_run = now
 
     def _init_executor(self):
         self._executor_tasks = build_default_tasks(self.config)
@@ -162,6 +247,7 @@ class BotEngine(QObject):
             runners={
                 'farm_main': self._run_task_farm_main,
                 'friend': self._run_task_friend,
+                'share': self._run_task_share,
             },
             empty_queue_policy=self.config.executor.empty_queue_policy,
             on_snapshot=self._on_executor_snapshot,
@@ -185,6 +271,16 @@ class BotEngine(QObject):
     def _run_task_friend(self, _ctx: TaskContext) -> TaskResult:
         payload = self.check_friends(self._session_id)
         return TaskResult.from_legacy_dict(payload)
+
+    def _run_task_share(self, _ctx: TaskContext) -> TaskResult:
+        payload = self.check_share(self._session_id)
+        result = TaskResult.from_legacy_dict(payload)
+        cfg = self.config.tasks.share
+        if cfg.trigger == TaskTriggerType.DAILY:
+            result.next_run_seconds = self._seconds_to_next_daily(cfg.daily_time)
+        elif result.next_run_seconds is None:
+            result.next_run_seconds = max(1, int(cfg.interval_seconds))
+        return result
 
     def _on_executor_snapshot(self, snapshot: TaskSnapshot):
         if not self._accept_executor_events:
@@ -657,23 +753,23 @@ class BotEngine(QObject):
         ]
 
     def _main_templates_for_tick(self) -> list[str]:
-        features = self.config.features.model_dump()
+        features = self._merged_enabled_features()
         names = set(self._scene_core_templates())
-        if features.get('auto_harvest', True):
+        if features.get('auto_harvest', False):
             names.add('btn_harvest')
-        if features.get('auto_weed', True):
+        if features.get('auto_weed', False):
             names.add('btn_weed')
-        if features.get('auto_bug', True):
+        if features.get('auto_bug', False):
             names.add('btn_bug')
-        if features.get('auto_water', True):
+        if features.get('auto_water', False):
             names.add('btn_water')
-        if features.get('auto_upgrade', True):
+        if features.get('auto_upgrade', False):
             names.add('btn_expand')
-        if features.get('auto_task', True):
+        if features.get('auto_task', False):
             names.add('btn_task')
-        if features.get('auto_help', True):
+        if features.get('auto_help', False):
             names.add('btn_friend_help')
-        if features.get('auto_sell', True):
+        if features.get('auto_sell', False):
             names.update({'btn_warehouse', 'btn_batch_sell'})
         return sorted(names)
 
@@ -710,8 +806,36 @@ class BotEngine(QObject):
             'message': 'nklite 农场任务未初始化',
         }
 
+    def check_share(self, session_id: int | None = None) -> dict:
+        share_cfg = self.config.tasks.share
+        default_next = max(1, int(share_cfg.interval_seconds))
+        if share_cfg.trigger == TaskTriggerType.DAILY:
+            default_next = self._seconds_to_next_daily(share_cfg.daily_time)
+
+        if self._is_cancel_requested(session_id):
+            return {'success': False, 'actions_done': [], 'next_check_seconds': default_next, 'message': '停止中'}
+        if not self.nk_ui:
+            return {'success': False, 'actions_done': [], 'next_check_seconds': default_next, 'message': 'UI未初始化'}
+
+        rect = self._prepare_window()
+        if not rect:
+            return {'success': False, 'actions_done': [], 'next_check_seconds': default_next, 'message': '窗口未找到'}
+        if self.nk_device:
+            self.nk_device.set_rect(rect)
+
+        self._clear_screen(rect, session_id)
+        self.nk_ui.ui_ensure(page_main, confirm_wait=0.5)
+
+        reward = TaskFarmReward(engine=self, ui=self.nk_ui)
+        out = reward.run(rect=rect, features=self.get_task_features('share'))
+        return {
+            'success': True,
+            'actions_done': list(out.actions),
+            'next_check_seconds': default_next,
+        }
+
     def check_friends(self, session_id: int | None = None) -> dict:
-        friend_interval = max(60, int(self.config.schedule.friend_check_minutes) * 60)
+        friend_interval = max(1, int(self.config.tasks.friend.interval_seconds))
         if self._is_cancel_requested(session_id):
             return {'success': False, 'actions_done': [], 'next_check_seconds': friend_interval, 'message': '停止中'}
         result = {'success': True, 'actions_done': [], 'next_check_seconds': friend_interval}

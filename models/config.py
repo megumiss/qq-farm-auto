@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from enum import Enum
 
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
@@ -29,21 +30,6 @@ class WindowPosition(str, Enum):
 class WindowPlatform(str, Enum):
     QQ = 'qq'
     WECHAT = 'wechat'
-
-
-class FeaturesConfig(BaseModel):
-    auto_harvest: bool = True
-    auto_plant: bool = True
-    auto_weed: bool = True
-    auto_water: bool = True
-    auto_bug: bool = True
-    auto_fertilize: bool = False
-    auto_sell: bool = True
-    auto_steal: bool = False
-    auto_help: bool = True
-    auto_bad: bool = False
-    auto_task: bool = True
-    auto_upgrade: bool = True
 
 
 class SellConfig(BaseModel):
@@ -74,6 +60,97 @@ class ScheduleConfig(BaseModel):
     task_check_minutes: int = 60
 
 
+class TaskTriggerType(str, Enum):
+    INTERVAL = 'interval'
+    DAILY = 'daily'
+
+
+class TaskScheduleItemConfig(BaseModel):
+    enabled: bool = True
+    trigger: TaskTriggerType = TaskTriggerType.INTERVAL
+    interval_seconds: int = 1800
+    daily_time: str = '04:00'
+    failure_interval_seconds: int = 60
+    features: dict[str, bool] = Field(default_factory=dict)
+
+    @field_validator('interval_seconds', mode='before')
+    @classmethod
+    def _normalize_interval(cls, value):
+        return max(1, int(value))
+
+    @field_validator('failure_interval_seconds', mode='before')
+    @classmethod
+    def _normalize_failure_interval(cls, value):
+        return max(1, int(value))
+
+    @field_validator('daily_time', mode='before')
+    @classmethod
+    def _normalize_daily_time(cls, value):
+        text = str(value or '04:00').strip()
+        if not re.match(r'^\d{2}:\d{2}$', text):
+            return '04:00'
+        hour = int(text[:2])
+        minute = int(text[3:5])
+        if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+            return '04:00'
+        return f'{hour:02d}:{minute:02d}'
+
+    @field_validator('features', mode='before')
+    @classmethod
+    def _normalize_features(cls, value):
+        if not isinstance(value, dict):
+            return {}
+        return {str(k): bool(v) for k, v in value.items()}
+
+
+class TasksConfig(BaseModel):
+    farm_main: TaskScheduleItemConfig = Field(
+        default_factory=lambda: TaskScheduleItemConfig(
+            enabled=True,
+            trigger=TaskTriggerType.INTERVAL,
+            interval_seconds=60,
+            daily_time='04:00',
+            failure_interval_seconds=30,
+            features={
+                'auto_harvest': True,
+                'auto_plant': True,
+                'auto_weed': True,
+                'auto_water': True,
+                'auto_bug': True,
+                'auto_sell': True,
+                'auto_upgrade': True,
+                'auto_fertilize': False,
+                'auto_bad': False,
+            },
+        )
+    )
+    friend: TaskScheduleItemConfig = Field(
+        default_factory=lambda: TaskScheduleItemConfig(
+            enabled=True,
+            trigger=TaskTriggerType.INTERVAL,
+            interval_seconds=1800,
+            daily_time='04:00',
+            failure_interval_seconds=60,
+            features={
+                'auto_help': True,
+                'auto_steal': False,
+            },
+        )
+    )
+    share: TaskScheduleItemConfig = Field(
+        default_factory=lambda: TaskScheduleItemConfig(
+            enabled=True,
+            trigger=TaskTriggerType.DAILY,
+            interval_seconds=86400,
+            daily_time='04:00',
+            failure_interval_seconds=300,
+            features={
+                'auto_task': True,
+            },
+        )
+    )
+
+
 class ExecutorConfig(BaseModel):
     enabled: bool = True
     empty_queue_policy: str = 'stay'
@@ -100,28 +177,77 @@ class PlantingConfig(BaseModel):
 
 class AppConfig(BaseModel):
     window_title_keyword: str = 'QQ经典农场'
-    features: FeaturesConfig = Field(default_factory=FeaturesConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
     screenshot: ScreenshotConfig = Field(default_factory=ScreenshotConfig)
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
+    tasks: TasksConfig = Field(default_factory=TasksConfig)
     executor: ExecutorConfig = Field(default_factory=ExecutorConfig)
     planting: PlantingConfig = Field(default_factory=PlantingConfig)
     sell: SellConfig = Field(default_factory=SellConfig)
 
     _config_path: str = PrivateAttr(default='')
+    _template_path: str = PrivateAttr(default='')
+
+    @staticmethod
+    def _read_json_file(path: str) -> dict:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+        return {}
 
     @classmethod
-    def load(cls, path: str = 'config.json') -> 'AppConfig':
+    def _resolve_template_path(cls, config_path: str, template_path: str | None = None) -> str:
+        if template_path:
+            return str(template_path)
+        base_dir = os.path.dirname(os.path.abspath(config_path)) if config_path else os.getcwd()
+        parent_dir = os.path.dirname(base_dir)
+        candidates = [
+            os.path.join(base_dir, 'config.template.json'),
+            os.path.join(base_dir, 'configs', 'config.template.json'),
+            os.path.join(parent_dir, 'configs', 'config.template.json'),
+            os.path.join(parent_dir, 'config.template.json'),
+        ]
+        for item in candidates:
+            if os.path.exists(item):
+                return item
+        return ''
+
+    @classmethod
+    def _deep_merge_dict(cls, base: dict, override: dict) -> dict:
+        out = dict(base)
+        for key, value in (override or {}).items():
+            if key in out and isinstance(out[key], dict) and isinstance(value, dict):
+                out[key] = cls._deep_merge_dict(out[key], value)
+            else:
+                out[key] = value
+        return out
+
+    @classmethod
+    def load(cls, path: str = 'configs/config.json', template_path: str | None = None) -> 'AppConfig':
+        template_file = cls._resolve_template_path(path, template_path)
+        template_data: dict = {}
+        if template_file and os.path.exists(template_file):
+            try:
+                template_data = cls._read_json_file(template_file)
+            except Exception:
+                template_data = {}
+
         if os.path.exists(path):
-            with open(path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            user_data = cls._read_json_file(path)
+            data = cls._deep_merge_dict(template_data, user_data)
             config = cls(**data)
         else:
-            config = cls()
+            if template_data:
+                config = cls(**template_data)
+            else:
+                config = cls()
         config._config_path = path
+        config._template_path = template_file
         return config
 
     def save(self, path: str | None = None):
-        p = path or self._config_path or 'config.json'
+        p = path or self._config_path or 'configs/config.json'
+        os.makedirs(os.path.dirname(os.path.abspath(p)), exist_ok=True)
         with open(p, 'w', encoding='utf-8') as f:
             json.dump(self.model_dump(), f, ensure_ascii=False, indent=2)

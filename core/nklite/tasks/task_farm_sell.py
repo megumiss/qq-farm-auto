@@ -18,7 +18,7 @@ class TaskFarmSell:
         self.ui = ui
 
     def run(self, features, sold_this_round: bool) -> tuple[StepResult, bool]:
-        if sold_this_round or not features.get('auto_sell', True):
+        if sold_this_round or not features.get('auto_sell', False):
             return StepResult(), sold_this_round
 
         if not self.ui.appear_then_click(WAREHOUSE_CHECK, offset=(30, 30), interval=0.2, threshold=0.8, static=False):
