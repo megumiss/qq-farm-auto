@@ -2,11 +2,16 @@
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import cv2
 import numpy as np
 from loguru import logger
 from PIL import Image
+from utils.template_paths import (
+    normalize_template_platform,
+    template_scan_roots,
+)
 
 
 @dataclass
@@ -49,43 +54,123 @@ class CVDetector:
 
     SEED_DETECT_ROI: tuple[int, int, int, int] = (40, 500, 490, 920)
 
-    def __init__(self, templates_dir: str = 'templates'):
+    def __init__(self, templates_dir: str = 'templates', template_platform: str = 'qq'):
         """初始化对象并准备运行所需状态。"""
         self._templates_dir = templates_dir
+        self._template_platform = normalize_template_platform(template_platform)
         self._templates: dict[str, list[dict]] = {}  # category -> [{name, image, mask}]
         self._templates_by_name: dict[str, dict] = {}
         self._loaded = False
+        self._seed_templates_by_name: dict[str, dict] = {}
+        self._seed_loaded = False
         # 详细模板探测日志默认关闭；需要时可设置环境变量 QFARM_TEMPLATE_PROBE_LOG=1
         # self._probe_log_enabled = os.environ.get("QFARM_TEMPLATE_PROBE_LOG", "0") == "1"
 
-    def load_templates(self):
-        """加载所有模板图片"""
-        if not os.path.exists(self._templates_dir):
-            os.makedirs(self._templates_dir, exist_ok=True)
-            logger.warning(f'模板目录 {self._templates_dir} 为空，请先采集模板')
+    def set_template_platform(self, platform: str | None):
+        """设置模板平台；平台变化后会强制下次重新加载模板。"""
+        normalized = normalize_template_platform(platform)
+        if normalized == self._template_platform:
             return
-
+        self._template_platform = normalized
+        self._loaded = False
         self._templates = {}
         self._templates_by_name = {}
+        # seed 模板不跟平台，不需要重置 seed 缓存。
+
+    def load_seed_templates(self):
+        """仅加载 seed 模板（固定目录 `templates/qq/seed`，不做平台回退）。"""
+        base_root = Path(self._templates_dir)
+        if not base_root.is_absolute():
+            base_root = (Path(__file__).resolve().parents[2] / base_root).resolve()
+        seed_root = base_root / 'qq' / 'seed'
+        if not seed_root.exists():
+            seed_root.mkdir(parents=True, exist_ok=True)
+            logger.warning(f'seed 模板目录 {seed_root} 为空，请先采集 seed 模板')
+            self._seed_templates_by_name = {}
+            self._seed_loaded = True
+            return
+
+        out: dict[str, dict] = {}
         count = 0
+        for filepath in seed_root.rglob('*'):
+            if not filepath.is_file():
+                continue
+            if filepath.suffix.lower() not in {'.png', '.jpg', '.jpeg'}:
+                continue
+            template = cv2.imdecode(np.fromfile(str(filepath), dtype=np.uint8), cv2.IMREAD_UNCHANGED)
+            if template is None:
+                logger.warning(f'无法读取 seed 模板: {filepath}')
+                continue
+
+            name = filepath.stem
+            mask = None
+            if template.ndim == 3 and template.shape[2] == 4:
+                alpha = template[:, :, 3]
+                if not np.all(alpha == 255):
+                    mask = alpha
+                template = template[:, :, :3]
+            elif template.ndim == 2:
+                template = cv2.cvtColor(template, cv2.COLOR_GRAY2BGR)
+
+            out[name] = {
+                'name': name,
+                'image': template,
+                'gray': cv2.cvtColor(template, cv2.COLOR_BGR2GRAY),
+                'mask': mask,
+                'category': 'seed',
+            }
+            count += 1
+        self._seed_templates_by_name = out
+        self._seed_loaded = True
+        logger.info(f'已加载 {count} 个 seed 模板（固定目录，不按平台切换）')
+
+    def _iter_template_files(self, root: Path, *, is_legacy_root: bool):
+        """遍历模板文件，legacy 根目录会跳过平台子目录。"""
         ignored_top_dirs = {'__pycache__'}
-        for root, dirs, files in os.walk(self._templates_dir):
-            rel = os.path.relpath(root, self._templates_dir)
+        ignored_platform_dirs = {'qq', 'wechat'}
+        root_str = str(root)
+        for walk_root, dirs, files in os.walk(root_str):
+            rel = os.path.relpath(walk_root, root_str)
             if rel == '.':
-                dirs[:] = [d for d in dirs if d.lower() not in ignored_top_dirs]
+                blocked = set(ignored_top_dirs)
+                if is_legacy_root:
+                    blocked.update(ignored_platform_dirs)
+                dirs[:] = [d for d in dirs if d.lower() not in blocked]
             else:
                 top_dir = rel.split(os.sep)[0].lower()
                 if top_dir in ignored_top_dirs:
                     continue
+                if is_legacy_root and top_dir in ignored_platform_dirs:
+                    continue
                 dirs[:] = [d for d in dirs if d.lower() not in ignored_top_dirs]
 
             for filename in files:
-                if not filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-                    continue
+                if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                    yield Path(walk_root) / filename
 
-                filepath = os.path.join(root, filename)
+    def load_templates(self):
+        """加载所有模板图片（按平台优先，缺失回退 QQ）。"""
+        selected_platform = normalize_template_platform(self._template_platform)
+        roots = template_scan_roots(selected_platform, self._templates_dir)
+        if not roots:
+            logger.warning(f'模板目录 {self._templates_dir} 为空，请先采集模板')
+            return
+        if not any(root.exists() for root, _ in roots):
+            os.makedirs(str(roots[0][0]), exist_ok=True)
+            logger.warning(f'模板目录 {roots[0][0]} 为空，请先采集模板')
+            self._templates = {}
+            self._templates_by_name = {}
+            self._loaded = True
+            return
+
+        by_name: dict[str, dict] = {}
+        for root, is_legacy in roots:
+            if not root.exists():
+                continue
+            for filepath in self._iter_template_files(root, is_legacy_root=is_legacy):
+                filename = filepath.name
                 # cv2.imread 不支持中文路径，用 numpy 中转
-                template = cv2.imdecode(np.fromfile(filepath, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
+                template = cv2.imdecode(np.fromfile(str(filepath), dtype=np.uint8), cv2.IMREAD_UNCHANGED)
                 if template is None:
                     logger.warning(f'无法读取模板: {filepath}')
                     continue
@@ -107,22 +192,29 @@ class CVDetector:
                 elif template.ndim == 2:
                     template = cv2.cvtColor(template, cv2.COLOR_GRAY2BGR)
 
-                if category not in self._templates:
-                    self._templates[category] = []
-
-                tpl_payload = {
+                by_name[name] = {
                     'name': name,
                     'image': template,
                     'gray': cv2.cvtColor(template, cv2.COLOR_BGR2GRAY),
                     'mask': mask,
                     'category': category,
                 }
-                self._templates[category].append(tpl_payload)
-                self._templates_by_name[name] = tpl_payload
-                count += 1
+
+        self._templates = {}
+        self._templates_by_name = {}
+        for name in sorted(by_name.keys()):
+            payload = by_name[name]
+            category = payload['category']
+            if category not in self._templates:
+                self._templates[category] = []
+            self._templates[category].append(payload)
+            self._templates_by_name[name] = payload
 
         self._loaded = True
-        logger.info(f'已加载 {count} 个模板，分 {len(self._templates)} 个类别')
+        logger.info(
+            f'已加载 {len(self._templates_by_name)} 个模板，分 {len(self._templates)} 个类别，'
+            f'平台={selected_platform}（缺失回退qq）'
+        )
 
     def detect_all(self, screenshot: np.ndarray, threshold: float = 0.8) -> list[DetectResult]:
         """在截图中检测所有已加载的模板"""
@@ -290,8 +382,8 @@ class CVDetector:
         - 优先 0.75 缩放，只有首轮无命中才回退 0.70/0.80；
         - 模板含 alpha 时使用 mask，插值策略保持 NIKKE 对齐。
         """
-        if not self._loaded:
-            self.load_templates()
+        if not self._seed_loaded:
+            self.load_seed_templates()
 
         # 支持传入“作物名”或“完整模板名（seed_xxx）”两种形式。
         if crop_name_or_template.startswith('seed_'):
@@ -299,14 +391,7 @@ class CVDetector:
         else:
             template_name = f'seed_{crop_name_or_template}'
 
-        tpl = None
-        for templates in self._templates.values():
-            for item in templates:
-                if item['name'] == template_name:
-                    tpl = item
-                    break
-            if tpl is not None:
-                break
+        tpl = self._seed_templates_by_name.get(template_name)
 
         if tpl is None:
             self._log_template_probe(

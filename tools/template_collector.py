@@ -46,6 +46,7 @@ class TemplateCollector:
         self._button_rects: dict[str, tuple[int, int, int, int]] = {}
         self._pending_action: str | None = None
         self._canvas_aspect_ratio: float = 1.0
+        self._active_platform: str = 'qq'
 
     @staticmethod
     def _to_cv_bgr(image) -> np.ndarray:
@@ -72,10 +73,10 @@ class TemplateCollector:
         return True
 
     def _resolve_save_path(self, name: str) -> str:
-        """按模板名前缀计算默认保存路径。"""
+        """按当前平台与模板名前缀计算默认保存路径。"""
         prefix = (name.split('_')[0] if '_' in name else name).lower()
         subdir = prefix if prefix in self._known_prefixes else 'unknown'
-        save_dir = os.path.join(self.templates_dir, subdir)
+        save_dir = os.path.join(self.templates_dir, self._active_platform, subdir)
         os.makedirs(save_dir, exist_ok=True)
         return os.path.join(save_dir, f'{name}.png')
 
@@ -288,6 +289,7 @@ class TemplateCollector:
         print()
 
         platform = 'qq'
+        self._active_platform = platform
         self._original_image = self.capture_game_window(platform=platform)
         if self._original_image is None:
             return

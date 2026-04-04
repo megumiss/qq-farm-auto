@@ -1,26 +1,38 @@
-"""模板提取为 UI assets（排除 seed）。
+"""模板提取为 UI assets（排除 seed），按平台生成并回退默认平台。
 
-参考 NIKKE/dev_tools/button_extract.py 的思路：
-- 扫描模板目录
-- 提取 bbox/颜色（忽略 alpha，仅按 RGB 非黑像素取 bbox）
-- 支持覆盖文件：`xxx.AREA.png` / `xxx.COLOR.png` / `xxx.BUTTON.png`
-- 生成可直接 import 的 Button 常量文件
+对齐 NIKKE 逻辑：
+- 先生成默认平台（qq）
+- 其他平台（wechat）缺失时回退 qq 的 area/color/button/file
+- 最终 assets.py 中每个 Button 字段为平台字典
 """
 
 from __future__ import annotations
 
 import json
+import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
 import numpy as np
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.template_paths import (
+    DEFAULT_TEMPLATE_PLATFORM,
+    VALID_TEMPLATE_PLATFORMS,
+    normalize_template_platform,
+    template_scan_roots,
+)
+
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES_DIR = ROOT / 'templates'
 ALIAS_PATH = ROOT / 'configs' / 'button_aliases.json'
 OUTPUT_PATH = ROOT / 'core' / 'ui' / 'assets.py'
 OVERRIDE_SUFFIXES = {'AREA', 'COLOR', 'BUTTON'}
+SUPPORTED_PLATFORMS = [DEFAULT_TEMPLATE_PLATFORM] + sorted(
+    p for p in VALID_TEMPLATE_PLATFORMS if p != DEFAULT_TEMPLATE_PLATFORM
+)
 
 
 HEADER = """from core.base.button import Button
@@ -32,39 +44,45 @@ HEADER = """from core.base.button import Button
 
 @dataclass
 class Item:
-    """封装 `Item` 相关的数据与行为。"""
+    """单个按钮资源项（包含多平台字段）。"""
+
     name: str
-    file_rel: str
-    area: tuple[int, int, int, int]
-    color: tuple[int, int, int]
-    button: tuple[int, int, int, int]
+    area: dict[str, tuple[int, int, int, int]]
+    color: dict[str, tuple[int, int, int]]
+    button: dict[str, tuple[int, int, int, int]]
+    file_rel: dict[str, str]
     alias: str
 
 
 @dataclass
 class SourceBundle:
-    """封装 `SourceBundle` 相关的数据与行为。"""
+    """单平台单名称的模板来源（含 override）。"""
+
     base: Path | None = None
     area: Path | None = None
     color: Path | None = None
     button: Path | None = None
+    base_rel: str = ''
+    base_priority: int = -1
+    area_priority: int = -1
+    color_priority: int = -1
+    button_priority: int = -1
 
 
 def load_aliases() -> dict[str, str]:
-    """加载 `aliases` 数据。"""
+    """读取按钮别名配置。"""
+
     if not ALIAS_PATH.exists():
         return {}
     data = json.loads(ALIAS_PATH.read_text(encoding='utf-8'))
     if not isinstance(data, dict):
         return {}
-    out: dict[str, str] = {}
-    for key, value in data.items():
-        out[str(key)] = str(value)
-    return out
+    return {str(k): str(v) for k, v in data.items()}
 
 
 def extract_bbox_and_color(image_path: Path) -> tuple[tuple[int, int, int, int], tuple[int, int, int]]:
-    """执行 `extract bbox and color` 相关处理。"""
+    """提取非黑像素 bbox 与均值颜色（RGB）。"""
+
     img = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
     if img is None:
         return (0, 0, 1, 1), (128, 128, 128)
@@ -72,11 +90,10 @@ def extract_bbox_and_color(image_path: Path) -> tuple[tuple[int, int, int, int],
     if img.ndim == 2:
         bgr = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
     else:
-        # 对齐 NIKKE：忽略 alpha，仅按 RGB 是否非黑计算 bbox。
+        # 与 NIKKE 一致：忽略 alpha，仅按 RGB 非黑像素求 bbox
         bgr = img[:, :, :3]
 
     mask = np.any(bgr > 0, axis=2)
-
     ys, xs = np.where(mask)
     if len(xs) == 0 or len(ys) == 0:
         h, w = bgr.shape[:2]
@@ -97,7 +114,8 @@ def extract_bbox_and_color(image_path: Path) -> tuple[tuple[int, int, int, int],
 
 
 def image_wh(image_path: Path) -> tuple[int, int] | None:
-    """执行 `image wh` 相关处理。"""
+    """读取图片宽高。"""
+
     img = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
     if img is None:
         return None
@@ -106,7 +124,8 @@ def image_wh(image_path: Path) -> tuple[int, int] | None:
 
 
 def to_const_name(template_name: str) -> str:
-    """将 `const name` 转换为目标格式。"""
+    """模板名转常量名。"""
+
     if template_name.startswith('btn_'):
         return 'BTN_' + template_name[4:].upper()
     if template_name.startswith('icon_'):
@@ -117,19 +136,9 @@ def to_const_name(template_name: str) -> str:
     return safe
 
 
-def iter_template_files() -> list[Path]:
-    """遍历并返回 `template files` 列表。"""
-    out: list[Path] = []
-    for p in TEMPLATES_DIR.rglob('*.png'):
-        rel = p.relative_to(TEMPLATES_DIR).as_posix()
-        if rel.startswith('seed/'):
-            continue
-        out.append(p)
-    return sorted(out)
-
-
 def parse_template_name(path: Path) -> tuple[str, str]:
-    """解析 `template_name` 内容。"""
+    """解析模板名与 override 类型。"""
+
     stem = path.stem
     if '.' not in stem:
         return stem, 'BASE'
@@ -140,78 +149,165 @@ def parse_template_name(path: Path) -> tuple[str, str]:
     return stem, 'BASE'
 
 
-def collect_sources() -> dict[str, SourceBundle]:
-    """执行 `collect sources` 相关处理。"""
+def _iter_files_in_root(root: Path, *, is_legacy_root: bool):
+    """遍历指定根目录下模板文件。"""
+
+    ignored = {'__pycache__'}
+    platform_dirs = set(VALID_TEMPLATE_PLATFORMS)
+    root_str = str(root)
+    for walk_root, dirs, files in os.walk(root_str):
+        rel = os.path.relpath(walk_root, root_str)
+        if rel == '.':
+            blocked = set(ignored)
+            if is_legacy_root:
+                blocked.update(platform_dirs)
+            dirs[:] = [d for d in dirs if d.lower() not in blocked]
+        else:
+            top = rel.split(os.sep, 1)[0].lower()
+            if top in ignored:
+                continue
+            if is_legacy_root and top in platform_dirs:
+                continue
+            dirs[:] = [d for d in dirs if d.lower() not in ignored]
+
+        for filename in files:
+            if filename.lower().endswith('.png'):
+                yield Path(walk_root) / filename
+
+
+def collect_sources_for_platform(platform: str) -> dict[str, SourceBundle]:
+    """按平台收集模板来源，后扫描目录覆盖前扫描目录。"""
+
+    selected = normalize_template_platform(platform)
     bundles: dict[str, SourceBundle] = {}
-    for path in iter_template_files():
-        name, kind = parse_template_name(path)
-        bundle = bundles.setdefault(name, SourceBundle())
-        if kind == 'BASE':
-            if bundle.base is not None and bundle.base != path:
-                print(f'[button_extract] duplicate base ignored: {path}')
-            else:
-                bundle.base = path
+    roots = template_scan_roots(selected, str(TEMPLATES_DIR))
+    for priority, (root, is_legacy) in enumerate(roots, start=1):
+        root = Path(root)
+        if not root.exists():
             continue
-        key = kind.lower()
-        current = getattr(bundle, key)
-        if current is not None and current != path:
-            print(f'[button_extract] duplicate {kind} ignored: {path}')
-            continue
-        setattr(bundle, key, path)
+        for path in _iter_files_in_root(root, is_legacy_root=is_legacy):
+            rel = path.relative_to(TEMPLATES_DIR).as_posix()
+            if rel.startswith('seed/'):
+                continue
+            if rel.startswith('qq/seed/') or rel.startswith('wechat/seed/'):
+                continue
+
+            name, kind = parse_template_name(path)
+            bundle = bundles.setdefault(name, SourceBundle())
+            if kind == 'BASE':
+                if bundle.base is None or priority > bundle.base_priority:
+                    bundle.base = path
+                    bundle.base_rel = f'templates/{rel}'
+                    bundle.base_priority = int(priority)
+                continue
+
+            key = kind.lower()
+            priority_key = f'{key}_priority'
+            current = getattr(bundle, key)
+            current_priority = int(getattr(bundle, priority_key))
+            if current is None or priority > current_priority:
+                setattr(bundle, key, path)
+                setattr(bundle, priority_key, int(priority))
     return bundles
 
 
+def _extract_bundle_values(bundle: SourceBundle) -> tuple[tuple[int, int, int, int], tuple[int, int, int], tuple[int, int, int, int], str] | None:
+    """从 bundle 提取 area/color/button/file。"""
+
+    if bundle.base is None:
+        return None
+    rel = bundle.base_rel or bundle.base.relative_to(ROOT).as_posix()
+    area, color = extract_bbox_and_color(bundle.base)
+    button = area
+
+    if bundle.area is not None:
+        area, _ = extract_bbox_and_color(bundle.area)
+    if bundle.color is not None:
+        _, color = extract_bbox_and_color(bundle.color)
+    if bundle.button is not None:
+        button, _ = extract_bbox_and_color(bundle.button)
+    return area, color, button, rel
+
+
 def build_items() -> list[Item]:
-    """构建 `items` 结构。"""
+    """按默认平台生成资产清单，并补齐其他平台回退字段。"""
+
     alias_by_name = load_aliases()
-    bundles = collect_sources()
+    platform_bundles = {p: collect_sources_for_platform(p) for p in SUPPORTED_PLATFORMS}
+    default_bundles = platform_bundles[DEFAULT_TEMPLATE_PLATFORM]
+
     items: list[Item] = []
-    for name in sorted(bundles):
-        bundle = bundles[name]
-        if bundle.base is None:
+    for name in sorted(default_bundles.keys()):
+        default_values = _extract_bundle_values(default_bundles[name])
+        if default_values is None:
             print(f'[button_extract] missing base image, skipped: {name}')
             continue
+        def_area, def_color, def_button, def_file = default_values
 
-        rel = bundle.base.relative_to(ROOT).as_posix()
-        area, color = extract_bbox_and_color(bundle.base)
-        button = area
+        # 保留原有 full-frame 诊断提示
+        base_path = default_bundles[name].base
+        if base_path is not None:
+            size = image_wh(base_path)
+            if (
+                size is not None
+                and default_bundles[name].area is None
+                and default_bundles[name].button is None
+                and size[0] >= 300
+                and size[1] >= 500
+                and def_area == (0, 0, size[0], size[1])
+            ):
+                print(f'[button_extract] full-frame bbox: {name} (consider {name}.AREA.png / {name}.BUTTON.png)')
 
-        if bundle.area is not None:
-            area, _ = extract_bbox_and_color(bundle.area)
-        if bundle.color is not None:
-            _, color = extract_bbox_and_color(bundle.color)
-        if bundle.button is not None:
-            button, _ = extract_bbox_and_color(bundle.button)
+        area_map: dict[str, tuple[int, int, int, int]] = {}
+        color_map: dict[str, tuple[int, int, int]] = {}
+        button_map: dict[str, tuple[int, int, int, int]] = {}
+        file_map: dict[str, str] = {}
 
-        size = image_wh(bundle.base)
-        if (
-            size is not None
-            and bundle.area is None
-            and bundle.button is None
-            and size[0] >= 300
-            and size[1] >= 500
-            and area == (0, 0, size[0], size[1])
-        ):
-            print(f'[button_extract] full-frame bbox: {name} (consider {name}.AREA.png / {name}.BUTTON.png)')
+        for platform in SUPPORTED_PLATFORMS:
+            values = None
+            bundle = platform_bundles.get(platform, {}).get(name)
+            if bundle is not None:
+                values = _extract_bundle_values(bundle)
+            if values is None:
+                values = (def_area, def_color, def_button, def_file)
+
+            area_map[platform] = values[0]
+            color_map[platform] = values[1]
+            button_map[platform] = values[2]
+            file_map[platform] = values[3]
 
         alias = str(alias_by_name.get(name, '')).strip()
         items.append(
             Item(
                 name=name,
-                file_rel=rel,
-                area=area,
-                color=color,
-                button=button,
+                area=area_map,
+                color=color_map,
+                button=button_map,
+                file_rel=file_map,
                 alias=alias,
             )
         )
     return items
 
 
+def _render_value_dict(mapping: dict[str, object], *, as_string: bool = False) -> str:
+    """渲染平台字典为稳定文本。"""
+
+    parts: list[str] = []
+    for platform in SUPPORTED_PLATFORMS:
+        value = mapping[platform]
+        if as_string:
+            parts.append(f"'{platform}': '{value}'")
+        else:
+            parts.append(f"'{platform}': {value}")
+    return '{' + ', '.join(parts) + '}'
+
+
 def render(items: list[Item]) -> str:
-    """执行 `render` 相关处理。"""
+    """渲染 assets.py 文本。"""
+
     lines = [HEADER.rstrip(), '']
-    rendered = {}
+    rendered: dict[str, str] = {}
     for item in items:
         const_name = to_const_name(item.name)
         base = const_name
@@ -221,12 +317,15 @@ def render(items: list[Item]) -> str:
             idx += 1
         rendered[const_name] = item.name
 
+        area_expr = _render_value_dict(item.area)
+        color_expr = _render_value_dict(item.color)
+        button_expr = _render_value_dict(item.button)
+        file_expr = _render_value_dict(item.file_rel, as_string=True)
+
         comment = f'  # {item.alias}' if item.alias else ''
         lines.append(
-            f'{const_name} = Button('
-            f'area={item.area}, color={item.color}, button={item.button}, '
-            f"file='{item.file_rel}', name='{item.name}'"
-            f'){comment}'
+            f"{const_name} = Button(area={area_expr}, color={color_expr}, button={button_expr}, "
+            f"file={file_expr}, name='{item.name}'){comment}"
         )
 
     lines.append('')
@@ -240,6 +339,7 @@ def render(items: list[Item]) -> str:
 
 def main():
     """程序主入口。"""
+
     items = build_items()
     text = render(items)
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -249,7 +349,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-
-

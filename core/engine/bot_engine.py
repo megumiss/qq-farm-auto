@@ -28,6 +28,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from core.platform.action_executor import ActionExecutor
 from core.vision.cv_detector import CVDetector, DetectResult
+from core.base.button import Button
 from core.platform.device import NKLiteDevice
 from core.ops import ExpandOps, FriendOps, PlantOps, PopupOps, TaskOps
 from core.tasks.task_farm_reward import TaskFarmReward
@@ -36,6 +37,7 @@ from core.ui.page import (
     GOTO_MAIN,
     page_main,
 )
+from core.ui.assets import ASSET_NAME_TO_CONST
 from core.ui.ui import UI as NKLiteUI
 from core.platform.screen_capture import ScreenCapture
 from core.engine.task_executor import TaskExecutor
@@ -51,6 +53,7 @@ from core.platform.window_manager import WindowManager
 from models.config import AppConfig, PlantMode, TaskTriggerType
 from models.farm_state import Action, ActionType
 from models.game_data import get_best_crop_for_level
+from utils.template_paths import DEFAULT_TEMPLATE_PLATFORM, normalize_template_platform
 
 
 class BotEngine(QObject):
@@ -74,7 +77,11 @@ class BotEngine(QObject):
         self.screen_capture = ScreenCapture()
 
         # [2] 图像识别层
-        self.cv_detector = CVDetector(templates_dir='templates')
+        # 非 seed 模板识别改走 assets，detector 仅保留 seed 识别并固定默认平台。
+        self.cv_detector = CVDetector(templates_dir='templates', template_platform=DEFAULT_TEMPLATE_PLATFORM)
+        platform = getattr(config.planting, 'window_platform', 'qq')
+        platform_value = platform.value if hasattr(platform, 'value') else str(platform)
+        Button.set_template_platform(normalize_template_platform(platform_value))
 
         # [3] nklite 业务操作（替代 legacy strategies）
         self.popup = PopupOps(self)
@@ -362,6 +369,9 @@ class BotEngine(QObject):
     def update_config(self, config: AppConfig):
         """更新配置并将变更同步到执行器。"""
         self.config = config
+        platform = getattr(config.planting, 'window_platform', 'qq')
+        platform_value = platform.value if hasattr(platform, 'value') else str(platform)
+        Button.set_template_platform(normalize_template_platform(platform_value))
         self._sync_executor_tasks_from_config()
 
     def _resolve_crop_name_quiet(self) -> str:
@@ -444,10 +454,12 @@ class BotEngine(QObject):
         # [启动阶段] 重置运行会话与计数器。
         self._switch_session(cancelled=False)
         self._runtime_failure_count = 0
-        self.cv_detector.load_templates()
-        tpl_count = sum(len(v) for v in self.cv_detector._templates.values())
-        if tpl_count == 0:
-            self.log_message.emit('未找到模板图片，请先运行模板采集工具')
+        current_platform = getattr(self.config.planting, 'window_platform', 'qq')
+        current_platform_value = current_platform.value if hasattr(current_platform, 'value') else str(current_platform)
+        Button.set_template_platform(normalize_template_platform(current_platform_value))
+        asset_count = len(ASSET_NAME_TO_CONST)
+        if asset_count == 0:
+            self.log_message.emit('未找到 assets 按钮模板，请先运行 button_extract 工具')
             return False
 
         window = self.window_manager.find_window(self.config.window_title_keyword)
@@ -508,7 +520,7 @@ class BotEngine(QObject):
         )
         self._init_executor()
 
-        self.log_message.emit(f'Bot已启动(executor) - 窗口: {window.title} | 模板: {tpl_count}个')
+        self.log_message.emit(f'Bot已启动(executor) - 窗口: {window.title} | assets: {asset_count}个')
         return True
 
     def stop(self):
@@ -613,7 +625,6 @@ class BotEngine(QObject):
         self,
         rect: tuple,
         prefix: str = 'farm',
-        categories: list[str] | None = None,
         template_names: list[str] | None = None,
         template_thresholds: dict[str, float] | None = None,
         template_rois: dict[str, tuple[int, int, int, int]] | None = None,
@@ -624,26 +635,128 @@ class BotEngine(QObject):
         if cv_image is None or image is None:
             return None, [], None
 
-        # 优先按模板名精确识别，避免全量模板扫描。
+        # 非 seed 识别统一走 assets 按钮匹配链路。
         if template_names is not None:
-            detections = self.cv_detector.detect_templates(
+            detections = self._detect_templates_with_assets(
                 cv_image,
                 template_names=template_names,
-                default_threshold=0.8,
                 thresholds=template_thresholds,
                 roi_map=template_rois,
+                default_threshold=0.8,
             )
-        elif categories is not None:
-            # 仅在调用方显式要求分类识别时启用。
-            detections = []
-            for cat in categories:
-                detections += self.cv_detector.detect_category(cv_image, cat, threshold=0.8)
-            detections = self.cv_detector._nms(detections, iou_threshold=0.5)
         else:
-            # 不再保留兜底全量识别，空列表交由上层决定下一步。
             detections = []
 
         return cv_image, detections, image
+
+    @staticmethod
+    def _category_from_template_name(name: str) -> str:
+        """按模板名前缀映射 DetectResult 类别。"""
+        if name.startswith('btn_'):
+            return 'button'
+        if name.startswith('icon_'):
+            return 'status_icon'
+        if name.startswith('land_'):
+            return 'land'
+        if name.startswith('ui_') or name.endswith('_check') or 'goto' in name:
+            return 'ui_element'
+        return 'unknown'
+
+    def _detect_templates_with_assets(
+        self,
+        cv_image: np.ndarray,
+        template_names: list[str],
+        thresholds: dict[str, float] | None = None,
+        roi_map: dict[str, tuple[int, int, int, int]] | None = None,
+        default_threshold: float = 0.8,
+    ) -> list[DetectResult]:
+        """使用 assets 中的 Button 模板执行匹配并输出检测结果。"""
+        if cv_image is None or not template_names:
+            return []
+
+        sh, sw = cv_image.shape[:2]
+        out: list[DetectResult] = []
+        seen: set[str] = set()
+        for raw_name in template_names:
+            name = str(raw_name or '').strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+
+            btn = ASSET_NAME_TO_CONST.get(name)
+            if btn is None:
+                logger.debug(f'assets 模板缺失: {name}')
+                continue
+            btn.ensure_template()
+            tpl = btn.image
+            if tpl is None:
+                logger.debug(f'assets 模板读取失败: {name}')
+                continue
+
+            th, tw = tpl.shape[:2]
+            threshold = float(thresholds.get(name, default_threshold) if thresholds else default_threshold)
+            roi = roi_map.get(name) if roi_map else None
+
+            x_offset = 0
+            y_offset = 0
+            search = cv_image
+            if roi is not None:
+                x1, y1, x2, y2 = [int(v) for v in roi]
+                x1 = max(0, min(x1, sw - 1))
+                y1 = max(0, min(y1, sh - 1))
+                x2 = max(x1 + 1, min(x2, sw))
+                y2 = max(y1 + 1, min(y2, sh))
+                if x2 <= x1 or y2 <= y1:
+                    continue
+                search = cv_image[y1:y2, x1:x2]
+                x_offset = x1
+                y_offset = y1
+
+            rh, rw = search.shape[:2]
+            if tw >= rw or th >= rh:
+                continue
+
+            match_result = cv2.matchTemplate(search, tpl, cv2.TM_CCOEFF_NORMED)
+            finite = np.isfinite(match_result)
+            if not finite.all():
+                match_result = np.where(finite, match_result, -1.0)
+            locations = np.where(match_result >= threshold)
+            if locations[0].size == 0:
+                continue
+
+            max_hits = 64 if name.startswith('land_') else 8
+            if locations[0].size > max_hits:
+                scores = match_result[locations]
+                top_idx = np.argpartition(scores, -max_hits)[-max_hits:]
+                pt_ys = locations[0][top_idx]
+                pt_xs = locations[1][top_idx]
+            else:
+                pt_ys, pt_xs = locations
+
+            category = self._category_from_template_name(name)
+            for pt_y, pt_x in zip(pt_ys, pt_xs):
+                confidence = float(match_result[pt_y, pt_x])
+                center_x = int(x_offset + pt_x + tw // 2)
+                center_y = int(y_offset + pt_y + th // 2)
+                extra = {}
+                if roi is not None:
+                    extra['roi'] = (x_offset, y_offset, x_offset + rw, y_offset + rh)
+                out.append(
+                    DetectResult(
+                        name=name,
+                        category=category,
+                        x=center_x,
+                        y=center_y,
+                        w=int(tw),
+                        h=int(th),
+                        confidence=confidence,
+                        extra=extra,
+                    )
+                )
+
+        out = self.cv_detector._nms(out, iou_threshold=0.5)
+        out.sort(key=lambda r: r.confidence, reverse=True)
+        return out
 
     def _nklite_screenshot(self, rect: tuple[int, int, int, int]) -> np.ndarray | None:
         """nklite 设备截图回调。"""
@@ -710,11 +823,11 @@ class BotEngine(QObject):
         if not missing:
             return base
 
-        extra = self.cv_detector.detect_templates(
+        extra = self._detect_templates_with_assets(
             cv_image,
             template_names=missing,
-            default_threshold=default_threshold,
             thresholds=thresholds,
+            default_threshold=default_threshold,
         )
         if not extra:
             return base

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import os
+import weakref
 from functools import cached_property
+from pathlib import Path
 from typing import Callable
 
 import cv2
 import numpy as np
 from loguru import logger
+from utils.template_paths import normalize_template_platform
 
 MatchProvider = Callable[
     ['Button', np.ndarray, int | tuple[int, int, int, int] | tuple[int, int], float, bool],
@@ -19,6 +22,8 @@ MatchProvider = Callable[
 class Button:
     """封装 `Button` 相关的数据与行为。"""
     _match_provider: MatchProvider | None = None
+    _template_platform: str = 'qq'
+    _instances: weakref.WeakSet = weakref.WeakSet()
 
     def __init__(self, area, color, button, file=None, name=None):
         """初始化对象并准备运行所需状态。"""
@@ -31,11 +36,27 @@ class Button:
         self._button_offset: tuple[int, int, int, int] | None = None
         self._match_init = False
         self.image: np.ndarray | None = None
+        Button._instances.add(self)
 
     @classmethod
     def set_match_provider(cls, provider: MatchProvider | None):
         """设置 `match_provider` 参数。"""
         cls._match_provider = provider
+
+    @classmethod
+    def set_template_platform(cls, platform: str | None):
+        """设置模板平台并清理已缓存模板，确保后续匹配使用新平台资源。"""
+        normalized = normalize_template_platform(platform)
+        if cls._template_platform == normalized:
+            return
+        cls._template_platform = normalized
+        for inst in list(cls._instances):
+            try:
+                inst._match_init = False
+                inst.image = None
+                inst._button_offset = None
+            except Exception:
+                continue
 
     @cached_property
     def name(self) -> str:
@@ -92,12 +113,16 @@ class Button:
         return str(self.raw_name or '')
 
     def _parse_property(self, value):
-        """解析 `property` 并返回结构化结果。"""
+        """解析属性值：字典类型仅按当前平台取值，不在运行时回退。"""
         if isinstance(value, dict):
-            for key in ('zh-CN', 'zh_cn', 'default', 'en-US'):
-                if key in value:
-                    return value[key]
-            return next(iter(value.values()))
+            platform = normalize_template_platform(Button._template_platform)
+            if platform in value:
+                return value[platform]
+            keys = ','.join(str(k) for k in value.keys())
+            raise KeyError(
+                f"Button property missing platform '{platform}' key "
+                f"(name={self.raw_name}, available=[{keys}])"
+            )
         return value
 
     @staticmethod
@@ -117,12 +142,22 @@ class Button:
         return self.name
 
     def ensure_template(self):
-        """执行 `ensure template` 相关处理。"""
+        """按当前平台字段加载模板图片（不做运行时平台回退）。"""
         if self._match_init:
             return
-        if self.file and os.path.exists(str(self.file)):
+        file_raw = self._parse_property(self.raw_file)
+        file_text = str(file_raw or '').strip()
+        if file_text:
+            file_path = Path(file_text)
+            if not file_path.is_absolute():
+                file_path = Path(__file__).resolve().parents[2] / file_text
+            file_path_str = str(file_path)
+        else:
+            file_path_str = ''
+
+        if file_path_str and os.path.exists(file_path_str):
             # 使用 imdecode 兼容中文路径；与 NIKKE 一样按 area 裁模板区域。
-            image = cv2.imdecode(np.fromfile(str(self.file), dtype=np.uint8), cv2.IMREAD_UNCHANGED)
+            image = cv2.imdecode(np.fromfile(file_path_str, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
             if image is not None:
                 if image.ndim == 2:
                     image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
