@@ -111,6 +111,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.config = config
         self.engine = BotEngine(config)
+        self._last_screenshot: Image.Image | None = None
         self._init_ui()
         self._connect_signals()
         keyboard.add_hotkey('F9', self._on_pause)
@@ -268,6 +269,7 @@ class MainWindow(QMainWindow):
     def _update_screenshot(self, image: Image.Image):
         """将 PIL 图像转为 QPixmap 并按预览区尺寸缩放显示。"""
         try:
+            self._last_screenshot = image.copy()
             image = image.convert('RGB')
             data = image.tobytes('raw', 'RGB')
             qimg = QImage(data, image.width, image.height, 3 * image.width, QImage.Format.Format_RGB888)
@@ -276,15 +278,18 @@ class MainWindow(QMainWindow):
             if target_size.width() <= 0 or target_size.height() <= 0:
                 return
 
-            # 先按“填满”缩放，再中心裁剪到控件尺寸，避免上下留白。
-            scaled = pixmap.scaled(
-                target_size,
-                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-            offset_x = max((scaled.width() - target_size.width()) // 2, 0)
-            offset_y = max((scaled.height() - target_size.height()) // 2, 0)
-            cropped = scaled.copy(offset_x, offset_y, target_size.width(), target_size.height())
+            # 优先按宽度缩放并裁剪上下，避免左右被裁。
+            scaled_w = pixmap.scaledToWidth(target_size.width(), Qt.TransformationMode.SmoothTransformation)
+            if scaled_w.height() >= target_size.height():
+                offset_y = (scaled_w.height() - target_size.height()) // 2
+                cropped = scaled_w.copy(0, offset_y, target_size.width(), target_size.height())
+            else:
+                # 目标区域偏“高”时，保持宽度完整，仅做纵向拉伸补齐，避免左右被裁。
+                cropped = scaled_w.scaled(
+                    target_size,
+                    Qt.AspectRatioMode.IgnoreAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
 
             # 再对最终图像做圆角裁剪：图片依然充满，仅圆角重叠部分被遮挡。
             rounded = QPixmap(target_size)
@@ -344,4 +349,10 @@ class MainWindow(QMainWindow):
         """窗口关闭时执行收尾清理。"""
         self.engine.stop()
         super().closeEvent(event)
+
+    def resizeEvent(self, event):
+        """窗口尺寸变化时重绘当前预览。"""
+        super().resizeEvent(event)
+        if self._last_screenshot is not None:
+            self._update_screenshot(self._last_screenshot)
 
