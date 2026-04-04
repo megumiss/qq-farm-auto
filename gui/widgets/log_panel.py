@@ -17,6 +17,7 @@ class LogPanel(QTextEdit):
                 background-color: #f8fafc; color: #1e293b;
                 font-family: 'Cascadia Code', 'Consolas', monospace;
                 font-size: 12px; border: none; padding: 8px;
+                border-radius: 6px;
             }
         """)
 

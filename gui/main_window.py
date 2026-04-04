@@ -20,6 +20,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon, QImage, QPixmap
 from PyQt6.QtWidgets import (
     QFrame,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -44,7 +45,7 @@ QWidget { color: #1e293b; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-se
 QGroupBox {
     border: 1px solid #e2e8f0; border-radius: 8px;
     margin-top: 12px; padding: 14px 10px 8px 10px;
-    font-weight: bold; color: #2563eb; background-color: #ffffff;
+    font-weight: bold; color: #475569; background-color: #ffffff;
 }
 QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; }
 QCheckBox { spacing: 6px; color: #1e293b; }
@@ -177,23 +178,51 @@ class MainWindow(QMainWindow):
         # 标签页顺序按“运行信息 -> 调度 -> 任务设置 -> 程序设置”组织。
         tabs = QTabWidget()
         tabs.setStyleSheet("""
-            QTabWidget::pane { border: 1px solid #e2e8f0; border-radius: 8px; background: #ffffff; top: -1px; }
-            QTabBar::tab {
-                background: #f1f5f9; color: #64748b; padding: 6px 18px;
-                border-top-left-radius: 8px; border-top-right-radius: 8px;
-                margin-right: 2px; border: 1px solid #e2e8f0; border-bottom: none;
+            QTabWidget::pane {
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                border-top-left-radius: 0px;
+                background: #ffffff;
+                top: -1px;
             }
-            QTabBar::tab:selected { background: #ffffff; color: #2563eb; font-weight: bold; }
-            QTabBar::tab:hover { background: #e2e8f0; }
+            QTabBar::tab {
+                background: #f1f5f9;
+                color: #64748b;
+                padding: 8px 20px;
+                border: 1px solid #e2e8f0;
+                border-bottom: 1px solid #e2e8f0;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                background: #ffffff;
+                color: #2563eb;
+                font-weight: bold;
+                border-bottom-color: #ffffff;
+            }
+            QTabBar::tab:!selected {
+                margin-top: 4px;
+            }
+            QTabBar::tab:hover:!selected {
+                background: #e2e8f0;
+                color: #1e293b;
+            }
         """)
         self._status_panel = StatusPanel()
         self._log_panel = LogPanel()
+        
+        log_group = QGroupBox("运行日志")
+        log_layout = QVBoxLayout(log_group)
+        log_layout.setContentsMargins(0, 6, 0, 0)
+        log_layout.addWidget(self._log_panel)
+
         status_page = QWidget()
         status_layout = QVBoxLayout(status_page)
-        status_layout.setContentsMargins(0, 0, 0, 0)
-        status_layout.setSpacing(8)
-        status_layout.addWidget(self._status_panel)
-        status_layout.addWidget(_card(self._log_panel), 1)
+        status_layout.setContentsMargins(10, 10, 10, 10)
+        status_layout.setSpacing(10)
+        status_layout.addWidget(self._status_panel, 0, Qt.AlignmentFlag.AlignTop)
+        status_layout.addWidget(log_group, 1)
         tabs.addTab(status_page, '状态')
         self._task_panel = TaskPanel(self.config)
         tabs.addTab(self._task_panel, '任务调度')

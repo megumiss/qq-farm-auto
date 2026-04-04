@@ -20,16 +20,27 @@ class SellPanel(QWidget):
     def _init_ui(self):
         """初始化 `ui` 相关状态或界面。"""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(8)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+        group = QGroupBox("出售设置")
+        
+        inner_layout = QVBoxLayout()
+        inner_layout.setContentsMargins(0, 6, 0, 0)
+        inner_layout.setSpacing(10)
 
         title = QLabel('出售模式')
-        title.setStyleSheet('font-weight: 600;')
-        layout.addWidget(title)
+        title.setStyleSheet('font-weight: 600; color: #1e293b;')
+        inner_layout.addWidget(title)
 
         desc = QLabel('当前版本仅支持批量出售。任务售卖会自动执行“批量出售 -> 确认出售”。')
+        desc.setStyleSheet('color: #64748b;')
         desc.setWordWrap(True)
-        layout.addWidget(desc)
+        inner_layout.addWidget(desc)
+        inner_layout.addStretch(1)
+
+        group.setLayout(inner_layout)
+        layout.addWidget(group)
         layout.addStretch(1)
 
     def _force_batch_mode(self):

@@ -90,7 +90,10 @@ class TaskPanel(QWidget):
         """
         title = self.TASK_TITLE_MAP.get(task_name, f'{task_name}任务')
         group = QGroupBox(title)
+        group.setStyleSheet("QGroupBox { font-weight: bold; color: #475569; }")
         form = QFormLayout()
+        form.setContentsMargins(10, 15, 10, 10)
+        form.setSpacing(10)
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
         enabled = QCheckBox('启用')
