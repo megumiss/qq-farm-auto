@@ -45,7 +45,7 @@ class TaskFarmMain:
         self.ui.device.set_rect(rect)
 
         self.engine._clear_screen(rect, session_id)
-        self.ui.ui_ensure(page_main, confirm_wait=0.15)
+        self.ui.ui_ensure(page_main, confirm_wait=0.5)
 
         idle_rounds = 0
         max_idle = 3
@@ -69,7 +69,7 @@ class TaskFarmMain:
 
             page = self.ui.ui_get_current_page(skip_first_screenshot=True, timeout=0.9)
             if page == page_unknown:
-                recovered = self.ui.ui_goto(page_main, confirm_wait=0.1, skip_first_screenshot=True)
+                recovered = self.ui.ui_goto(page_main, confirm_wait=0.5, skip_first_screenshot=True)
                 if recovered:
                     result['actions_done'].append('导航回主界面')
                     if not self.engine._sleep_interruptible(0.2, session_id):

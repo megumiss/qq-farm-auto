@@ -40,7 +40,7 @@ class Page:
         self.links[destination] = button
 
 
-page_main = Page((TASK_CHECK, MAIN_GOTO_MENU), cn_name='主页')
+page_main = Page((MAIN_GOTO_TASK, MAIN_GOTO_MENU), cn_name='主页')
 
 # Unknown
 page_unknown = Page(None, cn_name='未知页面')
