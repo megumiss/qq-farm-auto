@@ -66,6 +66,16 @@ def bot_worker_main(initial_config: dict[str, Any], command_queue, event_queue) 
     config = _load_config(initial_config)
     engine = LocalBotEngine(config)
 
+    def _forward_image_event(event_type: str, image: Any) -> None:
+        raw = _image_to_png_bytes(image)
+        if raw is None:
+            return
+        _safe_put(event_queue, {'type': event_type, 'data': raw})
+
+    # 跨线程任务执行时优先走直接队列回传，避免依赖 Qt 事件循环分发信号。
+    engine.emit_preview = lambda image: _forward_image_event('screenshot', image)
+    engine.emit_detection_preview = lambda image: _forward_image_event('detection', image)
+
     engine.log_message.connect(lambda text: _safe_put(event_queue, {'type': 'log', 'data': str(text)}))
     engine.state_changed.connect(lambda state: _safe_put(event_queue, {'type': 'state', 'data': str(state)}))
     engine.stats_updated.connect(lambda stats: _safe_put(event_queue, {'type': 'stats', 'data': dict(stats or {})}))

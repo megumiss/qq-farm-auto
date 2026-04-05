@@ -10,9 +10,10 @@ import uuid
 from typing import Any
 
 from PIL import Image as PILImage
-from PyQt6.QtCore import QObject, QTimer, pyqtSignal
+from PyQt6.QtCore import QCoreApplication, QEventLoop, QObject, QTimer, pyqtSignal
 
 from core.engine.bot.worker import bot_worker_main
+from core.platform.window_manager import WindowManager
 from models.config import AppConfig
 
 
@@ -68,6 +69,8 @@ class BotEngine(QObject):
         super().__init__()
         self.config = config
         self.scheduler = _SchedulerSnapshot()
+        self._allow_idle_prewarm = True
+        self._window_manager = WindowManager()
 
         self._ctx = mp.get_context('spawn')
         self._worker: mp.Process | None = None
@@ -79,6 +82,16 @@ class BotEngine(QObject):
         self._poller.setInterval(80)
         self._poller.timeout.connect(self._drain_events)
         self._poller.start()
+        QTimer.singleShot(0, self._prewarm_worker)
+
+    def _prewarm_worker(self) -> None:
+        """空闲时预热 worker，减少首次点击启动等待。"""
+        if not self._allow_idle_prewarm:
+            return
+        app = QCoreApplication.instance()
+        if app is None or QCoreApplication.closingDown():
+            return
+        self._ensure_worker()
 
     def _ensure_worker(self) -> bool:
         if self._worker and self._worker.is_alive():
@@ -202,6 +215,7 @@ class BotEngine(QObject):
             return True
 
         deadline = time.time() + max(0.1, float(timeout))
+        app = QCoreApplication.instance()
         while time.time() < deadline:
             self._drain_events()
             result = self._responses.pop(req_id, None)
@@ -212,7 +226,9 @@ class BotEngine(QObject):
                     if err:
                         self.log_message.emit(f'命令失败 `{cmd}`: {err}')
                 return ok
-            time.sleep(0.02)
+            if app is not None:
+                app.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 5)
+            time.sleep(0.005)
 
         self.log_message.emit(f'命令超时 `{cmd}`')
         return False
@@ -253,16 +269,28 @@ class BotEngine(QObject):
         self.stats_updated.emit(self.scheduler.get_stats())
 
     def start(self) -> bool:
+        # 前台激活放到主进程执行，避免预热 worker 触发 Windows 前台权限限制。
+        self._activate_target_window()
         ok = self._send_command('start', wait=True, timeout=20.0, ensure_worker=True)
         if not ok:
             # 启动失败时回收空闲 worker，避免残留后台进程。
             self._shutdown_worker(force=True)
         return ok
 
+    def _activate_target_window(self) -> None:
+        """在主进程尝试拉起目标窗口到前台。"""
+        try:
+            if self._window_manager.find_window(self.config.window_title_keyword):
+                self._window_manager.activate_window()
+        except Exception:
+            pass
+
     def stop(self):
         # 对齐 NIKKE：停止时进程级强停，不依赖业务侧协作取消。
         self._shutdown_worker(force=True)
         self.log_message.emit('Bot已停止')
+        if self._allow_idle_prewarm:
+            QTimer.singleShot(0, self._prewarm_worker)
 
     def pause(self):
         self._send_command('pause', wait=False, ensure_worker=False)
@@ -281,6 +309,7 @@ class BotEngine(QObject):
 
     def __del__(self):
         try:
+            self._allow_idle_prewarm = False
             self._shutdown_worker(force=True)
         except Exception:
             pass

@@ -67,7 +67,11 @@ class Device:
             self.preview_image = None
             return None
 
-        self.engine.screenshot_updated.emit(preview_image)
+        preview_sender = getattr(self.engine, 'emit_preview', None)
+        if callable(preview_sender):
+            preview_sender(preview_image)
+        else:
+            self.engine.screenshot_updated.emit(preview_image)
         cv_image = self.engine.cv_detector.pil_to_cv2(preview_image)
         self.preview_image = preview_image
         self.image = cv_image

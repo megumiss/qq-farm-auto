@@ -148,6 +148,11 @@ class BotRuntimeMixin:
             device=self.device,
             crop_name_resolver=self._resolve_crop_name_quiet,
         )
+        # 启动后立即推送一帧预览，避免在“无可执行任务”时左侧截图空白。
+        try:
+            self.device.screenshot(rect=rect, save=False)
+        except Exception as exc:
+            logger.debug(f'startup screenshot failed: {exc}')
 
         self.scheduler.stop()
         self.scheduler.force_state('running')

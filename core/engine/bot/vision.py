@@ -37,7 +37,11 @@ class BotVisionMixin:
             annotated = self.cv_detector.draw_results(cv_image, detections)
             annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
             annotated_pil = PILImage.fromarray(annotated_rgb)
-            self.detection_result.emit(annotated_pil)
+            detection_sender = getattr(self, 'emit_detection_preview', None)
+            if callable(detection_sender):
+                detection_sender(annotated_pil)
+            else:
+                self.detection_result.emit(annotated_pil)
 
     def _record_stat(self, action_type: str):
         """将动作类型映射到统计项并累加。"""
