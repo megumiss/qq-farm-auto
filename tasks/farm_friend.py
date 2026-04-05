@@ -4,15 +4,18 @@ from __future__ import annotations
 
 from core.base.step_result import StepResult
 from core.ui.assets import (
+    ASSET_NAME_TO_CONST,
     BTN_BUG,
     BTN_CLAIM,
     BTN_CLOSE,
     BTN_CONFIRM,
-    BTN_FRIEND_HELP,
     BTN_HOME,
     BTN_WATER,
     BTN_WEED,
 )
+
+# TODO: `btn_friend_help` asset 已删除，当前“好友求助入口”步骤会被跳过。
+BTN_FRIEND_HELP = ASSET_NAME_TO_CONST.get('btn_friend_help')
 
 
 class TaskFarmFriend:
@@ -26,6 +29,8 @@ class TaskFarmFriend:
     def run(self, rect, features) -> StepResult:
         """执行当前模块主流程并返回结果。"""
         if not features.get('auto_help', False):
+            return StepResult()
+        if BTN_FRIEND_HELP is None:
             return StepResult()
         if not self.ui.appear_then_click(BTN_FRIEND_HELP, offset=(30, 30), interval=1, threshold=0.8, static=False):
             return StepResult()

@@ -7,19 +7,23 @@ from loguru import logger
 from core.base.step_result import StepResult
 from core.ui.assets import (
     ASSET_NAME_TO_CONST,
-    BTN_BUY_CONFIRM,
     BTN_CLAIM,
     BTN_CLOSE,
     BTN_CONFIRM,
-    BTN_FERTILIZE_POPUP,
     LAND_EMPTY,
     LAND_EMPTY_2,
     LAND_EMPTY_3,
 )
 from utils.shop_item_ocr import ShopItemOCR
 
+# TODO: `btn_shop` asset 已删除，当前播种购买逻辑会被跳过，后续补模板后恢复。
 BTN_SHOP = ASSET_NAME_TO_CONST.get('btn_shop')
+# TODO: `btn_shop_close` asset 已删除，当前商店收尾依赖降级为普通关闭按钮。
 BTN_SHOP_CLOSE = ASSET_NAME_TO_CONST.get('btn_shop_close')
+# TODO: `btn_buy_confirm` asset 已删除，当前购买确认可能依赖兜底按钮处理。
+BTN_BUY_CONFIRM = ASSET_NAME_TO_CONST.get('btn_buy_confirm')
+# TODO: `btn_fertilize_popup` asset 已删除，当前施肥弹窗检测被跳过。
+BTN_FERTILIZE_POPUP = ASSET_NAME_TO_CONST.get('btn_fertilize_popup')
 
 
 class TaskFarmPlant:
@@ -116,7 +120,9 @@ class TaskFarmPlant:
             if BTN_SHOP_CLOSE is not None and self.ui.appear(BTN_SHOP_CLOSE, offset=(30, 30), threshold=0.8, static=False):
                 self._close_shop_and_buy(rect, crop_name, all_actions)
 
-            if self.ui.appear(BTN_FERTILIZE_POPUP, offset=(30, 30), threshold=0.8, static=False):
+            if BTN_FERTILIZE_POPUP is not None and self.ui.appear(
+                BTN_FERTILIZE_POPUP, offset=(30, 30), threshold=0.8, static=False
+            ):
                 x, y = self.engine._resolve_goto_main_point(rect)
                 self.engine.device.click_point(x, y, desc='点击回主按钮')
 
@@ -184,7 +190,9 @@ class TaskFarmPlant:
             if cv_img is None:
                 return None
 
-            if self.ui.appear_then_click(BTN_BUY_CONFIRM, offset=(30, 30), interval=1, threshold=0.8, static=False):
+            if BTN_BUY_CONFIRM is not None and self.ui.appear_then_click(
+                BTN_BUY_CONFIRM, offset=(30, 30), interval=1, threshold=0.8, static=False
+            ):
                 self.ui.device.sleep(0.3)
                 self._close_shop(rect)
                 return f'购买{crop_name}'

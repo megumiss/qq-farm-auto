@@ -7,6 +7,7 @@ import pyautogui
 from core.base.step_result import StepResult
 from core.ui.assets import ASSET_NAME_TO_CONST, BTN_CLAIM, BTN_CLOSE, BTN_CONFIRM, TASK_CHECK
 
+# TODO: `btn_share` asset 已删除，当前双倍分享领奖流程会自动跳过。
 BTN_SHARE = ASSET_NAME_TO_CONST.get('btn_share')
 
 

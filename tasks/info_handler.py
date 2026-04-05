@@ -7,8 +7,11 @@ import pyautogui
 from core.base.module_base import ModuleBase
 from core.ui.assets import ASSET_NAME_TO_CONST, BTN_CLAIM, BTN_CLOSE, BTN_CONFIRM
 
+# TODO: `icon_levelup` asset 已删除，当前升级弹窗识别逻辑被禁用。
 ICON_LEVELUP = ASSET_NAME_TO_CONST.get('icon_levelup')
+# TODO: `btn_share` asset 已删除，当前分享领奖逻辑被禁用。
 BTN_SHARE = ASSET_NAME_TO_CONST.get('btn_share')
+# TODO: `btn_shop_close` asset 已删除，当前商店残留关闭依赖通用关闭按钮。
 BTN_SHOP_CLOSE = ASSET_NAME_TO_CONST.get('btn_shop_close')
 
 

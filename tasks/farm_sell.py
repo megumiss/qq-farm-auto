@@ -50,7 +50,10 @@ class TaskFarmSell:
             else:
                 self.ui.device.screenshot()
 
-            if self.ui.appear(WAREHOUSE_CHECK, offset=(30, 30), threshold=0.8, static=False) and confirm_timer.reached():
+            if (
+                self.ui.appear(WAREHOUSE_CHECK, offset=(30, 30), threshold=0.8, static=False)
+                and confirm_timer.reached()
+            ):
                 return True
 
             if click_timer.reached() and self.ui.appear_then_click(
