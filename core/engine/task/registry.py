@@ -62,21 +62,23 @@ def build_default_tasks(config: 'AppConfig') -> dict[str, TaskItem]:
     if tasks_cfg is None:
         return {}
 
-    task_names: list[str] = []
-    try:
-        task_names = [str(name) for name in tasks_cfg.model_dump().keys()]
-    except Exception:
-        return {}
+    if isinstance(tasks_cfg, dict):
+        task_names = [str(name) for name in tasks_cfg.keys()]
+    else:
+        try:
+            task_names = [str(name) for name in tasks_cfg.model_dump().keys()]
+        except Exception:
+            return {}
 
     out: dict[str, TaskItem] = {}
     for index, task_name in enumerate(task_names, start=1):
-        cfg = getattr(tasks_cfg, task_name, None)
+        cfg = tasks_cfg.get(task_name) if isinstance(tasks_cfg, dict) else getattr(tasks_cfg, task_name, None)
         if cfg is None:
             continue
         out[task_name] = TaskItem(
             name=task_name,
             enabled=bool(getattr(cfg, 'enabled', True)),
-            priority=index * 10,
+            priority=max(1, int(getattr(cfg, 'priority', index * 10))),
             next_run=now,
             success_interval=max(default_success, int(getattr(cfg, 'interval_seconds', default_success))),
             failure_interval=max(default_failure, int(getattr(cfg, 'failure_interval_seconds', default_failure))),

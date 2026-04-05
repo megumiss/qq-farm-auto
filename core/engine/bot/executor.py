@@ -22,11 +22,23 @@ from models.config import TaskTriggerType
 
 class BotExecutorMixin:
     """Bot 执行器与调度相关逻辑。"""
+
+    def _get_task_cfg(self, task_name: str):
+        """按任务名读取调度配置。"""
+        tasks_cfg = getattr(self.config, 'tasks', None)
+        if isinstance(tasks_cfg, dict):
+            return tasks_cfg.get(task_name)
+        if tasks_cfg is None:
+            return None
+        return getattr(tasks_cfg, task_name, None)
+
     def _iter_task_config_names(self) -> list[str]:
         """按配置声明顺序返回任务名列表。"""
         tasks_cfg = getattr(self.config, 'tasks', None)
         if tasks_cfg is None:
             return []
+        if isinstance(tasks_cfg, dict):
+            return [str(name) for name in tasks_cfg.keys()]
         try:
             return [str(name) for name in tasks_cfg.model_dump().keys()]
         except Exception:
@@ -64,11 +76,12 @@ class BotExecutorMixin:
 
         out: dict[str, TaskItem] = {}
         for index, task_name in enumerate(task_names, start=1):
-            cfg = getattr(self.config.tasks, task_name, None)
+            cfg = self._get_task_cfg(task_name)
             has_runner = task_name in runners
             enabled = bool(has_runner) if cfg is None else bool(cfg.enabled and has_runner)
             if cfg is None and has_runner:
                 logger.info(f'任务 `{task_name}` 未在配置中声明，使用执行器默认调度参数')
+            priority = int(getattr(cfg, 'priority', index * 10))
 
             success_interval = max(
                 default_success,
@@ -86,7 +99,7 @@ class BotExecutorMixin:
             out[task_name] = TaskItem(
                 name=task_name,
                 enabled=enabled,
-                priority=index * 10,
+                priority=priority,
                 next_run=next_run,
                 success_interval=success_interval,
                 failure_interval=failure_interval,
@@ -123,8 +136,7 @@ class BotExecutorMixin:
     def _task_seconds_by_trigger(self, task_name: str, now: datetime | None = None) -> int:
         """按任务触发类型返回下次调度间隔秒数。"""
         current = now or datetime.now()
-        tasks_cfg = self.config.tasks
-        cfg = getattr(tasks_cfg, task_name, None)
+        cfg = self._get_task_cfg(task_name)
         if cfg is None:
             return int(self.config.executor.default_success_interval)
         if cfg.trigger == TaskTriggerType.DAILY:
@@ -133,7 +145,7 @@ class BotExecutorMixin:
 
     def get_task_features(self, task_name: str) -> dict[str, bool]:
         """获取 `task_features` 信息。"""
-        cfg = getattr(self.config.tasks, task_name, None)
+        cfg = self._get_task_cfg(task_name)
         if cfg is None:
             return {}
         raw = getattr(cfg, 'features', {}) or {}
@@ -161,11 +173,12 @@ class BotExecutorMixin:
 
         task_names = list(self._executor_tasks.keys())
         for index, task_name in enumerate(task_names, start=1):
-            cfg = getattr(self.config.tasks, task_name, None)
+            cfg = self._get_task_cfg(task_name)
             item = self._executor_tasks.get(task_name)
             has_runner = task_name in runners
 
             enabled = bool(has_runner) if cfg is None else bool(cfg.enabled and has_runner)
+            priority = int(getattr(cfg, 'priority', index * 10))
             success_interval = max(
                 default_success,
                 int(getattr(cfg, 'interval_seconds', default_success)),
@@ -176,7 +189,7 @@ class BotExecutorMixin:
             )
             kwargs = {
                 'enabled': enabled,
-                'priority': index * 10,
+                'priority': priority,
                 'success_interval': success_interval,
                 'failure_interval': failure_interval,
                 'max_failures': max_failures,

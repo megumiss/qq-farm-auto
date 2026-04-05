@@ -45,9 +45,9 @@ class FeaturePanel(QWidget):
         grid = QGridLayout()
         grid.setSpacing(10)
         idx = 0
-        task_names = list(type(self.config.tasks).model_fields.keys())
+        task_names = [str(name) for name in getattr(self.config, 'tasks', {}).keys()]
         for task_name in task_names:
-            task_cfg = getattr(self.config.tasks, task_name, None)
+            task_cfg = self.config.tasks.get(task_name)
             if task_cfg is None:
                 continue
             feature_map = getattr(task_cfg, 'features', {}) or {}
@@ -93,7 +93,7 @@ class FeaturePanel(QWidget):
             return
         c = self.config
         for (task_name, feature_name), cb in self._feature_boxes.items():
-            task_cfg = getattr(c.tasks, task_name, None)
+            task_cfg = c.tasks.get(task_name)
             if task_cfg is None:
                 continue
             feature_map = dict(getattr(task_cfg, 'features', {}) or {})
@@ -106,7 +106,7 @@ class FeaturePanel(QWidget):
         """加载 `config` 相关数据。"""
         c = self.config
         for (task_name, feature_name), cb in self._feature_boxes.items():
-            task_cfg = getattr(c.tasks, task_name, None)
+            task_cfg = c.tasks.get(task_name)
             if task_cfg is None:
                 continue
             feature_map = getattr(task_cfg, 'features', {}) or {}

@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from core.engine.task.registry import TaskResult
 from core.tasks.farm_reward import TaskFarmReward
 from core.ui.page import page_main
-from models.config import TaskTriggerType
 
 
 class TaskShare:
@@ -36,10 +35,7 @@ class TaskShare:
 
     def run(self, session_id: int | None = None) -> TaskResult:
         """执行分享任务并返回调度结果。"""
-        share_cfg = self.engine.config.tasks.share
-        next_seconds = max(1, int(share_cfg.interval_seconds))
-        if share_cfg.trigger == TaskTriggerType.DAILY:
-            next_seconds = self._seconds_to_next_daily(share_cfg.daily_time)
+        next_seconds = max(1, int(self.engine._task_seconds_by_trigger('share')))
 
         if self.engine._is_cancel_requested(session_id):
             return TaskResult(success=False, actions=[], next_run_seconds=next_seconds, error='停止中')

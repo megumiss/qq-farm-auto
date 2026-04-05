@@ -74,9 +74,11 @@ class TaskPanel(QWidget):
         root.setContentsMargins(10, 8, 10, 8)
         root.setSpacing(10)
 
-        self._task_order = list(type(self.config.tasks).model_fields.keys())
+        self._task_order = [str(name) for name in getattr(self.config, 'tasks', {}).keys()]
         for task_name in self._task_order:
-            task_cfg = getattr(self.config.tasks, task_name)
+            task_cfg = self.config.tasks.get(task_name)
+            if task_cfg is None:
+                continue
             card = self._build_task_group(task_name, task_cfg.trigger)
             self._cards.append(card)
 
@@ -223,7 +225,7 @@ class TaskPanel(QWidget):
         c.executor.max_failures = int(self._max_failures.value())
 
         for task_name in self._task_order:
-            task_cfg = getattr(c.tasks, task_name, None)
+            task_cfg = c.tasks.get(task_name)
             if task_cfg is None:
                 continue
             widgets = self._task_widgets.get(task_name, {})
@@ -272,7 +274,7 @@ class TaskPanel(QWidget):
         c = self.config
 
         for task_name in self._task_order:
-            task_cfg = getattr(c.tasks, task_name, None)
+            task_cfg = c.tasks.get(task_name)
             if task_cfg is None:
                 continue
             widgets = self._task_widgets.get(task_name, {})

@@ -71,11 +71,18 @@ class TaskTriggerType(str, Enum):
 class TaskScheduleItemConfig(BaseModel):
     """定义 `TaskScheduleItemConfig` 的配置数据结构与默认值。"""
     enabled: bool = True
+    priority: int = 10
     trigger: TaskTriggerType = TaskTriggerType.INTERVAL
     interval_seconds: int = 1800
     daily_time: str = '04:00'
     failure_interval_seconds: int = 60
     features: dict[str, bool] = Field(default_factory=dict)
+
+    @field_validator('priority', mode='before')
+    @classmethod
+    def _normalize_priority(cls, value):
+        """规范化 `priority` 输入值。"""
+        return max(1, int(value))
 
     @field_validator('interval_seconds', mode='before')
     @classmethod
@@ -110,55 +117,6 @@ class TaskScheduleItemConfig(BaseModel):
             return {}
         return {str(k): bool(v) for k, v in value.items()}
 
-
-class TasksConfig(BaseModel):
-    """定义 `TasksConfig` 的配置数据结构与默认值。"""
-    farm_main: TaskScheduleItemConfig = Field(
-        default_factory=lambda: TaskScheduleItemConfig(
-            enabled=True,
-            trigger=TaskTriggerType.INTERVAL,
-            interval_seconds=60,
-            daily_time='04:00',
-            failure_interval_seconds=30,
-            features={
-                'auto_harvest': True,
-                'auto_plant': True,
-                'auto_weed': True,
-                'auto_water': True,
-                'auto_bug': True,
-                'auto_sell': True,
-                'auto_upgrade': True,
-                'auto_fertilize': False,
-            },
-        )
-    )
-    friend: TaskScheduleItemConfig = Field(
-        default_factory=lambda: TaskScheduleItemConfig(
-            enabled=True,
-            trigger=TaskTriggerType.INTERVAL,
-            interval_seconds=1800,
-            daily_time='04:00',
-            failure_interval_seconds=60,
-            features={
-                'auto_help': True,
-                'auto_steal': False,
-            },
-        )
-    )
-    share: TaskScheduleItemConfig = Field(
-        default_factory=lambda: TaskScheduleItemConfig(
-            enabled=True,
-            trigger=TaskTriggerType.DAILY,
-            interval_seconds=86400,
-            daily_time='04:00',
-            failure_interval_seconds=300,
-            features={
-                'auto_task': True,
-            },
-        )
-    )
-
-
 class ExecutorConfig(BaseModel):
     """定义 `ExecutorConfig` 的配置数据结构与默认值。"""
     empty_queue_policy: str = 'stay'
@@ -190,7 +148,7 @@ class AppConfig(BaseModel):
     window_title_keyword: str = 'QQ经典农场'
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
     screenshot: ScreenshotConfig = Field(default_factory=ScreenshotConfig)
-    tasks: TasksConfig = Field(default_factory=TasksConfig)
+    tasks: dict[str, TaskScheduleItemConfig] = Field(default_factory=dict)
     executor: ExecutorConfig = Field(default_factory=ExecutorConfig)
     planting: PlantingConfig = Field(default_factory=PlantingConfig)
     sell: SellConfig = Field(default_factory=SellConfig)
@@ -226,6 +184,22 @@ class AppConfig(BaseModel):
             else:
                 out[key] = value
         return out
+
+    @field_validator('tasks', mode='before')
+    @classmethod
+    def _normalize_tasks(cls, value):
+        """规范化 `tasks` 输入值。"""
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return value
+        try:
+            dumped = value.model_dump()
+            if isinstance(dumped, dict):
+                return dumped
+        except Exception:
+            pass
+        return {}
 
     @classmethod
     def load(cls, path: str = 'configs/config.json', template_path: str | None = None) -> 'AppConfig':
