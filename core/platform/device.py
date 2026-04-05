@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from pathlib import Path
 import time
 from collections import deque
 from typing import Any
@@ -33,6 +35,8 @@ class Device:
         self.preview_image: PILImage.Image | None = None
         self.detect_record: set[str] = set()
         self.click_record = deque(maxlen=15)
+        # 仅在异常时落盘：平时截图只保存在内存队列。
+        self.screenshot_deque = deque(maxlen=60)
         self.stuck_long_wait_list = {'login_check', 'pause'}
         self._stuck_started_at = time.perf_counter()
 
@@ -75,7 +79,59 @@ class Device:
         cv_image = self.engine.cv_detector.pil_to_cv2(preview_image)
         self.preview_image = preview_image
         self.image = cv_image
+        self.screenshot_deque.append({'time': datetime.now(), 'image': preview_image.copy()})
         return cv_image
+
+    def save_error_screenshots(
+        self,
+        *,
+        task_name: str = 'unknown',
+        error_text: str = '',
+        base_dir: str = 'logs/error',
+    ) -> str:
+        """将最近截图保存到 `logs/error/<timestamp_task>`，返回保存目录。"""
+        ts = int(time.time() * 1000)
+        safe_task = ''.join(ch if (ch.isalnum() or ch in ('_', '-')) else '_' for ch in str(task_name or 'unknown'))
+        folder = Path(base_dir) / f'{ts}_{safe_task}'
+        folder.mkdir(parents=True, exist_ok=True)
+
+        if not self.screenshot_deque and self.rect is not None:
+            try:
+                image = self.engine.screen_capture.capture_region(self.rect)
+                preview = self._crop_preview_image(image)
+                if preview is not None:
+                    self.screenshot_deque.append({'time': datetime.now(), 'image': preview.copy()})
+            except Exception:
+                pass
+
+        last_path = ''
+        for idx, data in enumerate(self.screenshot_deque):
+            image = data.get('image')
+            if image is None:
+                continue
+            dt = data.get('time')
+            dt_text = dt.strftime('%Y-%m-%d_%H-%M-%S-%f') if hasattr(dt, 'strftime') else str(ts)
+            file_path = folder / f'{idx:02d}_{dt_text}.png'
+            try:
+                image.save(file_path, format='PNG')
+                last_path = str(file_path)
+            except Exception:
+                continue
+
+        info = [
+            f'task={task_name}',
+            f'time={datetime.now().isoformat()}',
+            '',
+            str(error_text or '').strip(),
+        ]
+        try:
+            (folder / 'error.txt').write_text('\n'.join(info), encoding='utf-8')
+        except Exception:
+            pass
+
+        # 异常截图落盘后清空缓存，避免下一次异常混入过旧画面。
+        self.screenshot_deque.clear()
+        return str(folder if last_path else folder)
 
     def _crop_preview_image(self, image: PILImage.Image | None) -> PILImage.Image | None:
         """按窗口 nonclient 配置裁剪预览图。"""

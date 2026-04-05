@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+import traceback
 from datetime import datetime, timedelta
 from typing import Callable
 
@@ -15,6 +16,7 @@ TaskRunner = Callable[[TaskContext], TaskResult]
 SnapshotHook = Callable[[TaskSnapshot], None]
 TaskDoneHook = Callable[[str, TaskResult], None]
 IdleHook = Callable[[], None]
+TaskErrorHook = Callable[[str, Exception, str], None]
 
 
 class TaskExecutor:
@@ -28,6 +30,7 @@ class TaskExecutor:
         empty_queue_policy: str = 'stay',
         on_snapshot: SnapshotHook | None = None,
         on_task_done: TaskDoneHook | None = None,
+        on_task_error: TaskErrorHook | None = None,
         on_idle: IdleHook | None = None,
     ):
         """注入任务定义、执行回调和事件钩子，准备调度线程状态。"""
@@ -36,6 +39,7 @@ class TaskExecutor:
         self._empty_queue_policy = str(empty_queue_policy or 'stay')
         self._on_snapshot = on_snapshot
         self._on_task_done = on_task_done
+        self._on_task_error = on_task_error
         self._on_idle = on_idle
 
         self._lock = threading.RLock()
@@ -244,6 +248,11 @@ class TaskExecutor:
                     )
             except Exception as exc:
                 logger.exception(f'task `{task.name}` crashed: {exc}')
+                if self._on_task_error:
+                    try:
+                        self._on_task_error(task.name, exc, traceback.format_exc())
+                    except Exception as hook_exc:
+                        logger.debug(f'task error hook failed: {hook_exc}')
                 result = TaskResult(success=False, error=str(exc))
 
             with self._lock:

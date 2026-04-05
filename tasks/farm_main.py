@@ -2,32 +2,15 @@
 
 from __future__ import annotations
 
-import time
-
 from loguru import logger
 
-from core.base.step_result import StepResult
+from core.base.timer import Timer
 from core.engine.task.registry import TaskResult
-from core.ui.assets import (
-    BTN_CLAIM,
-    BTN_CLOSE,
-    BTN_CONFIRM,
-    BTN_EXPAND,
-    BTN_EXPAND_CONFIRM,
-    BTN_EXPAND_DIRECT_CONFIRM,
-)
-from core.ui.page import (
-    GOTO_MAIN,
-    page_friend,
-    page_main,
-    page_shop,
-    page_unknown,
-)
-from tasks.farm_friend import TaskFarmFriend
-from tasks.farm_harvest import TaskFarmHarvest
-from tasks.farm_plant import TaskFarmPlant
-from tasks.farm_reward import TaskFarmReward
+from core.ui.assets import *
+from core.ui.page import page_main
+from models.farm_state import ActionType
 from tasks.base import TaskBase
+from utils.shop_item_ocr import ShopItemOCR
 
 
 class TaskFarmMain(TaskBase):
@@ -37,192 +20,177 @@ class TaskFarmMain(TaskBase):
         """初始化对象并准备运行所需状态。"""
         super().__init__(engine, ui)
         self._expand_failed = False
-        self.task_harvest = TaskFarmHarvest(engine, ui)
-        self.task_plant = TaskFarmPlant(engine, ui)
-        self.task_reward = TaskFarmReward(engine, ui)
-        self.task_friend = TaskFarmFriend(engine, ui)
+        self.shop_ocr = ShopItemOCR()
 
     def run(self, rect: tuple[int, int, int, int]) -> TaskResult:
-        """执行当前模块主流程并返回结果。"""
-        result = TaskResult(success=False, actions=[], next_run_seconds=None, error='')
+        """执行主流程：在 run 内按 feature 显式控制每个子方法。"""
         features = self.get_features('farm_main')
+        actions: list[str] = []
 
-        # [准备阶段] 任务内确保进入目标页面。
-        self.engine._clear_screen(rect)
-        self.ui.ui_ensure(page_main, confirm_wait=0.5)
+        self.ui.ui_ensure(page_main)
 
-        # [巡查阶段] 先做自家农场维护（收获/除草/除虫/浇水）。
-        patrol_actions = self._run_self_farm_patrol(rect=rect, features=features)
-        if patrol_actions:
-            result.actions.extend(patrol_actions)
+        # 一键收获
+        if self.has_feature(features, 'auto_harvest'):
+            action = self._run_feature_harvest(rect)
+            if action:
+                actions.append(action)
 
-        idle_rounds = 0
-        max_idle = 3
-        tick = 0
-        transition_budget = max(30, int(self.engine.config.safety.max_actions_per_round) * 3)
+        # 一键除草
+        if self.has_feature(features, 'auto_weed'):
+            action = self._run_feature_weed(rect)
+            if action:
+                actions.append(action)
 
-        # [主循环阶段] 按页面识别结果驱动任务分发，直到达到预算或进入空闲。
-        while tick < transition_budget:
-            tick_start = time.perf_counter()
-            detect_start = time.perf_counter()
+        # 一键除虫
+        if self.has_feature(features, 'auto_bug'):
+            action = self._run_feature_bug(rect)
+            if action:
+                actions.append(action)
 
-            cv_image = self.ui.device.screenshot(rect=rect, save=False)
-            if cv_image is None:
-                result.error = '截屏失败'
-                break
+        # 一键浇水
+        if self.has_feature(features, 'auto_water'):
+            action = self._run_feature_water(rect)
+            if action:
+                actions.append(action)
 
-            page = self.ui.ui_get_current_page(skip_first_screenshot=True, timeout=0.9)
-            if page == page_unknown:
-                # 未知页面优先尝试导航回主，否则点击固定回主点。
-                recovered = self.ui.ui_goto(page_main, confirm_wait=0.5, skip_first_screenshot=True)
-                if recovered:
-                    result.actions.append('导航回主界面')
-                    self.ui.device.sleep(0.2)
-                    continue
-                x, y = self.engine._resolve_goto_main_point(rect)
-                self.engine.device.click_point(x, y, desc=GOTO_MAIN.name)
-                result.actions.append('点击回主按钮')
-                self.ui.device.sleep(0.2)
+        # TODO 自动施肥
+        if self.has_feature(features, 'auto_fertilize'):
+            action = self._run_feature_fertilize(rect)
+            if action:
+                actions.append(action)
+
+        # TODO 自动播种
+        if self.has_feature(features, 'auto_plant'):
+            action = self._run_feature_plant(rect)
+            if action:
+                actions.append(action)
+
+        # TODO 自动扩建
+        if self.has_feature(features, 'auto_upgrade'):
+            action = self._run_feature_upgrade(rect)
+            if action:
+                actions.append(action)
+
+        return self.ok(actions=actions)
+
+    def _run_feature_harvest(self, rect: tuple[int, int, int, int]) -> str | None:
+        """一键收获"""
+        _ = rect
+        self.ui.device.screenshot()
+        if not self.ui.appear(BTN_HARVEST, offset=30, static=False) and not self.ui.appear(
+            BTN_MATURE, offset=30, static=False
+        ):
+            return None
+
+        confirm_timer = Timer(1, count=3)
+        while 1:
+            self.ui.device.screenshot()
+
+            if self.ui.appear_then_click(BTN_HARVEST, offset=30, interval=1, static=False):
+                self.engine._record_stat(ActionType.HARVEST)
                 continue
-
-            if self.ui.ui_additional():
-                # 弹窗处理命中后立即进入下一轮，避免污染当前页面判断。
-                result.actions.append('处理弹窗')
-                self.ui.device.sleep(0.2)
+            if self.ui.appear_then_click(BTN_MATURE, offset=30, interval=1, static=False):
+                self.engine._record_stat(ActionType.HARVEST)
                 continue
-
-            tick += 1
-            detections = []
-            detect_ms = (time.perf_counter() - detect_start) * 1000.0
-            self.engine.scheduler.update_runtime_metrics(
-                current_page=page.cn_name,
-                current_task='farm_main',
-                failure_count=self.engine._runtime_failure_count,
-            )
-
-            det_summary = ', '.join(f'{d.name}({d.confidence:.0%})' for d in detections[:6])
-            logger.info(f'[tick={tick}] 页面={page.cn_name} | {det_summary}')
-            self.engine._emit_annotated(cv_image, detections)
-
-            action_start = time.perf_counter()
-            if page == page_main:
-                dispatch_result = self._run_main_tasks(
-                    rect=rect,
-                    features=features,
-                )
-            elif page == page_shop:
-                dispatch_result = StepResult()
-            else:
-                dispatch_result = self._run_page_specific(page=page, rect=rect)
-            action_ms = (time.perf_counter() - action_start) * 1000.0
-            tick_ms = (time.perf_counter() - tick_start) * 1000.0
-
-            result.actions.extend(dispatch_result.actions)
-            action_desc = dispatch_result.action
-            logger.info(
-                'task=farm_main page={} action={} detect_ms={:.1f} action_ms={:.1f} tick_ms={:.1f}',
-                page.cn_name,
-                action_desc or 'none',
-                detect_ms,
-                action_ms,
-                tick_ms,
-            )
-            self.engine.scheduler.update_runtime_metrics(
-                last_result=action_desc or 'none',
-                last_tick_ms=f'{tick_ms:.1f}ms',
-            )
-
-            # 连续空转时先点一次回主，再在上限处提前结束本轮。
-            if action_desc:
-                idle_rounds = 0
-            else:
-                idle_rounds += 1
-                if idle_rounds == 1:
-                    x, y = self.engine._resolve_goto_main_point(rect)
-                    self.engine.device.click_point(x, y, desc=GOTO_MAIN.name)
-                elif idle_rounds >= max_idle:
+            if not self.ui.appear(BTN_HARVEST, offset=30, static=False) and not self.ui.appear(
+                BTN_MATURE, offset=30, static=False
+            ):
+                if not confirm_timer.started():
+                    confirm_timer.start()
+                if confirm_timer.reached():
+                    result = '一键收获'
                     break
+            else:
+                confirm_timer.clear()
 
-            self.ui.device.sleep(0.3)
-        else:
-            logger.info(f'达到页面跳转预算上限: {transition_budget}，结束本轮')
-
-        result.success = True
-        self.engine.screen_capture.cleanup_old_screenshots(0)
         return result
 
-    def _run_main_tasks(
-        self,
-        rect: tuple[int, int, int, int],
-        features: dict,
-    ) -> StepResult:
-        """执行 `main_tasks` 子流程。"""
-        out = self.task_plant.run(rect=rect, features=features)
-        if out.action:
-            return out
+    def _run_feature_weed(self, rect: tuple[int, int, int, int]) -> str | None:
+        """一键除草"""
+        _ = rect
+        return self._run_feature_single_action(BTN_WEED, ActionType.WEED, '一键除草')
 
-        if self.has_feature(features, 'auto_upgrade'):
-            out = StepResult.from_value(self._try_expand(rect))
-            if out.action:
-                return out
+    def _run_feature_bug(self, rect: tuple[int, int, int, int]) -> str | None:
+        """一键除虫"""
+        _ = rect
+        return self._run_feature_single_action(BTN_BUG, ActionType.BUG, '一键除虫')
 
-        out = self.task_reward.run(rect=rect, features=features)
-        if out.action:
-            return out
+    def _run_feature_water(self, rect: tuple[int, int, int, int]) -> str | None:
+        """一键浇水"""
+        _ = rect
+        return self._run_feature_single_action(BTN_WATER, ActionType.WATER, '一键浇水')
 
-        out = self.task_friend.run(rect=rect, features=features)
-        return out
+    def _run_feature_single_action(self, button, stat_action: str, done_text: str) -> str | None:
+        """通用单按钮循环动作：首检未命中直接返回，命中后点击到消失。"""
+        self.ui.device.screenshot()
+        if not self.ui.appear(button, offset=30, static=False):
+            return None
 
-    def _run_self_farm_patrol(
-        self,
-        rect: tuple[int, int, int, int],
-        features: dict,
-    ) -> list[str]:
-        """自家农场巡查阶段：收获/除草/除虫/浇水，独立于主流程分发。"""
-        actions: list[str] = []
-        max_rounds = 8
+        confirm_timer = Timer(1, count=3)
+        while 1:
+            self.ui.device.screenshot()
 
-        for _ in range(max_rounds):
-            cv_image = self.ui.device.screenshot(rect=rect, save=False)
-            if cv_image is None:
-                break
+            if self.ui.appear_then_click(button, offset=30, interval=1, static=False):
+                self.engine._record_stat(stat_action)
+                continue
+            if not self.ui.appear(button, offset=30, static=False):
+                if not confirm_timer.started():
+                    confirm_timer.start()
+                if confirm_timer.reached():
+                    result = done_text
+                    break
+            else:
+                confirm_timer.clear()
 
+        return result
+
+    def _run_feature_fertilize(self, rect: tuple[int, int, int, int]) -> str | None:
+        """自动施肥"""
+        _ = rect
+        return None
+
+    def _run_feature_plant(self, rect: tuple[int, int, int, int]) -> str | None:
+        """自动播种"""
+        while 1:
+            if self.ui.device.screenshot(rect=rect, save=False) is None:
+                return None
             if self.ui.ui_additional():
-                actions.append('处理弹窗')
                 self.ui.device.sleep(0.2)
                 continue
-
-            page = self.ui.ui_get_current_page(skip_first_screenshot=True, timeout=0.9)
-            if page != page_main:
-                if self.ui.ui_goto(page_main, confirm_wait=0.4, skip_first_screenshot=True):
-                    actions.append('导航回主界面')
-                    self.ui.device.sleep(0.2)
+            if not self.ui.ui_page_appear(page_main):
+                if self.ui.ui_goto(page_main, confirm_wait=0.4):
                     continue
-                break
+                return None
 
-            out = self.task_harvest.run(features=features)
-            if not out.action:
-                break
-            actions.extend(out.actions)
-            self.ui.device.sleep(0.2)
+            has_land = self.ui.appear_any(
+                [LAND_EMPTY, LAND_EMPTY_2, LAND_EMPTY_3],
+                offset=(30, 30),
+                threshold=0.89,
+                static=False,
+            )
+            if not has_land:
+                return None
 
-        return actions
+            actions = self._plant_all(rect, self.engine._resolve_crop_name())
+            if not actions:
+                return None
+            return actions[-1]
 
-    def _run_page_specific(self, page, rect: tuple[int, int, int, int]) -> StepResult:
-        """执行 `page_specific` 子流程。"""
-        if page == page_friend:
-            return StepResult.from_value(self.task_friend.help_in_friend_farm(rect))
-        return StepResult()
+    def _run_feature_upgrade(self, rect: tuple[int, int, int, int]) -> str | None:
+        """自动扩建"""
+        return self._try_expand(rect)
 
     def _try_expand(self, rect: tuple[int, int, int, int]) -> str | None:
-        """尝试执行一次扩建流程；失败后会进入短路状态避免反复触发。"""
+        """尝试执行一次扩建流程；失败后短路避免重复触发。"""
         if self._expand_failed:
             return None
 
+        # 第一步：点击扩建入口。
         if not self.ui.appear_then_click(BTN_EXPAND, offset=(30, 30), interval=1, threshold=0.8, static=False):
             return None
         self.ui.device.sleep(0.5)
 
+        # 第二步：确认扩建（普通确认/直接确认）并处理残留弹窗。
         for _ in range(5):
             if self.ui.device.screenshot(rect=rect, save=False) is None:
                 return None
@@ -261,6 +229,178 @@ class TaskFarmMain(TaskBase):
                 continue
             self.ui.device.sleep(0.3)
 
+        # 多轮都未完成时进入短路，避免每轮重复尝试导致噪音点击。
         self._expand_failed = True
-        logger.info('扩建条件不满足，暂停扩建检测')
         return None
+
+    def _plant_all(self, rect: tuple[int, int, int, int], crop_name: str) -> list[str]:
+        """执行整块农田播种流程（识别空地、拉种子、补种购买）。"""
+        all_actions: list[str] = []
+
+        cv_img = self.ui.device.screenshot(rect=rect, save=False)
+        if cv_img is None:
+            return all_actions
+        dets = self.engine.cv_detector.detect_templates(
+            cv_img,
+            template_names=['land_empty', 'land_empty_2', 'land_empty_3'],
+            default_threshold=0.89,
+            thresholds={'land_empty': 0.89, 'land_empty_2': 0.89, 'land_empty_3': 0.89},
+        )
+        lands = [d for d in dets if d.name.startswith('land_empty')]
+        if not lands:
+            return all_actions
+
+        self.ui.device.click_point(int(lands[0].x), int(lands[0].y), desc='点击空地')
+        self.ui.device.sleep(0.3)
+
+        seed_det = None
+        for _ in range(2):
+            cv_img = self.ui.device.screenshot(rect=rect, save=False)
+            if cv_img is None:
+                return all_actions
+            seed_dets = self.engine.cv_detector.detect_seed_template(cv_img, crop_name_or_template=crop_name)
+            if seed_dets:
+                seed_det = seed_dets[0]
+                break
+            self.ui.device.sleep(0.3)
+
+        if not seed_det:
+            buy_result = self._buy_seeds(rect, crop_name)
+            if buy_result:
+                all_actions.append(buy_result)
+                return all_actions + self._plant_all(rect, crop_name)
+            return all_actions
+
+        if not self.engine.action_executor or not self.engine.device:
+            return all_actions
+
+        planted_count = 0
+        dragging = False
+        try:
+            if not self.engine.device.drag_down_point(int(seed_det.x), int(seed_det.y), duration=0.05):
+                return all_actions
+            dragging = True
+            if not self.ui.device.sleep(0.1):
+                return all_actions
+
+            for land in lands:
+                if not self.engine.device.drag_move_point(int(land.x), int(land.y), duration=0.1):
+                    break
+                if not self.ui.device.sleep(0.15):
+                    break
+                planted_count += 1
+        finally:
+            if dragging:
+                self.engine.device.drag_up()
+
+        if planted_count > 0:
+            all_actions.append(f'播种{crop_name}×{planted_count}')
+
+        self.ui.device.sleep(0.5)
+        cv_check = self.ui.device.screenshot(rect=rect, save=False)
+        if cv_check is not None:
+            if BTN_SHOP_CLOSE is not None and self.ui.appear(
+                BTN_SHOP_CLOSE, offset=(30, 30), threshold=0.8, static=False
+            ):
+                self._close_shop_and_buy(rect, crop_name, all_actions)
+
+            if BTN_FERTILIZE_POPUP is not None and self.ui.appear(
+                BTN_FERTILIZE_POPUP, offset=(30, 30), threshold=0.8, static=False
+            ):
+                x, y = self.engine._resolve_goto_main_point(rect)
+                self.engine.device.click_point(x, y, desc='点击回主按钮')
+
+        return all_actions
+
+    def _close_shop_and_buy(self, rect: tuple[int, int, int, int], crop_name: str, actions_done: list[str]):
+        """关闭商店后立刻执行一次补种购买。"""
+        self._close_shop(rect)
+        buy_result = self._buy_seeds(rect, crop_name)
+        if buy_result:
+            actions_done.append(buy_result)
+
+    def _buy_seeds(self, rect: tuple[int, int, int, int], crop_name: str) -> str | None:
+        """执行买种流程：开商店 -> OCR 定位 -> 选择并确认购买。"""
+        cv_img = self.ui.device.screenshot(rect=rect, save=False)
+        if cv_img is None:
+            return None
+
+        if BTN_SHOP is None:
+            logger.warning('购买流程: 未配置商店按钮模板')
+            return None
+        if not self.ui.appear_then_click(BTN_SHOP, offset=(30, 30), interval=1, threshold=0.8, static=False):
+            logger.warning('购买流程: 未找到商店按钮')
+            return None
+        self.ui.device.sleep(1.0)
+
+        shop_cv = None
+        for _ in range(5):
+            cv_img = self.ui.device.screenshot(rect=rect, save=False)
+            if cv_img is None:
+                return None
+            if BTN_SHOP_CLOSE is not None and self.ui.appear(
+                BTN_SHOP_CLOSE, offset=(30, 30), threshold=0.8, static=False
+            ):
+                shop_cv = cv_img
+                break
+            self.ui.device.sleep(0.5)
+        if shop_cv is None:
+            self._close_shop(rect)
+            return None
+
+        matched_item = None
+        for _ in range(3):
+            ocr_match = self.shop_ocr.find_item(shop_cv, crop_name, min_similarity=0.70)
+            if ocr_match.target:
+                matched_item = ocr_match.target
+                break
+            self.ui.device.sleep(0.3)
+            cv_img = self.ui.device.screenshot(rect=rect, save=False)
+            if cv_img is None:
+                return None
+            shop_cv = cv_img
+
+        if not matched_item:
+            logger.warning(f"购买流程: OCR未找到 '{crop_name}'")
+            self._close_shop(rect)
+            return None
+
+        self.ui.device.click_point(int(matched_item.center_x), int(matched_item.center_y), desc=f'选择{crop_name}')
+        self.ui.device.sleep(1.0)
+        return self._confirm_purchase(rect, crop_name)
+
+    def _confirm_purchase(self, rect: tuple[int, int, int, int], crop_name: str) -> str | None:
+        """在购买弹窗中执行确认并处理伴随弹窗。"""
+        for _ in range(5):
+            cv_img = self.ui.device.screenshot(rect=rect, save=False)
+            if cv_img is None:
+                return None
+
+            if BTN_BUY_CONFIRM is not None and self.ui.appear_then_click(
+                BTN_BUY_CONFIRM, offset=(30, 30), interval=1, threshold=0.8, static=False
+            ):
+                self.ui.device.sleep(0.3)
+                self._close_shop(rect)
+                return f'购买{crop_name}'
+
+            if self.ui.appear_then_click_any(
+                [BTN_CLOSE, BTN_CONFIRM, BTN_CLAIM], offset=(30, 30), interval=1, threshold=0.8, static=False
+            ):
+                self.ui.device.sleep(0.2)
+                continue
+
+            self.ui.device.sleep(0.3)
+
+        self._close_shop(rect)
+        return None
+
+    def _close_shop(self, rect: tuple[int, int, int, int]):
+        """尽可能关闭商店页残留弹窗，回到主流程页面。"""
+        for _ in range(3):
+            cv_img = self.ui.device.screenshot(rect=rect, save=False)
+            if cv_img is None:
+                return
+            buttons = [BTN_CLOSE] if BTN_SHOP_CLOSE is None else [BTN_SHOP_CLOSE, BTN_CLOSE]
+            if not self.ui.appear_then_click_any(buttons, offset=(30, 30), interval=1, threshold=0.8, static=False):
+                return
+            self.ui.device.sleep(0.3)

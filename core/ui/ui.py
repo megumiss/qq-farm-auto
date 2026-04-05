@@ -51,19 +51,13 @@ class UI(InfoHandler):
             return all(self.appear(btn, offset=(30, 30), threshold=0.8, static=False) for btn in check)
         return self.appear(check, offset=(30, 30), threshold=0.8, static=False)
 
-    def ui_get_current_page(self, skip_first_screenshot=True, timeout=2.0):
+    def ui_get_current_page(self, timeout=2.0):
         """识别当前页面；未知时尝试回主与弹窗处理，直到超时。"""
         logger.info('开始识别当前页面')
         deadline = Timer(timeout, count=1).start()
 
         while True:
-            # 首轮尽量复用已有截图，减少无意义截屏。
-            if skip_first_screenshot:
-                skip_first_screenshot = False
-                if self.device.image is None:
-                    self.device.screenshot()
-            else:
-                self.device.screenshot()
+            self.device.screenshot()
 
             # 按 ui_pages 顺序尝试页面判定，命中即返回当前页。
             for page in self.ui_pages:
@@ -100,7 +94,7 @@ class UI(InfoHandler):
             self._button_interval_hit(key)
         return ok
 
-    def ui_goto(self, destination, offset=(30, 30), confirm_wait=0, skip_first_screenshot=True):
+    def ui_goto(self, destination, offset=(30, 30), confirm_wait=0):
         """从当前页导航到目标页。
 
         做法：
@@ -131,10 +125,7 @@ class UI(InfoHandler):
         confirm_timer = Timer(confirm_wait, count=max(1, int(confirm_wait // 0.5) or 1)).start()
         timeout = Timer(6.0, count=1).start()
         while True:
-            if skip_first_screenshot:
-                skip_first_screenshot = False
-            else:
-                self.device.screenshot()
+            self.device.screenshot()
 
             if self.ui_page_appear(destination):
                 if confirm_timer.reached():
@@ -166,14 +157,14 @@ class UI(InfoHandler):
             if timeout.reached():
                 return False
 
-    def ui_ensure(self, destination, confirm_wait=0, skip_first_screenshot=True):
+    def ui_ensure(self, destination, confirm_wait=0):
         """确保当前页面位于目标页；已在目标页则不重复跳转。"""
-        self.ui_get_current_page(skip_first_screenshot=skip_first_screenshot)
+        self.ui_get_current_page()
         if self.ui_current == destination:
             logger.info(f'已在页面: {destination.cn_name}')
             return False
         logger.info(f'跳转到页面: {destination.cn_name}')
-        return self.ui_goto(destination, confirm_wait=confirm_wait, skip_first_screenshot=True)
+        return self.ui_goto(destination, confirm_wait=confirm_wait)
 
     def ui_additional(self):
         """统一处理全局弹窗；任一处理命中即返回 True。"""

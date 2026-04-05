@@ -34,31 +34,25 @@ class TaskFarmSell(TaskBase):
             return self.ok()
         return self.ok(actions=['批量出售果实'])
 
-    def _batch_sell_once(self, skip_first_screenshot: bool = True) -> bool:
+    def _batch_sell_once(self) -> bool:
         """仓库内执行一次批量出售。"""
         logger.info('出售流程: 批量出售')
         batch_clicked = False
 
         while 1:
-            if skip_first_screenshot:
-                skip_first_screenshot = False
-            else:
-                self.ui.device.screenshot()
+            self.ui.device.screenshot()
 
             if self.ui.appear_then_click(BTN_BATCH_SELL, offset=30, interval=1):
                 batch_clicked = True
                 continue
-
             if batch_clicked and self.ui.appear_then_click(BTN_CONFIRM, offset=30, interval=1, static=False):
                 self.engine._record_stat(ActionType.SELL)
                 self.ui.device.sleep(0.5)
                 continue
-
             if self.ui.appear(BTN_PLANTING, offset=30) and self.ui.appear_then_click(
                 BTN_CLOSE, offset=30, interval=1, static=False
             ):
                 continue
-
             if self.ui.appear(MAIN_GOTO_WAREHOUSE, offset=30):
                 if not batch_clicked:
                     return False

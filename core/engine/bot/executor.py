@@ -299,6 +299,7 @@ class BotExecutorMixin:
             empty_queue_policy=self.config.executor.empty_queue_policy,
             on_snapshot=self._on_executor_snapshot,
             on_task_done=self._on_executor_task_done,
+            on_task_error=self._on_executor_task_error,
             on_idle=self._on_executor_idle,
         )
         self._task_executor.start()
@@ -402,6 +403,17 @@ class BotExecutorMixin:
             last_result=last_result,
         )
         self._emit_stats_now()
+
+    def _on_executor_task_error(self, task_name: str, exc: Exception, tb_text: str):
+        """任务异常时保存最近截图到 logs/error。"""
+        _ = exc
+        if not self.device:
+            return
+        try:
+            folder = self.device.save_error_screenshots(task_name=task_name, error_text=tb_text, base_dir='logs/error')
+            logger.error(f'异常截图已保存: {folder}')
+        except Exception as save_exc:
+            logger.debug(f'save error screenshots failed: {save_exc}')
 
     def _on_executor_idle(self):
         """执行器空闲时触发：按策略尝试回主界面。"""
