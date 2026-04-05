@@ -1,8 +1,8 @@
 # QQ Farm Copilot
 
-> ⚠️ 重构中：当前版本所有功能暂不可用
+> ⚠️ 重构中：当前版本部分功能暂不可用
 
-基于 OpenCV + PyQt6 的 QQ 农场自动化工具（PC 端微信小程序场景）。
+基于 OpenCV + PyQt6 的 QQ 农场自动化工具，支持PC端QQ和微信平台。
 
 ## 当前实现概览
 
@@ -20,59 +20,63 @@
 
 ## 已实现功能
 
-- 一键收获 / 除草 / 除虫 / 浇水
-- 空地检测后批量播种（拖拽）
-- 种子不足时打开商店并 OCR 购买种子
-- 自动扩建流程
-- 仓库批量出售
-- 任务奖励领取（含分享后 ESC 关闭）
-- 好友求助、好友农场维护（浇水/除草/除虫/回家）
-- 弹窗统一处理、未知页面回主
-- 动态任务调度（优先级、间隔、每日时间、失败间隔）
+- [x] 一键收获 / 除草 / 除虫 / 浇水
+- [ ] 自动购买种子
+- [ ] 自动播种
+- [ ] 自动扩建 / 升级土地
+- [x] 仓库批量出售
+- [ ] 任务奖励领取
+- [ ] 分享奖励领取
+- [ ] 商城免费礼包购买
+- [ ] QQSvip礼包领取
+- [ ] 好友农场偷菜
+- [ ] 好友农场帮忙
+- [x] 任务调度时间自定义
+- [ ] QQ平台后台运行
 
 ## 环境要求
 
 - Windows 10/11
-- Python 3.10+
-- PC 端微信（并打开 QQ 农场小程序）
+- PC 端手动打开 QQ 农场
 
-## 安装
+
+## 下载安装运行
+
+### 方式一：下载 Release（推荐）
+
+1. 打开仓库 `Releases` 页面，下载最新的：
+   - `QQFarmCopilot-<tag>-windows-x64.exe`
+2. 将 `exe` 放到任意目录后双击运行。
+3. 首次运行会自动在用户目录生成配置文件：
+   - `%APPDATA%\QQFarmCopilot\configs\config.json`
+   - `%APPDATA%\QQFarmCopilot\configs\ui_labels.json`
+4. 打开 QQ 农场窗口，点击程序内“开始”。
+
+
+### 方式二：源码运行
+
+1. 安装 Python（建议 `3.10`）。
+2. 在项目根目录执行：
 
 ```bash
+python -m venv .venv
+.venv\Scripts\activate
+python -m pip install --upgrade pip
 pip install -r requirements.txt
-```
-
-## 启动前准备
-
-### 1) 模板采集（首次使用）
-
-```bash
-python tools/template_collector.py
-```
-
-采集后模板放在 `templates/`。
-
-### 2) 生成 assets（按钮资源映射）
-
-```bash
-python tools/button_extract.py
-```
-
-会生成：`core/ui/assets.py`。
-
-说明：程序启动时会检查 assets 数量，若为 0 会提示先运行 `button_extract`。
-
-### 3)（可选）导入种子模板
-
-```bash
-python tools/import_seeds.py
-```
-
-## 运行
-
-```bash
 python main.py
 ```
+
+可选（国内源）：
+
+```bash
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+### 首次运行建议检查
+
+1. `window_title_keyword` 与实际窗口标题一致（默认 `QQ经典农场`）。
+2. `planting.window_platform` 与当前平台一致（QQ / 微信）。
+3. 游戏窗口已打开且未最小化。
 
 热键：
 

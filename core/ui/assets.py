@@ -8,6 +8,7 @@ BTN_BUG = Button(area={'qq': (332, 683, 372, 717), 'wechat': (332, 683, 372, 717
 BTN_CLAIM = Button(area={'qq': (327, 733, 424, 759), 'wechat': (327, 733, 424, 759)}, color={'qq': (196, 204, 122), 'wechat': (196, 204, 122)}, button={'qq': (327, 733, 424, 759), 'wechat': (327, 733, 424, 759)}, file={'qq': 'templates/qq/btn/btn_claim.png', 'wechat': 'templates/qq/btn/btn_claim.png'}, name='btn_claim')  # 领取
 BTN_CLICK_TO_CLOSE = Button(area={'qq': (207, 793, 331, 811), 'wechat': (207, 793, 331, 811)}, color={'qq': (148, 141, 129), 'wechat': (148, 141, 129)}, button={'qq': (207, 793, 331, 811), 'wechat': (207, 793, 331, 811)}, file={'qq': 'templates/qq/btn/btn_click_to_close.png', 'wechat': 'templates/qq/btn/btn_click_to_close.png'}, name='btn_click_to_close')
 BTN_CLOSE = Button(area={'qq': (493, 54, 527, 88), 'wechat': (493, 54, 527, 88)}, color={'qq': (236, 191, 165), 'wechat': (236, 191, 165)}, button={'qq': (493, 54, 527, 88), 'wechat': (493, 54, 527, 88)}, file={'qq': 'templates/qq/btn/btn_close.png', 'wechat': 'templates/qq/btn/btn_close.png'}, name='btn_close')  # 关闭
+BTN_COME_AGAIN = Button(area={'qq': (223, 590, 316, 613), 'wechat': (223, 590, 316, 613)}, color={'qq': (187, 199, 98), 'wechat': (187, 199, 98)}, button={'qq': (223, 590, 316, 613), 'wechat': (223, 590, 316, 613)}, file={'qq': 'templates/qq/btn/btn_come_again.png', 'wechat': 'templates/qq/btn/btn_come_again.png'}, name='btn_come_again')
 BTN_CONFIRM = Button(area={'qq': (349, 871, 403, 896), 'wechat': (349, 871, 403, 896)}, color={'qq': (182, 197, 86), 'wechat': (182, 197, 86)}, button={'qq': (349, 871, 403, 896), 'wechat': (349, 871, 403, 896)}, file={'qq': 'templates/qq/btn/btn_confirm.png', 'wechat': 'templates/qq/btn/btn_confirm.png'}, name='btn_confirm')  # 确认
 BTN_EXPAND = Button(area={'qq': (160, 574, 192, 587), 'wechat': (160, 574, 192, 587)}, color={'qq': (182, 116, 57), 'wechat': (182, 116, 57)}, button={'qq': (160, 574, 192, 587), 'wechat': (160, 574, 192, 587)}, file={'qq': 'templates/qq/btn/btn_expand.png', 'wechat': 'templates/qq/btn/btn_expand.png'}, name='btn_expand')  # 扩建
 BTN_EXPAND_CONFIRM = Button(area={'qq': (245, 570, 295, 595), 'wechat': (245, 570, 295, 595)}, color={'qq': (190, 201, 105), 'wechat': (190, 201, 105)}, button={'qq': (245, 570, 295, 595), 'wechat': (245, 570, 295, 595)}, file={'qq': 'templates/qq/btn/btn_expand_confirm.png', 'wechat': 'templates/qq/btn/btn_expand_confirm.png'}, name='btn_expand_confirm')
@@ -53,6 +54,7 @@ ASSET_NAME_TO_CONST = {
     'btn_claim': BTN_CLAIM,
     'btn_click_to_close': BTN_CLICK_TO_CLOSE,
     'btn_close': BTN_CLOSE,
+    'btn_come_again': BTN_COME_AGAIN,
     'btn_confirm': BTN_CONFIRM,
     'btn_expand': BTN_EXPAND,
     'btn_expand_confirm': BTN_EXPAND_CONFIRM,

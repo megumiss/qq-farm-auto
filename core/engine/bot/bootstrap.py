@@ -48,6 +48,9 @@ class BotInitMixin:
         self._task_executor: TaskExecutor | None = None
         self._executor_tasks: dict[str, TaskItem] = {}
         self._accept_executor_events = False
+        self._fatal_error_stop_requested = False
+        self._task_error_delay_overrides: dict[str, int] = {}
+        self._task_error_type_names: dict[str, str] = {}
 
         self.scheduler.state_changed.connect(self.state_changed.emit)
         self.scheduler.stats_updated.connect(self.stats_updated.emit)

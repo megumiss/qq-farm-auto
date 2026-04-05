@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime, timedelta
 from functools import lru_cache
 from typing import Callable
@@ -16,6 +17,8 @@ from core.engine.task.registry import (
     TaskResult,
     TaskSnapshot,
 )
+from core.exceptions import GamePageUnknownError, LoginRepeatError
+from core.platform.device import DeviceStuckError, DeviceTooManyClickError
 from models.config import TaskTriggerType
 from tasks.farm_main import TaskFarmMain
 from tasks.farm_sell import TaskFarmSell
@@ -388,6 +391,16 @@ class BotExecutorMixin:
         else:
             self._runtime_failure_count += 1
 
+        if not result.success and task_name in self._task_error_delay_overrides and self._task_executor is not None:
+            delay_seconds = max(1, int(self._task_error_delay_overrides.pop(task_name)))
+            err_type = self._task_error_type_names.pop(task_name, '')
+            self._task_executor.task_delay(task_name, seconds=delay_seconds)
+            if err_type:
+                logger.warning(f'[{self._task_display_name(task_name)}] 异常恢复: {err_type}，{delay_seconds}s后重试')
+        elif result.success:
+            self._task_error_delay_overrides.pop(task_name, None)
+            self._task_error_type_names.pop(task_name, None)
+
         action_text = ', '.join(result.actions) if result.actions else '无动作'
         status_text = '成功' if result.success else '失败'
         next_run_text = self._format_task_next_run(self._executor_tasks.get(task_name))
@@ -405,15 +418,61 @@ class BotExecutorMixin:
         self._emit_stats_now()
 
     def _on_executor_task_error(self, task_name: str, exc: Exception, tb_text: str):
-        """任务异常时保存最近截图到 logs/error。"""
-        _ = exc
-        if not self.device:
+        """任务异常回调：保存异常截图，并默认进入人工接管流程。"""
+        if self.device:
+            try:
+                folder = self.device.save_error_screenshots(
+                    task_name=task_name, error_text=tb_text, base_dir='logs/error'
+                )
+                logger.error(f'异常截图已保存: {folder}')
+            except Exception as save_exc:
+                logger.debug(f'save error screenshots failed: {save_exc}')
+
+        self._task_error_type_names[task_name] = type(exc).__name__
+
+        if isinstance(exc, GamePageUnknownError):
+            self._request_manual_takeover(
+                reason=f'检测到未知页面异常({task_name})，已停止任务',
+            )
             return
-        try:
-            folder = self.device.save_error_screenshots(task_name=task_name, error_text=tb_text, base_dir='logs/error')
-            logger.error(f'异常截图已保存: {folder}')
-        except Exception as save_exc:
-            logger.debug(f'save error screenshots failed: {save_exc}')
+
+        if isinstance(exc, LoginRepeatError):
+            self._request_manual_takeover(
+                reason=f'检测到重复登录异常({task_name})，已停止任务',
+            )
+            return
+
+        if isinstance(exc, (DeviceStuckError, DeviceTooManyClickError)):
+            self._request_manual_takeover(
+                reason=f'检测到设备卡死异常({task_name})，已停止任务',
+            )
+            return
+
+        self._request_manual_takeover(
+            reason=f'任务异常({task_name}): {type(exc).__name__}，已停止任务',
+        )
+
+    def _request_manual_takeover(self, reason: str):
+        """请求人工接管：异步停止引擎，避免执行器线程自停造成 join 冲突。"""
+        if self._fatal_error_stop_requested:
+            return
+        self._fatal_error_stop_requested = True
+        message = str(reason or '检测到致命异常，请手动处理')
+        logger.critical(message)
+        emitter = getattr(self, 'log_message', None)
+        if emitter is not None:
+            try:
+                emitter.emit(message)
+            except Exception:
+                pass
+
+        def _stop_engine():
+            try:
+                self.stop()
+            except Exception as exc:
+                logger.debug(f'fatal stop failed: {exc}')
+
+        threading.Thread(target=_stop_engine, name='FatalErrorStopper', daemon=True).start()
 
     def _on_executor_idle(self):
         """执行器空闲时触发：按策略尝试回主界面。"""

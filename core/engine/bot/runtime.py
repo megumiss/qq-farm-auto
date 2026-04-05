@@ -103,6 +103,9 @@ class BotRuntimeMixin:
         if self._executor_running():
             self.log_message.emit('上一轮任务仍在停止中，请稍候再启动')
             return False
+        self._fatal_error_stop_requested = False
+        self._task_error_delay_overrides.clear()
+        self._task_error_type_names.clear()
         # [启动阶段] 重置运行会话与计数器。
         self._runtime_failure_count = 0
         current_platform = getattr(self.config.planting, 'window_platform', 'qq')
@@ -173,6 +176,7 @@ class BotRuntimeMixin:
 
     def stop(self):
         """停止当前模块并释放运行状态。"""
+        self._fatal_error_stop_requested = False
         self._stop_executor()
         self.ui = None
         self.device = None

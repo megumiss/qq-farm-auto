@@ -158,7 +158,7 @@ class ModuleBase:
         if timer:
             timer.reset()
 
-    def appear(self, button: Button, offset=0, threshold=None, static=True) -> bool:
+    def appear(self, button: Button, offset=0, threshold=0.74, static=True) -> bool:
         """判断按钮是否出现，支持静态区域匹配与全图匹配两种模式。"""
         self.device.stuck_record_add(button)
         image = self.device.image
@@ -176,9 +176,7 @@ class ModuleBase:
 
         return bool(hit)
 
-    def appear_then_click(
-        self, button: Button, offset=0, click_offset=0, interval=1, threshold=0.74, static=True, screenshot=False
-    ) -> bool:
+    def appear_then_click(self, button: Button, offset=0, click_offset=0, interval=1, threshold=0.74, static=True) -> bool:
         """按钮出现后执行点击；支持无模板按钮的直接点击模式。"""
         key = button.name
         if interval and not self._button_interval_ready(key, float(interval)):
@@ -194,8 +192,6 @@ class ModuleBase:
         hit = self.appear(button=button, offset=offset, threshold=threshold, static=static)
         if not hit:
             return False
-        if screenshot:
-            self.device.screenshot()
         ok = bool(self.device.click_button(button, click_offset))
         if ok and interval:
             self._button_interval_hit(key)

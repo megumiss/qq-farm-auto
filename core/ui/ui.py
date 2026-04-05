@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Callable
 from loguru import logger
 
 from core.base.timer import Timer
+from core.exceptions import GamePageUnknownError
 from tasks.info_handler import InfoHandler
 from core.ui.page import *
 
@@ -81,7 +82,7 @@ class UI(InfoHandler):
 
         logger.warning('页面识别超时，仍为未知页面')
         self.ui_current = page_unknown
-        return page_unknown
+        raise GamePageUnknownError('页面识别超时，仍为未知页面')
 
     def _click_goto_main(self, interval: float = 2.0) -> bool:
         """按固定坐标点击“回主”按钮，并应用点击节流。"""
@@ -168,17 +169,13 @@ class UI(InfoHandler):
 
     def ui_additional(self):
         """统一处理全局弹窗；任一处理命中即返回 True。"""
-        if self.handle_level_up():
+        if self.handle_click_close():
             return True
         if self.handle_reward():
             return True
-        if self.handle_shop_residual():
-            return True
         if self.handle_announcement():
             return True
-        if self.handle_login_reward():
-            return True
-        if self.handle_system_error():
+        if self.handle_login_repeat():
             return True
         return False
 
