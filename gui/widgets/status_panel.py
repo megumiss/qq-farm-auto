@@ -2,18 +2,21 @@
 
 from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget, QGroupBox, QSizePolicy
 
+from gui.labels import load_ui_labels
+
 
 class StatusPanel(QWidget):
     """承载 `StatusPanel` 相关界面控件与交互逻辑。"""
-    _PAGE_NAME_MAP = {
-        '--': '--',
-        'unknown': '未知页面',
-    }
 
     def __init__(self, parent=None):
         """初始化对象并准备运行所需状态。"""
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        panel_labels = load_ui_labels().get('status_panel', {})
+        self._group_titles = panel_labels.get('group_titles', {})
+        self._cell_labels = panel_labels.get('labels', {})
+        self._page_name_map = panel_labels.get('page_names', {})
+        self._state_text_map = panel_labels.get('state_text', {})
         self._labels = {}
         self._init_ui()
 
@@ -24,49 +27,49 @@ class StatusPanel(QWidget):
         outer.setSpacing(6)
 
         # 运行状态组
-        status_group = QGroupBox("运行状态")
+        status_group = QGroupBox(str(self._group_titles.get('runtime', 'Runtime')))
         status_group.setStyleSheet("QGroupBox { font-weight: bold; color: #475569; }")
         status_layout = QGridLayout()
         status_layout.setContentsMargins(0, 0, 0, 4)
         status_layout.setHorizontalSpacing(16)
         status_layout.setVerticalSpacing(8)
-        self._add_cell(status_layout, 0, 0, '状态', 'state', '● 未启动')
-        self._add_cell(status_layout, 0, 1, '已运行', 'elapsed', '--')
-        self._add_cell(status_layout, 0, 2, '下次检查', 'next_farm', '--')
-        self._add_cell(status_layout, 0, 3, '页面', 'current_page', '--')
+        self._add_cell(status_layout, 0, 0, self._cell_labels.get('state', 'State'), 'state', '● --')
+        self._add_cell(status_layout, 0, 1, self._cell_labels.get('elapsed', 'Elapsed'), 'elapsed', '--')
+        self._add_cell(status_layout, 0, 2, self._cell_labels.get('next_check', 'Next check'), 'next_farm', '--')
+        self._add_cell(status_layout, 0, 3, self._cell_labels.get('page', 'Page'), 'current_page', '--')
         status_group.setLayout(status_layout)
         outer.addWidget(status_group)
 
         # 任务信息组
-        task_group = QGroupBox("任务信息")
+        task_group = QGroupBox(str(self._group_titles.get('task', 'Task')))
         task_group.setStyleSheet("QGroupBox { font-weight: bold; color: #475569; }")
         task_layout = QGridLayout()
         task_layout.setContentsMargins(0, 0, 0, 4)
         task_layout.setHorizontalSpacing(16)
         task_layout.setVerticalSpacing(8)
-        self._add_cell(task_layout, 0, 0, '当前任务', 'current_task', '--')
-        self._add_cell(task_layout, 0, 1, '运行队列', 'running_tasks', '0')
-        self._add_cell(task_layout, 0, 2, '待执行', 'pending_tasks', '0')
-        self._add_cell(task_layout, 0, 3, '等待中', 'waiting_tasks', '0')
-        self._add_cell(task_layout, 1, 0, '失败次数', 'failure_count', '0')
-        self._add_cell(task_layout, 1, 1, '上次耗时', 'last_tick_ms', '--')
-        self._add_cell(task_layout, 1, 2, '上次结果', 'last_result', '--')
+        self._add_cell(task_layout, 0, 0, self._cell_labels.get('current_task', 'Current task'), 'current_task', '--')
+        self._add_cell(task_layout, 0, 1, self._cell_labels.get('running_tasks', 'Running'), 'running_tasks', '0')
+        self._add_cell(task_layout, 0, 2, self._cell_labels.get('pending_tasks', 'Pending'), 'pending_tasks', '0')
+        self._add_cell(task_layout, 0, 3, self._cell_labels.get('waiting_tasks', 'Waiting'), 'waiting_tasks', '0')
+        self._add_cell(task_layout, 1, 0, self._cell_labels.get('failure_count', 'Failures'), 'failure_count', '0')
+        self._add_cell(task_layout, 1, 1, self._cell_labels.get('last_tick_ms', 'Last tick'), 'last_tick_ms', '--')
+        self._add_cell(task_layout, 1, 2, self._cell_labels.get('last_result', 'Last result'), 'last_result', '--')
         task_group.setLayout(task_layout)
         outer.addWidget(task_group)
 
         # 统计信息组
-        stats_group = QGroupBox("统计信息")
+        stats_group = QGroupBox(str(self._group_titles.get('stats', 'Stats')))
         stats_group.setStyleSheet("QGroupBox { font-weight: bold; color: #475569; }")
         stats_layout = QGridLayout()
         stats_layout.setContentsMargins(0, 0, 0, 4)
         stats_layout.setHorizontalSpacing(16)
         stats_layout.setVerticalSpacing(8)
-        self._add_cell(stats_layout, 0, 0, '收获', 'harvest', '0')
-        self._add_cell(stats_layout, 0, 1, '播种', 'plant', '0')
-        self._add_cell(stats_layout, 0, 2, '浇水', 'water', '0')
-        self._add_cell(stats_layout, 1, 0, '除草', 'weed', '0')
-        self._add_cell(stats_layout, 1, 1, '除虫', 'bug', '0')
-        self._add_cell(stats_layout, 1, 2, '出售', 'sell', '0')
+        self._add_cell(stats_layout, 0, 0, self._cell_labels.get('harvest', 'Harvest'), 'harvest', '0')
+        self._add_cell(stats_layout, 0, 1, self._cell_labels.get('plant', 'Plant'), 'plant', '0')
+        self._add_cell(stats_layout, 0, 2, self._cell_labels.get('water', 'Water'), 'water', '0')
+        self._add_cell(stats_layout, 1, 0, self._cell_labels.get('weed', 'Weed'), 'weed', '0')
+        self._add_cell(stats_layout, 1, 1, self._cell_labels.get('bug', 'Bug'), 'bug', '0')
+        self._add_cell(stats_layout, 1, 2, self._cell_labels.get('sell', 'Sell'), 'sell', '0')
         stats_group.setLayout(stats_layout)
         outer.addWidget(stats_group)
 
@@ -87,24 +90,23 @@ class StatusPanel(QWidget):
         grid.addWidget(wrapper, row, col)
         self._labels[key] = value
 
-    @classmethod
-    def _localize_page(cls, raw_page) -> str:
+    def _localize_page(self, raw_page) -> str:
         """执行 `localize page` 相关处理。"""
         text = str(raw_page or '--').strip()
         if not text:
             return '--'
-        return cls._PAGE_NAME_MAP.get(text, text)
+        return self._page_name_map.get(text, text)
 
     def update_stats(self, stats: dict):
         """更新 `stats` 状态。"""
         state = stats.get('state', 'idle')
         state_map = {
-            'idle': ('● 未启动', '#94a3b8'),
-            'running': ('● 运行中', '#16a34a'),
-            'paused': ('● 已暂停', '#d97706'),
-            'error': ('● 异常', '#dc2626'),
+            'idle': (self._state_text_map.get('idle', '● idle'), '#94a3b8'),
+            'running': (self._state_text_map.get('running', '● running'), '#16a34a'),
+            'paused': (self._state_text_map.get('paused', '● paused'), '#d97706'),
+            'error': (self._state_text_map.get('error', '● error'), '#dc2626'),
         }
-        text, color = state_map.get(state, ('● 运行中', '#16a34a'))
+        text, color = state_map.get(state, (self._state_text_map.get('default', '● running'), '#16a34a'))
         self._labels['state'].setText(text)
         self._labels['state'].setStyleSheet(f'color: {color}; font-size: 12px; font-weight: bold;')
         self._labels['elapsed'].setText(stats.get('elapsed', '--'))

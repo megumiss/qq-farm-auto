@@ -15,6 +15,7 @@ pyautogui.FAILSAFE = True  # 鼠标移到左上角可紧急停止
 
 class ActionExecutor:
     """负责 `ActionExecutor` 的任务执行与状态推进。"""
+
     def __init__(
         self,
         window_rect: tuple[int, int, int, int],

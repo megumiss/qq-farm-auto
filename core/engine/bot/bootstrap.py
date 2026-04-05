@@ -21,13 +21,10 @@ from core.engine.task.registry import (
     build_default_tasks,
 )
 from core.engine.task.scheduler import TaskScheduler
-from core.ops import ExpandOps, FriendOps, PlantOps, PopupOps, TaskOps
 from core.platform.action_executor import ActionExecutor
 from core.platform.device import NKLiteDevice
 from core.platform.screen_capture import ScreenCapture
 from core.platform.window_manager import WindowManager
-from core.tasks.task_farm_main import TaskFarmMain
-from core.tasks.task_farm_reward import TaskFarmReward
 from core.ui.assets import ASSET_NAME_TO_CONST
 from core.ui.page import (
     GOTO_MAIN,
@@ -63,18 +60,10 @@ class BotInitMixin:
         platform_value = platform.value if hasattr(platform, 'value') else str(platform)
         Button.set_template_platform(normalize_template_platform(platform_value))
 
-        # [3] nklite 业务操作（替代 legacy strategies）
-        self.popup = PopupOps(self)
-        self.plant = PlantOps(self)
-        self.expand = ExpandOps(self)
-        self.task = TaskOps(self, popup=self.popup)
-        self.friend = FriendOps(self)
-
-        # [4] 操作执行层
+        # [3] 操作执行层
         self.action_executor: ActionExecutor | None = None
         self.nk_device: NKLiteDevice | None = None
         self.nk_ui: NKLiteUI | None = None
-        self.nk_task_farm_main: TaskFarmMain | None = None
 
         # 调度
         self.scheduler = TaskScheduler()

@@ -1,9 +1,11 @@
-from core.tasks.task_farm_friend import TaskFarmFriend
-from core.tasks.task_farm_harvest import TaskFarmHarvest
-from core.tasks.task_farm_main import TaskFarmMain
-from core.tasks.task_farm_plant import TaskFarmPlant
-from core.tasks.task_farm_reward import TaskFarmReward
-from core.tasks.task_farm_sell import TaskFarmSell
+from core.tasks.farm_friend import TaskFarmFriend
+from core.tasks.farm_harvest import TaskFarmHarvest
+from core.tasks.farm_main import TaskFarmMain
+from core.tasks.farm_plant import TaskFarmPlant
+from core.tasks.farm_reward import TaskFarmReward
+from core.tasks.farm_sell import TaskFarmSell
+from core.tasks.friend import TaskFriend
+from core.tasks.share import TaskShare
 
 __all__ = [
     'TaskFarmMain',
@@ -12,6 +14,8 @@ __all__ = [
     'TaskFarmSell',
     'TaskFarmReward',
     'TaskFarmFriend',
+    'TaskFriend',
+    'TaskShare',
 ]
 
 

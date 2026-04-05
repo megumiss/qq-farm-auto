@@ -129,7 +129,6 @@ class TasksConfig(BaseModel):
                 'auto_sell': True,
                 'auto_upgrade': True,
                 'auto_fertilize': False,
-                'auto_bad': False,
             },
         )
     )

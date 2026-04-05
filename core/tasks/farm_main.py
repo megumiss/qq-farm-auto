@@ -8,25 +8,36 @@ from loguru import logger
 
 from core.engine.task.registry import TaskResult
 from core.base.step_result import StepResult
-from core.tasks.task_farm_friend import TaskFarmFriend
-from core.tasks.task_farm_harvest import TaskFarmHarvest
-from core.tasks.task_farm_plant import TaskFarmPlant
-from core.tasks.task_farm_reward import TaskFarmReward
-from core.tasks.task_farm_sell import TaskFarmSell
+from core.tasks.farm_friend import TaskFarmFriend
+from core.tasks.farm_harvest import TaskFarmHarvest
+from core.tasks.farm_plant import TaskFarmPlant
+from core.tasks.farm_reward import TaskFarmReward
+from core.tasks.farm_sell import TaskFarmSell
 from core.ui.page import (
+    GOTO_MAIN,
     page_friend,
     page_main,
     page_shop,
     page_unknown,
 )
+from core.ui.assets import (
+    BTN_CLAIM,
+    BTN_CLOSE,
+    BTN_CONFIRM,
+    BTN_EXPAND,
+    BTN_EXPAND_CONFIRM,
+    BTN_EXPAND_DIRECT_CONFIRM,
+)
 
 
 class TaskFarmMain:
     """封装 `TaskFarmMain` 任务的执行入口与步骤。"""
+
     def __init__(self, engine, ui):
         """初始化对象并准备运行所需状态。"""
         self.engine = engine
         self.ui = ui
+        self._expand_failed = False
         self.task_harvest = TaskFarmHarvest(engine, ui)
         self.task_plant = TaskFarmPlant(engine, ui)
         self.task_sell = TaskFarmSell(engine, ui)
@@ -86,7 +97,7 @@ class TaskFarmMain:
                     if not self.engine._sleep_interruptible(0.2, session_id):
                         break
                     continue
-                self.engine.popup.click_blank(rect)
+                self._click_goto_main(rect)
                 result.actions.append('点击回主按钮')
                 if not self.engine._sleep_interruptible(0.2, session_id):
                     break
@@ -147,7 +158,7 @@ class TaskFarmMain:
             else:
                 idle_rounds += 1
                 if idle_rounds == 1:
-                    self.engine.popup.click_blank(rect)
+                    self._click_goto_main(rect)
                 elif idle_rounds >= max_idle:
                     break
 
@@ -172,9 +183,7 @@ class TaskFarmMain:
             return out, sold_this_round
 
         if features.get('auto_upgrade', False):
-            cv_image = self.ui.device.image
-            cur = self.engine._augment_detections(cv_image, [], ['btn_expand']) if cv_image is not None else []
-            out = StepResult.from_value(self.engine.expand.try_expand(rect, cur))
+            out = StepResult.from_value(self._try_expand(rect))
             if out.action:
                 return out, sold_this_round
 
@@ -235,7 +244,69 @@ class TaskFarmMain:
     def _run_page_specific(self, page, rect: tuple[int, int, int, int]) -> StepResult:
         """执行 `page_specific` 子流程。"""
         if page == page_friend:
-            return StepResult.from_value(self.engine.friend._help_in_friend_farm(rect))
+            return StepResult.from_value(self.task_friend.help_in_friend_farm(rect))
         return StepResult()
 
+    def _click_goto_main(self, rect: tuple[int, int, int, int]):
+        """点击回主按钮。"""
+        x, y = self.engine._resolve_goto_main_point(rect)
+        self.engine._nklite_click(x, y, GOTO_MAIN.name)
 
+    def _refresh_ui_image(self, rect: tuple[int, int, int, int]) -> bool:
+        """刷新一帧并更新 UI 缓存图像。"""
+        cv_img, _dets, _image = self.engine._capture_and_detect(rect, save=False, template_names=[])
+        if cv_img is None:
+            return False
+        self.ui.device.set_image(cv_img)
+        return True
+
+    def _try_expand(self, rect: tuple[int, int, int, int]) -> str | None:
+        """尝试执行一次扩建流程；失败后会进入短路状态避免反复触发。"""
+        if self._expand_failed:
+            return None
+
+        if not self.ui.appear_then_click(BTN_EXPAND, offset=(30, 30), interval=1, threshold=0.8, static=False):
+            return None
+        self.engine._sleep_interruptible(0.5)
+
+        for _ in range(5):
+            if self.engine._is_cancel_requested():
+                return None
+            if not self._refresh_ui_image(rect):
+                return None
+
+            action_name = None
+            if self.ui.appear_then_click(
+                BTN_EXPAND_DIRECT_CONFIRM, offset=(30, 30), interval=1, threshold=0.8, static=False
+            ):
+                action_name = '直接扩建'
+            elif self.ui.appear_then_click(BTN_EXPAND_CONFIRM, offset=(30, 30), interval=1, threshold=0.8, static=False):
+                action_name = '扩建确认'
+
+            if action_name:
+                self.engine._sleep_interruptible(0.5)
+                self._expand_failed = False
+                if self._refresh_ui_image(rect):
+                    self.ui.appear_then_click_any(
+                        [BTN_CLOSE, BTN_CONFIRM, BTN_CLAIM],
+                        offset=(30, 30),
+                        interval=1,
+                        threshold=0.8,
+                        static=False,
+                    )
+                return action_name
+
+            if self.ui.appear_then_click_any(
+                [BTN_CLOSE, BTN_CONFIRM, BTN_CLAIM],
+                offset=(30, 30),
+                interval=1,
+                threshold=0.8,
+                static=False,
+            ):
+                self.engine._sleep_interruptible(0.2)
+                continue
+            self.engine._sleep_interruptible(0.3)
+
+        self._expand_failed = True
+        logger.info('扩建条件不满足，暂停扩建检测')
+        return None

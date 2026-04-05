@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta
 
-from PyQt6.QtCore import QTime, Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QTime, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractSpinBox,
     QCheckBox,
@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from gui.labels import load_ui_labels
 from models.config import AppConfig, TaskTriggerType
 
 
@@ -30,16 +31,28 @@ class TaskPanel(QWidget):
     """
     config_changed = pyqtSignal(object)
 
-    TASK_TITLE_MAP = {
-        'farm_main': '农场巡查任务',
-        'friend': '好友巡查任务',
-        'share': '分享任务（每日）',
-    }
-
     def __init__(self, config: AppConfig, parent=None):
         """初始化任务调度面板并加载配置。"""
         super().__init__(parent)
         self.config = config
+        panel_labels = load_ui_labels().get('task_panel', {})
+        self._task_title_map = panel_labels.get('task_titles', {})
+        self._switch_label = str(panel_labels.get('switch_label', 'Switch:'))
+        self._enabled_text = str(panel_labels.get('enabled', 'Enable'))
+        self._daily_time_label = str(panel_labels.get('daily_time_label', 'Daily time:'))
+        self._next_run_label = str(panel_labels.get('next_run_label', 'Next run:'))
+        self._daily_hint = str(panel_labels.get('daily_hint', '24h'))
+        self._interval_label = str(panel_labels.get('interval_label', 'Interval:'))
+        self._interval_suffix = str(panel_labels.get('interval_suffix', ' s'))
+        self._executor_group_title = str(panel_labels.get('executor_group_title', 'Executor'))
+        self._policy_label = str(panel_labels.get('policy_label', 'Empty queue policy:'))
+        self._policy_stay = str(panel_labels.get('policy_stay', 'Stay'))
+        self._policy_goto_main = str(panel_labels.get('policy_goto_main', 'Goto main'))
+        self._max_failures_label = str(panel_labels.get('max_failures_label', 'Max failures:'))
+        self._disabled_text = str(panel_labels.get('disabled', 'Disabled'))
+        self._today_text = str(panel_labels.get('today', 'Today'))
+        self._tomorrow_text = str(panel_labels.get('tomorrow', 'Tomorrow'))
+        self._task_title_suffix = str(panel_labels.get('task_title_suffix', ' task'))
         self._loading = True
         self._task_order: list[str] = []
         self._task_widgets: dict[str, dict[str, object]] = {}
@@ -88,7 +101,7 @@ class TaskPanel(QWidget):
         - `INTERVAL` 任务显示“执行间隔(秒)”。
         - `DAILY` 任务显示“每日执行时间 + 下次执行提示”。
         """
-        title = self.TASK_TITLE_MAP.get(task_name, f'{task_name}任务')
+        title = self._task_title_map.get(task_name, f'{task_name}{self._task_title_suffix}')
         group = QGroupBox(title)
         group.setStyleSheet("QGroupBox { font-weight: bold; color: #475569; }")
         form = QFormLayout()
@@ -96,8 +109,8 @@ class TaskPanel(QWidget):
         form.setSpacing(10)
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
-        enabled = QCheckBox('启用')
-        form.addRow('开关:', enabled)
+        enabled = QCheckBox(self._enabled_text)
+        form.addRow(self._switch_label, enabled)
         widgets: dict[str, object] = {'enabled': enabled}
 
         if trigger == TaskTriggerType.DAILY:
@@ -116,7 +129,7 @@ class TaskPanel(QWidget):
                 "}"
                 "QTimeEdit:focus { border-color: #2563eb; }"
             )
-            hint = QLabel('24小时制')
+            hint = QLabel(self._daily_hint)
             hint.setStyleSheet("color: #94a3b8;")
             next_label = QLabel('--')
 
@@ -128,15 +141,15 @@ class TaskPanel(QWidget):
             row_layout.addWidget(hint)
             row_layout.addStretch()
 
-            form.addRow('每日执行时间:', row_widget)
-            form.addRow('下次执行:', next_label)
+            form.addRow(self._daily_time_label, row_widget)
+            form.addRow(self._next_run_label, next_label)
             widgets['daily_time'] = time_edit
             widgets['next_label'] = next_label
         else:
             interval = QSpinBox()
             interval.setRange(1, 86400)
-            interval.setSuffix(' 秒')
-            form.addRow('执行间隔:', interval)
+            interval.setSuffix(self._interval_suffix)
+            form.addRow(self._interval_label, interval)
             widgets['interval_seconds'] = interval
 
         group.setLayout(form)
@@ -150,18 +163,18 @@ class TaskPanel(QWidget):
         - 配置空队列策略（停留/回主界面）。
         - 配置最大连续失败次数（影响失败退避策略）。
         """
-        group = QGroupBox('执行器')
+        group = QGroupBox(self._executor_group_title)
         group.setStyleSheet("QGroupBox { font-weight: bold; color: #475569; }")
         form = QFormLayout()
         form.setContentsMargins(0, 0, 0, 4)
         form.setSpacing(10)
         self._empty_policy = QComboBox()
-        self._empty_policy.addItem('空队列停留', 'stay')
-        self._empty_policy.addItem('空队列回主界面', 'goto_main')
+        self._empty_policy.addItem(self._policy_stay, 'stay')
+        self._empty_policy.addItem(self._policy_goto_main, 'goto_main')
         self._max_failures = QSpinBox()
         self._max_failures.setRange(1, 20)
-        form.addRow('空队列策略:', self._empty_policy)
-        form.addRow('最大连续失败:', self._max_failures)
+        form.addRow(self._policy_label, self._empty_policy)
+        form.addRow(self._max_failures_label, self._max_failures)
         group.setLayout(form)
         return group
 
@@ -242,16 +255,16 @@ class TaskPanel(QWidget):
             return
 
         if not enabled.isChecked():
-            next_label.setText('未启用')
+            next_label.setText(self._disabled_text)
             return
 
         now = datetime.now()
         selected = daily_time.time()
         target = now.replace(hour=selected.hour(), minute=selected.minute(), second=0, microsecond=0)
-        day_hint = '今天'
+        day_hint = self._today_text
         if target <= now:
             target = target + timedelta(days=1)
-            day_hint = '明天'
+            day_hint = self._tomorrow_text
         next_label.setText(f'{day_hint} {target:%m-%d %H:%M}')
 
     def _load_config(self):

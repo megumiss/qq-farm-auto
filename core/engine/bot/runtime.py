@@ -21,13 +21,10 @@ from core.engine.task.registry import (
     build_default_tasks,
 )
 from core.engine.task.scheduler import TaskScheduler
-from core.ops import ExpandOps, FriendOps, PlantOps, PopupOps, TaskOps
 from core.platform.action_executor import ActionExecutor
 from core.platform.device import NKLiteDevice
 from core.platform.screen_capture import ScreenCapture
 from core.platform.window_manager import WindowManager
-from core.tasks.task_farm_main import TaskFarmMain
-from core.tasks.task_farm_reward import TaskFarmReward
 from core.ui.assets import ASSET_NAME_TO_CONST
 from core.ui.page import (
     GOTO_MAIN,
@@ -215,7 +212,6 @@ class BotRuntimeMixin:
             crop_name_resolver=self._resolve_crop_name_quiet,
             cancel_checker=self._is_cancel_requested,
         )
-        self.nk_task_farm_main = TaskFarmMain(engine=self, ui=self.nk_ui)
 
         self.scheduler.stop()
         self.scheduler.force_state('running')
@@ -238,7 +234,6 @@ class BotRuntimeMixin:
         """停止当前模块并释放运行状态。"""
         self._switch_session(cancelled=True)
         self._stop_executor()
-        self.nk_task_farm_main = None
         self.nk_ui = None
         self.nk_device = None
         self.scheduler.force_state('idle')

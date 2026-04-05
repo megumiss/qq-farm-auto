@@ -19,6 +19,7 @@ IdleHook = Callable[[], None]
 
 class TaskExecutor:
     """通用任务执行器：维护任务队列并在后台线程中按优先级调度。"""
+
     def __init__(
         self,
         tasks: dict[str, TaskItem],
@@ -51,11 +52,7 @@ class TaskExecutor:
                 return
             self._stop_event.clear()
             self._pause_event.clear()
-            self._thread = threading.Thread(
-                target=self._loop,
-                name='TaskExecutorLoop',
-                daemon=True,
-            )
+            self._thread = threading.Thread(target=self._loop, name='TaskExecutorLoop', daemon=True)
             self._thread.start()
 
     def stop(self, wait_timeout: float = 1.0):
@@ -102,13 +99,7 @@ class TaskExecutor:
         with self._lock:
             return self._snapshot_locked(now or datetime.now())
 
-    def task_delay(
-        self,
-        task: str,
-        *,
-        seconds: int | None = None,
-        target_time: datetime | None = None,
-    ) -> bool:
+    def task_delay(self, task: str, *, seconds: int | None = None, target_time: datetime | None = None) -> bool:
         """延后任务执行时间，支持相对秒数或绝对时间。"""
         with self._lock:
             item = self._tasks.get(task)
@@ -269,4 +260,3 @@ class TaskExecutor:
 
             self._emit_snapshot()
             time.sleep(0.03)
-

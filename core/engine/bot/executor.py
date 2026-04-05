@@ -2,47 +2,97 @@
 
 from __future__ import annotations
 
-import threading
-import time
 from datetime import datetime, timedelta
+from typing import Callable
 
-import cv2
-import numpy as np
 from loguru import logger
-from PIL import Image as PILImage
 
-from core.base.button import Button
 from core.engine.task.executor import TaskExecutor
 from core.engine.task.registry import (
     TaskContext,
     TaskItem,
     TaskResult,
     TaskSnapshot,
-    build_default_tasks,
 )
-from core.engine.task.scheduler import TaskScheduler
-from core.ops import ExpandOps, FriendOps, PlantOps, PopupOps, TaskOps
-from core.platform.action_executor import ActionExecutor
-from core.platform.device import NKLiteDevice
-from core.platform.screen_capture import ScreenCapture
-from core.platform.window_manager import WindowManager
-from core.tasks.task_farm_main import TaskFarmMain
-from core.tasks.task_farm_reward import TaskFarmReward
-from core.ui.assets import ASSET_NAME_TO_CONST
-from core.ui.page import (
-    GOTO_MAIN,
-    page_main,
-)
-from core.ui.ui import UI as NKLiteUI
-from core.vision.cv_detector import CVDetector, DetectResult
-from models.config import AppConfig, PlantMode, TaskTriggerType
-from models.farm_state import Action, ActionType
-from models.game_data import get_best_crop_for_level
-from utils.template_paths import DEFAULT_TEMPLATE_PLATFORM, normalize_template_platform
+from core.tasks.farm_main import TaskFarmMain
+from core.tasks.friend import TaskFriend
+from core.tasks.share import TaskShare
+from models.config import TaskTriggerType
 
 
 class BotExecutorMixin:
     """Bot 执行器与调度相关逻辑。"""
+    def _iter_task_config_names(self) -> list[str]:
+        """按配置声明顺序返回任务名列表。"""
+        tasks_cfg = getattr(self.config, 'tasks', None)
+        if tasks_cfg is None:
+            return []
+        try:
+            return [str(name) for name in tasks_cfg.model_dump().keys()]
+        except Exception:
+            return []
+
+    def _collect_task_runners(self) -> dict[str, Callable[[TaskContext], TaskResult]]:
+        """自动发现 `_run_task_*` 任务入口方法并构建 runner 映射。"""
+        runners: dict[str, Callable[[TaskContext], TaskResult]] = {}
+        for attr in dir(self):
+            if not attr.startswith('_run_task_'):
+                continue
+            runner = getattr(self, attr, None)
+            if not callable(runner):
+                continue
+            task_name = attr[len('_run_task_') :].strip()
+            if not task_name:
+                continue
+            runners[task_name] = runner
+        return runners
+
+    def _build_executor_tasks(
+        self,
+        runners: dict[str, Callable[[TaskContext], TaskResult]],
+    ) -> dict[str, TaskItem]:
+        """按配置 + runner 自动生成初始任务表。"""
+        now = datetime.now()
+        default_success = max(1, int(self.config.executor.default_success_interval))
+        default_failure = max(1, int(self.config.executor.default_failure_interval))
+        max_failures = max(1, int(self.config.executor.max_failures))
+
+        task_names = self._iter_task_config_names()
+        for name in sorted(runners.keys()):
+            if name not in task_names:
+                task_names.append(name)
+
+        out: dict[str, TaskItem] = {}
+        for index, task_name in enumerate(task_names, start=1):
+            cfg = getattr(self.config.tasks, task_name, None)
+            has_runner = task_name in runners
+            enabled = bool(has_runner) if cfg is None else bool(cfg.enabled and has_runner)
+            if cfg is None and has_runner:
+                logger.info(f'任务 `{task_name}` 未在配置中声明，使用执行器默认调度参数')
+
+            success_interval = max(
+                default_success,
+                int(getattr(cfg, 'interval_seconds', default_success)),
+            )
+            failure_interval = max(
+                default_failure,
+                int(getattr(cfg, 'failure_interval_seconds', default_failure)),
+            )
+
+            next_run = now
+            if cfg is not None and getattr(cfg, 'trigger', TaskTriggerType.INTERVAL) == TaskTriggerType.DAILY:
+                next_run = now + timedelta(seconds=self._task_seconds_by_trigger(task_name, now))
+
+            out[task_name] = TaskItem(
+                name=task_name,
+                enabled=enabled,
+                priority=index * 10,
+                next_run=next_run,
+                success_interval=success_interval,
+                failure_interval=failure_interval,
+                max_failures=max_failures,
+            )
+        return out
 
     def _executor_running(self) -> bool:
         """判断执行器线程是否仍在运行。"""
@@ -91,7 +141,10 @@ class BotExecutorMixin:
             return {}
         return {str(k): bool(v) for k, v in raw.items()}
 
-    def _sync_executor_tasks_from_config(self):
+    def _sync_executor_tasks_from_config(
+        self,
+        runners: dict[str, Callable[[TaskContext], TaskResult]] | None = None,
+    ):
         """将当前配置同步到执行器任务项（启停、间隔、失败参数）。"""
         if not self._executor_tasks:
             return
@@ -100,99 +153,60 @@ class BotExecutorMixin:
         default_failure = max(1, int(self.config.executor.default_failure_interval))
         max_failures = max(1, int(self.config.executor.max_failures))
         now = datetime.now()
-
-        farm_cfg = self.config.tasks.farm_main
-        friend_cfg = self.config.tasks.friend
-        share_cfg = self.config.tasks.share
-
-        farm_enabled = bool(farm_cfg.enabled)
-        friend_enabled = bool(friend_cfg.enabled)
-        share_enabled = bool(share_cfg.enabled)
-
-        farm_success = max(default_success, self._task_seconds_by_trigger('farm_main', now))
-        friend_success = max(default_success, self._task_seconds_by_trigger('friend', now))
-        share_success = max(default_success, self._task_seconds_by_trigger('share', now))
-        farm_failure = max(default_failure, int(farm_cfg.failure_interval_seconds))
-        friend_failure = max(default_failure, int(friend_cfg.failure_interval_seconds))
-        share_failure = max(default_failure, int(share_cfg.failure_interval_seconds))
-
-        share_next_run = (
-            now + timedelta(seconds=self._task_seconds_by_trigger('share', now))
-            if share_cfg.trigger == TaskTriggerType.DAILY
-            else now
-        )
+        runners = runners or self._collect_task_runners()
 
         if self._task_executor:
             # 执行器已启动：直接热更新运行中的任务参数。
             self._task_executor.set_empty_queue_policy(self.config.executor.empty_queue_policy)
-            self._task_executor.update_task(
-                'farm_main',
-                enabled=farm_enabled,
-                success_interval=farm_success,
-                failure_interval=farm_failure,
-                max_failures=max_failures,
-            )
-            self._task_executor.update_task(
-                'friend',
-                enabled=friend_enabled,
-                success_interval=friend_success,
-                failure_interval=friend_failure,
-                max_failures=max_failures,
-            )
-            self._task_executor.update_task(
-                'share',
-                enabled=share_enabled,
-                success_interval=share_success,
-                failure_interval=share_failure,
-                max_failures=max_failures,
-                next_run=share_next_run,
-            )
-            if friend_enabled:
-                self._task_executor.task_call('friend', force_call=False)
-            if share_enabled and share_cfg.trigger == TaskTriggerType.INTERVAL:
-                self._task_executor.task_call('share', force_call=False)
-            return
 
-        # 执行器未启动：仅更新本地任务快照，等待 _init_executor 使用。
-        farm_item = self._executor_tasks.get('farm_main')
-        if farm_item:
-            farm_item.enabled = farm_enabled
-            farm_item.success_interval = farm_success
-            farm_item.failure_interval = farm_failure
-            farm_item.max_failures = max_failures
+        task_names = list(self._executor_tasks.keys())
+        for index, task_name in enumerate(task_names, start=1):
+            cfg = getattr(self.config.tasks, task_name, None)
+            item = self._executor_tasks.get(task_name)
+            has_runner = task_name in runners
 
-        friend_item = self._executor_tasks.get('friend')
-        if friend_item:
-            friend_item.enabled = friend_enabled
-            friend_item.success_interval = friend_success
-            friend_item.failure_interval = friend_failure
-            friend_item.max_failures = max_failures
-            if friend_enabled and friend_item.next_run < now:
-                friend_item.next_run = now
+            enabled = bool(has_runner) if cfg is None else bool(cfg.enabled and has_runner)
+            success_interval = max(
+                default_success,
+                int(getattr(cfg, 'interval_seconds', default_success)),
+            )
+            failure_interval = max(
+                default_failure,
+                int(getattr(cfg, 'failure_interval_seconds', default_failure)),
+            )
+            kwargs = {
+                'enabled': enabled,
+                'priority': index * 10,
+                'success_interval': success_interval,
+                'failure_interval': failure_interval,
+                'max_failures': max_failures,
+            }
 
-        share_item = self._executor_tasks.get('share')
-        if share_item:
-            share_item.enabled = share_enabled
-            share_item.success_interval = share_success
-            share_item.failure_interval = share_failure
-            share_item.max_failures = max_failures
-            if share_cfg.trigger == TaskTriggerType.DAILY:
-                share_item.next_run = share_next_run
-            elif share_item.next_run < now:
-                share_item.next_run = now
+            if cfg is not None and getattr(cfg, 'trigger', TaskTriggerType.INTERVAL) == TaskTriggerType.DAILY:
+                kwargs['next_run'] = now + timedelta(seconds=self._task_seconds_by_trigger(task_name, now))
+            elif enabled and item and item.next_run < now:
+                kwargs['next_run'] = now
+
+            if self._task_executor:
+                self._task_executor.update_task(task_name, **kwargs)
+            elif item:
+                item.enabled = bool(kwargs['enabled'])
+                item.priority = int(kwargs['priority'])
+                item.success_interval = int(kwargs['success_interval'])
+                item.failure_interval = int(kwargs['failure_interval'])
+                item.max_failures = int(kwargs['max_failures'])
+                if 'next_run' in kwargs:
+                    item.next_run = kwargs['next_run']
 
     def _init_executor(self):
         """创建并启动统一任务执行器。"""
-        self._executor_tasks = build_default_tasks(self.config)
-        self._sync_executor_tasks_from_config()
+        runners = self._collect_task_runners()
+        self._executor_tasks = self._build_executor_tasks(runners)
+        self._sync_executor_tasks_from_config(runners=runners)
         self._accept_executor_events = True
         self._task_executor = TaskExecutor(
             tasks=self._executor_tasks,
-            runners={
-                'farm_main': self._run_task_farm_main,
-                'friend': self._run_task_friend,
-                'share': self._run_task_share,
-            },
+            runners=runners,
             empty_queue_policy=self.config.executor.empty_queue_policy,
             on_snapshot=self._on_executor_snapshot,
             on_task_done=self._on_executor_task_done,
@@ -211,15 +225,24 @@ class BotExecutorMixin:
 
     def _run_task_farm_main(self, _ctx: TaskContext) -> TaskResult:
         """执行 `task_farm_main` 子流程。"""
-        return self.check_farm(self._session_id)
+        if self.nk_ui is None:
+            return TaskResult(success=False, actions=[], next_run_seconds=5, error='UI未初始化')
+        task = TaskFarmMain(engine=self, ui=self.nk_ui)
+        return task.run(session_id=self._session_id)
 
     def _run_task_friend(self, _ctx: TaskContext) -> TaskResult:
         """执行 `task_friend` 子流程。"""
-        return self.check_friends(self._session_id)
+        if self.nk_ui is None:
+            return TaskResult(success=False, actions=[], next_run_seconds=5, error='UI未初始化')
+        task = TaskFriend(engine=self, ui=self.nk_ui)
+        return task.run(session_id=self._session_id)
 
     def _run_task_share(self, _ctx: TaskContext) -> TaskResult:
         """执行 `task_share` 子流程。"""
-        return self.check_share(self._session_id)
+        if self.nk_ui is None:
+            return TaskResult(success=False, actions=[], next_run_seconds=5, error='UI未初始化')
+        task = TaskShare(engine=self, ui=self.nk_ui)
+        return task.run(session_id=self._session_id)
 
     def _on_executor_snapshot(self, snapshot: TaskSnapshot):
         """接收执行器快照并更新 GUI 统计面板。"""

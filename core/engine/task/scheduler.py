@@ -1,4 +1,4 @@
-"""运行态统计与状态管理（不再负责任务触发）。"""
+"""运行态统计与状态管理"""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 class BotState(str, Enum):
     """封装 `BotState` 相关的数据与行为。"""
+
     IDLE = 'idle'
     RUNNING = 'running'
     PAUSED = 'paused'

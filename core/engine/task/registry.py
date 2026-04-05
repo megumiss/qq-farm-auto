@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 @dataclass
 class TaskItem:
     """封装 `TaskItem` 任务的执行入口与步骤。"""
+
     name: str
     enabled: bool
     priority: int
@@ -26,6 +27,7 @@ class TaskItem:
 @dataclass
 class TaskResult:
     """封装 `TaskResult` 任务的执行入口与步骤。"""
+
     success: bool
     actions: list[str] = field(default_factory=list)
     next_run_seconds: int | None = None
@@ -36,6 +38,7 @@ class TaskResult:
 @dataclass
 class TaskSnapshot:
     """封装 `TaskSnapshot` 任务的执行入口与步骤。"""
+
     running_task: str | None
     pending_tasks: list[TaskItem]
     waiting_tasks: list[TaskItem]
@@ -44,6 +47,7 @@ class TaskSnapshot:
 @dataclass
 class TaskContext:
     """封装 `TaskContext` 任务的执行入口与步骤。"""
+
     task_name: str
     started_at: datetime
 
@@ -54,43 +58,28 @@ def build_default_tasks(config: 'AppConfig') -> dict[str, TaskItem]:
     default_success = max(1, int(config.executor.default_success_interval))
     default_failure = max(1, int(config.executor.default_failure_interval))
     max_failures = max(1, int(config.executor.max_failures))
-    farm_cfg = config.tasks.farm_main
-    friend_cfg = config.tasks.friend
-    share_cfg = config.tasks.share
+    tasks_cfg = getattr(config, 'tasks', None)
+    if tasks_cfg is None:
+        return {}
 
-    farm_enabled = bool(farm_cfg.enabled)
-    friend_enabled = bool(friend_cfg.enabled)
-    share_enabled = bool(share_cfg.enabled)
+    task_names: list[str] = []
+    try:
+        task_names = [str(name) for name in tasks_cfg.model_dump().keys()]
+    except Exception:
+        return {}
 
-    farm_success = max(default_success, int(farm_cfg.interval_seconds))
-    friend_success = max(default_success, int(friend_cfg.interval_seconds))
-    share_success = max(default_success, int(share_cfg.interval_seconds))
-    return {
-        'farm_main': TaskItem(
-            name='farm_main',
-            enabled=farm_enabled,
-            priority=10,
+    out: dict[str, TaskItem] = {}
+    for index, task_name in enumerate(task_names, start=1):
+        cfg = getattr(tasks_cfg, task_name, None)
+        if cfg is None:
+            continue
+        out[task_name] = TaskItem(
+            name=task_name,
+            enabled=bool(getattr(cfg, 'enabled', True)),
+            priority=index * 10,
             next_run=now,
-            success_interval=farm_success,
-            failure_interval=max(default_failure, int(farm_cfg.failure_interval_seconds)),
+            success_interval=max(default_success, int(getattr(cfg, 'interval_seconds', default_success))),
+            failure_interval=max(default_failure, int(getattr(cfg, 'failure_interval_seconds', default_failure))),
             max_failures=max_failures,
-        ),
-        'friend': TaskItem(
-            name='friend',
-            enabled=friend_enabled,
-            priority=50,
-            next_run=now + timedelta(seconds=max(1, int(friend_cfg.interval_seconds))),
-            success_interval=friend_success,
-            failure_interval=max(default_failure, int(friend_cfg.failure_interval_seconds)),
-            max_failures=max_failures,
-        ),
-        'share': TaskItem(
-            name='share',
-            enabled=share_enabled,
-            priority=80,
-            next_run=now,
-            success_interval=share_success,
-            failure_interval=max(default_failure, int(share_cfg.failure_interval_seconds)),
-            max_failures=max_failures,
-        ),
-    }
+        )
+    return out

@@ -26,8 +26,7 @@
         "auto_bug": true,
         "auto_sell": true,
         "auto_upgrade": true,
-        "auto_fertilize": false,
-        "auto_bad": false
+        "auto_fertilize": false
       }
     },
     "friend": {
