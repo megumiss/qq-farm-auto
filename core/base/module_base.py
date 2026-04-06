@@ -133,6 +133,166 @@ class ModuleBase:
                 return True
         return False
 
+    def match_template_multi(
+        self,
+        button: Button,
+        *,
+        threshold: float = 0.8,
+        roi: tuple[int, int, int, int] | None = None,
+    ) -> list[Button]:
+        """按模板名执行多命中识别，返回可直接点击的动态 Button 列表。"""
+        image = self.device.image
+        if image is None:
+            return []
+
+        template_name = str(getattr(button, 'template_name', '') or '').strip()
+        if not template_name:
+            return []
+
+        roi_map = {template_name: roi} if roi is not None else None
+        results = self.cv_detector.detect_templates(
+            image,
+            template_names=[template_name],
+            default_threshold=float(threshold),
+            roi_map=roi_map,
+        )
+
+        out: list[Button] = []
+        for result in results:
+            x1, y1, x2, y2 = result.bbox
+            dynamic = Button(
+                area=(x1, y1, x2, y2),
+                color=button.color,
+                button=(x1, y1, x2, y2),
+                file=button.file,
+                name=button.name,
+            )
+            out.append(dynamic)
+        return out
+
+    def match_template_result(
+        self,
+        button: Button,
+        *,
+        threshold: float = 0.8,
+        roi: tuple[int, int, int, int] | None = None,
+    ) -> Button | None:
+        """按模板名匹配单个最佳结果。"""
+        buttons = self.match_template_multi(button, threshold=threshold, roi=roi)
+        if not buttons:
+            return None
+        return buttons[0]
+
+    def match_icon_multi(
+        self,
+        icon_button: Button,
+        *,
+        threshold: float = 0.75,
+        roi: tuple[int, int, int, int] | None = None,
+    ) -> list[Button]:
+        """icon_ 模板多命中识别（对齐 NIKKE 的 TEMPLATE.match_multi 使用方式）。"""
+        template_name = str(getattr(icon_button, 'template_name', '') or '')
+        if not template_name.startswith('icon_'):
+            return []
+        return self.match_template_multi(icon_button, threshold=threshold, roi=roi)
+
+    def match_icon_result(
+        self,
+        icon_button: Button,
+        *,
+        threshold: float = 0.75,
+        roi: tuple[int, int, int, int] | None = None,
+    ) -> Button | None:
+        """icon_ 模板单结果识别。"""
+        buttons = self.match_icon_multi(icon_button, threshold=threshold, roi=roi)
+        if not buttons:
+            return None
+        return buttons[0]
+
+    def appear_icon(
+        self,
+        icon_button: Button,
+        *,
+        threshold: float = 0.75,
+        roi: tuple[int, int, int, int] | None = None,
+    ) -> bool:
+        """icon_ 模板是否出现。"""
+        return self.match_icon_result(icon_button, threshold=threshold, roi=roi) is not None
+
+    @staticmethod
+    def sort_buttons_by_location(buttons: list[Button], horizontal: bool = True) -> list[Button]:
+        """按按钮中心坐标排序。horizontal=True 时优先按 x，再按 y。"""
+        if horizontal:
+            return sorted(buttons, key=lambda b: (b.location[0], b.location[1]))
+        return sorted(buttons, key=lambda b: (b.location[1], b.location[0]))
+
+    @staticmethod
+    def filter_buttons_in_area(
+        buttons: list[Button],
+        *,
+        x_range: tuple[int, int] | None = None,
+        y_range: tuple[int, int] | None = None,
+    ) -> list[Button]:
+        """按区域范围过滤按钮（使用 area 判定）。"""
+        filtered: list[Button] = []
+        for btn in buttons:
+            x1, y1, x2, y2 = btn.area
+            if x_range is not None and (x1 < x_range[0] or x2 > x_range[1]):
+                continue
+            if y_range is not None and (y1 < y_range[0] or y2 > y_range[1]):
+                continue
+            filtered.append(btn)
+        return filtered
+
+    def match_icon_and_click(
+        self,
+        icon_button: Button,
+        *,
+        threshold: float = 0.75,
+        roi: tuple[int, int, int, int] | None = None,
+        interval: float = 1,
+        horizontal: bool = True,
+        x_range: tuple[int, int] | None = None,
+        y_range: tuple[int, int] | None = None,
+    ) -> bool:
+        """识别 icon_ 多命中并点击排序后的第一个结果。"""
+        key = f'icon::{icon_button.name}'
+        if interval and not self._button_interval_ready(key, float(interval)):
+            return False
+
+        buttons = self.match_icon_multi(icon_button, threshold=threshold, roi=roi)
+        buttons = self.filter_buttons_in_area(buttons, x_range=x_range, y_range=y_range)
+        buttons = self.sort_buttons_by_location(buttons, horizontal=horizontal)
+        if not buttons:
+            return False
+
+        ok = bool(self.device.click_button(buttons[0]))
+        if ok and interval:
+            self._button_interval_hit(key)
+        return ok
+
+    def appear_then_click_icon(
+        self,
+        icon_button: Button,
+        *,
+        threshold: float = 0.75,
+        roi: tuple[int, int, int, int] | None = None,
+        interval: float = 1,
+        horizontal: bool = True,
+        x_range: tuple[int, int] | None = None,
+        y_range: tuple[int, int] | None = None,
+    ) -> bool:
+        """icon_ 模板出现后点击（模板式接口命名）。"""
+        return self.match_icon_and_click(
+            icon_button,
+            threshold=threshold,
+            roi=roi,
+            interval=interval,
+            horizontal=horizontal,
+            x_range=x_range,
+            y_range=y_range,
+        )
+
     def appear_then_click_any(self, buttons, interval=1, **kwargs):
         """依次检测并点击多个按钮，任一成功即返回 `True`。"""
         params = dict(kwargs)
@@ -176,7 +336,9 @@ class ModuleBase:
 
         return bool(hit)
 
-    def appear_then_click(self, button: Button, offset=0, click_offset=0, interval=1, threshold=0.74, static=True) -> bool:
+    def appear_then_click(
+        self, button: Button, offset=0, click_offset=0, interval=1, threshold=0.74, static=True
+    ) -> bool:
         """按钮出现后执行点击；支持无模板按钮的直接点击模式。"""
         key = button.name
         if interval and not self._button_interval_ready(key, float(interval)):
