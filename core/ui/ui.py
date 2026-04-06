@@ -10,13 +10,13 @@ from core.base.timer import Timer
 from core.exceptions import GamePageUnknownError, TaskRetryCurrentError
 from core.ui.assets import BTN_LOGIN_AGAIN
 from core.ui.page import *
-from tasks.info_handler import InfoHandler
+from tasks.handler import Handler
 
 if TYPE_CHECKING:
     from core.platform.device import Device
 
 
-class UI(InfoHandler):
+class UI(Handler):
     """封装 `UI` 相关的数据与行为。"""
 
     ui_pages = [
@@ -169,8 +169,15 @@ class UI(InfoHandler):
         if self.ui_current == destination:
             logger.info(f'已在页面: {destination.cn_name}')
             return False
+        if self.ui_current == page_main and destination == page_friend:
+            if self._ensure_main_to_friend():
+                return True
         logger.info(f'跳转到页面: {destination.cn_name}')
         return self.ui_goto(destination, confirm_wait=confirm_wait)
+
+    def _ensure_main_to_friend(self) -> bool:
+        """主页 -> 好友页专用处理钩子（预留）。"""
+        return False
 
     def ui_additional(self):
         """统一处理全局弹窗；任一处理命中即返回 True。"""

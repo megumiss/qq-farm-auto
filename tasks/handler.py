@@ -7,8 +7,8 @@ from core.exceptions import LoginRepeatError
 from core.ui.assets import BTN_CLICK_TO_CLOSE, BTN_CLOSE, BTN_COME_AGAIN
 
 
-class InfoHandler(ModuleBase):
-    """封装 `InfoHandler` 相关的数据与行为。"""
+class Handler(ModuleBase):
+    """封装 `Handler` 相关的数据与行为。"""
 
     def handle_click_close(self):
         """点击空白处关闭"""

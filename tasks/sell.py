@@ -12,7 +12,7 @@ from core.ui.assets import (
     BTN_PLANTING,
     MAIN_GOTO_WAREHOUSE,
 )
-from core.ui.page import page_warehouse
+from core.ui.page import page_main, page_warehouse
 from models.farm_state import ActionType
 from tasks.base import TaskBase
 
@@ -27,8 +27,6 @@ class TaskSell(TaskBase):
     def run(self, rect: tuple[int, int, int, int]) -> TaskResult:
         """执行独立出售任务并返回调度结果。"""
         self.ui.ui_ensure(page_warehouse)
-        if not self.is_feature_enabled('sell', 'auto_sell'):
-            return self.ok()
 
         if not self._batch_sell_once():
             return self.ok()

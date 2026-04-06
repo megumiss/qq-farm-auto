@@ -59,9 +59,7 @@
       "interval_seconds": 21600,
       "daily_time": "00:00",
       "failure_interval_seconds": 300,
-      "features": {
-        "auto_sell": true
-      }
+      "features": {}
     }
   },
   "executor": {

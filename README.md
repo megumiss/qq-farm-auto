@@ -107,8 +107,7 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
     "failure_interval_seconds": 30,
     "features": {
       "auto_harvest": true,
-      "auto_plant": true,
-      "auto_sell": true
+      "auto_plant": true
     }
   },
   "share": {
