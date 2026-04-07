@@ -17,14 +17,16 @@ import time
 
 import keyboard
 from PIL import Image
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon, QImage, QPainter, QPainterPath, QPixmap
+from PyQt6.QtCore import QSettings, QTimer, Qt, QUrl
+from PyQt6.QtGui import QDesktopServices, QIcon, QImage, QPainter, QPainterPath, QPixmap
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QTabWidget,
     QVBoxLayout,
@@ -76,6 +78,12 @@ QScrollBar::handle:vertical:hover { background: #94a3b8; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 """
 
+PROJECT_URL = 'https://github.com/megumiss/qq-farm-copilot'
+PROJECT_URL_TEXT = 'github.com/megumiss/qq-farm-copilot'
+APP_SETTINGS_ORG = 'QQFarmCopilot'
+APP_SETTINGS_NAME = 'QQFarmCopilot'
+FREE_NOTICE_ENABLED_KEY = 'ui/free_notice_enabled'
+
 
 def _build_stylesheet() -> str:
     """构建样式表并注入运行时图标绝对路径。"""
@@ -83,8 +91,7 @@ def _build_stylesheet() -> str:
     arrow_up_icon = str(resolve_runtime_path('gui', 'icons', 'arrow_up.svg')).replace('\\', '/')
     arrow_down_icon = str(resolve_runtime_path('gui', 'icons', 'arrow_down.svg')).replace('\\', '/')
     return (
-        STYLESHEET_TEMPLATE
-        .replace('__CHECK_ICON__', check_icon)
+        STYLESHEET_TEMPLATE.replace('__CHECK_ICON__', check_icon)
         .replace('__ARROW_UP_ICON__', arrow_up_icon)
         .replace('__ARROW_DOWN_ICON__', arrow_down_icon)
     )
@@ -129,6 +136,8 @@ class MainWindow(QMainWindow):
         self.engine = BotEngine(config)
         self._last_screenshot: Image.Image | None = None
         self._last_screenshot_time = 0.0
+        self._pending_free_notice = self._is_free_notice_enabled()
+        self._free_notice_shown = False
         self._init_ui()
         self._connect_signals()
         keyboard.add_hotkey('F9', self._on_pause)
@@ -144,7 +153,7 @@ class MainWindow(QMainWindow):
 
         # 动态获取当前屏幕的 DPI 缩放比例
         ratio = self.devicePixelRatioF()
-        
+
         # 不再写死窗口高度，仅限制最小宽度保证左右两侧能放得下
         self.setMinimumWidth(int(540 / ratio) + 550)
         # 设置一个合理的初始宽度，高度交由系统和内部内容自适应撑开
@@ -382,6 +391,61 @@ class MainWindow(QMainWindow):
         self.config = config
         self.engine.update_config(config)
 
+    def _show_free_notice(self):
+        """启动后展示免费声明与项目地址入口。"""
+        box = QMessageBox(self)
+        box.setWindowTitle('使用提示')
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setTextFormat(Qt.TextFormat.RichText)
+        box.setText(
+            '<span style="font-size:16px; font-weight:700; color:#dc2626;">本软件完全免费，若付费购买请立即退款。</span>'
+        )
+        box.setInformativeText(
+            '<span style="font-size:13px; font-weight:600; color:#b45309;">'
+            '请通过项目主页获取最新版与公告，谨防二次售卖、捆绑分发或虚假收费。'
+            '</span><br><br>'
+            f'<span style="font-size:12px; color:#2563eb;">项目地址：{PROJECT_URL_TEXT}</span>'
+        )
+        box.setStyleSheet("""
+            QMessageBox QPushButton { min-width: 102px; min-height: 30px; padding: 2px 10px; }
+            QMessageBox QCheckBox { color: #334155; font-size: 12px; font-weight: 600; }
+        """)
+        text_label = box.findChild(QLabel, 'qt_msgbox_label')
+        if text_label is not None:
+            text_label.setWordWrap(True)
+            text_label.setMinimumWidth(360)
+            text_label.setMaximumWidth(430)
+        info_label = box.findChild(QLabel, 'qt_msgbox_informativelabel')
+        if info_label is not None:
+            info_label.setWordWrap(True)
+            info_label.setMinimumWidth(360)
+            info_label.setMaximumWidth(430)
+        dont_remind = QCheckBox('下次不再提醒')
+        box.setCheckBox(dont_remind)
+        open_btn = box.addButton('打开项目地址', QMessageBox.ButtonRole.ActionRole)
+        box.addButton('我已知晓', QMessageBox.ButtonRole.AcceptRole)
+        box.exec()
+        if dont_remind.isChecked():
+            self._set_free_notice_enabled(False)
+        if box.clickedButton() is open_btn:
+            QDesktopServices.openUrl(QUrl(PROJECT_URL))
+
+    @staticmethod
+    def _is_free_notice_enabled() -> bool:
+        """读取“启动免费提示”是否启用。"""
+        settings = QSettings(APP_SETTINGS_ORG, APP_SETTINGS_NAME)
+        raw = settings.value(FREE_NOTICE_ENABLED_KEY, True)
+        if isinstance(raw, bool):
+            return raw
+        return str(raw).strip().lower() not in {'0', 'false', 'no'}
+
+    @staticmethod
+    def _set_free_notice_enabled(enabled: bool) -> None:
+        """写入“启动免费提示”开关。"""
+        settings = QSettings(APP_SETTINGS_ORG, APP_SETTINGS_NAME)
+        settings.setValue(FREE_NOTICE_ENABLED_KEY, bool(enabled))
+        settings.sync()
+
     def showEvent(self, event):
         """窗口显示时确保居中。
         由于高度自适应，必须在显示瞬间（尺寸确定后）进行二次居中校验。
@@ -394,6 +458,10 @@ class MainWindow(QMainWindow):
             y = (screen.height() - size.height()) // 2
             self.move(x, y)
             self._centered = True
+        if self._pending_free_notice and not self._free_notice_shown:
+            self._free_notice_shown = True
+            # 延迟到主窗口真正显示后再弹，避免构造期阻塞导致“窗口不出现”的假死感。
+            QTimer.singleShot(0, self._show_free_notice)
 
     def closeEvent(self, event):
         """窗口关闭时执行收尾清理。"""

@@ -16,9 +16,12 @@ from PyQt6.QtWidgets import (
 from models.config import AppConfig, PlantMode, RunMode, WindowPlatform, WindowPosition
 from models.game_data import CROPS, format_grow_time, get_best_crop_for_level, get_crop_names
 
+PROJECT_URL = 'https://github.com/megumiss/qq-farm-copilot'
+
 
 class SettingsPanel(QWidget):
     """承载 `SettingsPanel` 相关界面控件与交互逻辑。"""
+
     config_changed = pyqtSignal(object)
 
     def __init__(self, config: AppConfig, parent=None):
@@ -100,6 +103,14 @@ class SettingsPanel(QWidget):
         self._window_position.addItem('左下', WindowPosition.LEFT_BOTTOM.value)
         self._window_position.addItem('右下', WindowPosition.RIGHT_BOTTOM.value)
         mf.addRow('窗口位置:', self._window_position)
+        self._free_notice = QLabel('本软件完全免费，若付费购买请立即退款。')
+        self._free_notice.setWordWrap(True)
+        self._free_notice.setStyleSheet('color: #dc2626; font-weight: bold;')
+        mf.addRow('免费声明:', self._free_notice)
+        self._project_link = QLabel(f'<a href="{PROJECT_URL}">{PROJECT_URL}</a>')
+        self._project_link.setOpenExternalLinks(True)
+        self._project_link.setWordWrap(True)
+        mf.addRow('项目地址:', self._project_link)
         misc_group.setLayout(mf)
         layout.addWidget(misc_group)
 

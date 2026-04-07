@@ -4,6 +4,12 @@
 
 基于 OpenCV + PyQt6 的 QQ 农场自动化工具，支持PC端QQ（后台）和微信平台。
 
+## 使用提示
+
+- 本软件完全免费，若付费购买请立即退款。
+- 请认准项目主页获取版本与说明，谨防二次售卖、捆绑分发与虚假收费。
+- 项目地址：`https://github.com/megumiss/qq-farm-copilot`
+
 ## 当前实现概览
 
 - 架构：`BotEngine` + `TaskExecutor` + UI 页面识别（`core/ui`）
@@ -44,7 +50,10 @@
 
 ### 方式一：下载 Release（推荐）
 
-1. 打开仓库 `Releases` 页面，下载最新的：
+下载链接：
+- [https://github.com/megumiss/qq-farm-copilot/releases/latest](https://github.com/megumiss/qq-farm-copilot/releases/latest)
+
+1. 打开上方链接，下载最新的：
    - `QQFarmCopilot-<tag>-windows-x64.exe`
 2. 将 `exe` 放到任意目录后双击运行。
 3. 首次运行会自动在用户目录生成配置文件：
