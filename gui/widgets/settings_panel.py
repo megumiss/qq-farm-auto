@@ -3,6 +3,7 @@
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
+    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -55,7 +56,7 @@ class SettingsPanel(QWidget):
         row_level.addWidget(self._player_level)
         self._strategy_combo = QComboBox()
         self._strategy_combo.addItem('自动最优', PlantMode.BEST_EXP_RATE.value)
-        self._strategy_combo.addItem('手动指定', PlantMode.PREFERRED.value)
+        # self._strategy_combo.addItem('手动指定', PlantMode.PREFERRED.value)
         row_level.addWidget(QLabel('策略'))
         row_level.addWidget(self._strategy_combo, 1)
         pf.addRow(row_level)
@@ -73,6 +74,45 @@ class SettingsPanel(QWidget):
         self._strategy_combo.currentIndexChanged.connect(self._on_strategy_changed)
         plant_group.setLayout(pf)
         layout.addWidget(plant_group)
+
+        # ===== 高级设置（默认折叠）=====
+        self._advanced_group = QGroupBox('高级')
+        self._advanced_group.setCheckable(True)
+        self._advanced_group.setChecked(False)
+        self._advanced_group.toggled.connect(self._on_toggle_advanced)
+        advanced_layout = QVBoxLayout()
+        advanced_layout.setContentsMargins(0, 0, 0, 4)
+        advanced_layout.setSpacing(8)
+
+        self._advanced_content = QWidget()
+        self._advanced_content.setVisible(False)
+        af = QFormLayout()
+        af.setContentsMargins(0, 0, 0, 0)
+        af.setSpacing(10)
+        # ===== 其他 =====
+        # 安全参数归类到“高级”分组。
+        self._random_delay_min = QDoubleSpinBox()
+        self._random_delay_min.setRange(0.0, 10.0)
+        self._random_delay_min.setDecimals(2)
+        self._random_delay_min.setSingleStep(0.05)
+        self._random_delay_min.setToolTip('每次操作后的最小随机停顿时间')
+        af.addRow('最小随机延迟(秒):', self._random_delay_min)
+        self._random_delay_max = QDoubleSpinBox()
+        self._random_delay_max.setRange(0.0, 10.0)
+        self._random_delay_max.setDecimals(2)
+        self._random_delay_max.setSingleStep(0.05)
+        self._random_delay_max.setToolTip('每次操作后的最大随机停顿时间')
+        af.addRow('最大随机延迟(秒):', self._random_delay_max)
+        self._click_offset_range = QSpinBox()
+        self._click_offset_range.setRange(0, 50)
+        af.addRow('点击抖动范围(像素):', self._click_offset_range)
+        self._max_actions_per_round = QSpinBox()
+        self._max_actions_per_round.setRange(1, 500)
+        af.addRow('单轮最大点击数:', self._max_actions_per_round)
+        self._advanced_content.setLayout(af)
+        advanced_layout.addWidget(self._advanced_content)
+        self._advanced_group.setLayout(advanced_layout)
+        layout.addWidget(self._advanced_group)
 
         # ===== 其他 =====
         # 窗口平台/关键词/位置统一归类为“运行环境”参数。
@@ -123,8 +163,16 @@ class SettingsPanel(QWidget):
         self._crop_combo.currentIndexChanged.connect(self._auto_save)
         self._window_platform.currentIndexChanged.connect(self._auto_save)
         self._run_mode.currentIndexChanged.connect(self._auto_save)
+        self._random_delay_min.valueChanged.connect(self._auto_save)
+        self._random_delay_max.valueChanged.connect(self._auto_save)
+        self._click_offset_range.valueChanged.connect(self._auto_save)
+        self._max_actions_per_round.valueChanged.connect(self._auto_save)
         self._window_keyword.editingFinished.connect(self._auto_save)
         self._window_position.currentIndexChanged.connect(self._auto_save)
+
+    def _on_toggle_advanced(self, checked: bool):
+        """折叠/展开高级设置内容。"""
+        self._advanced_content.setVisible(bool(checked))
 
     def _auto_save(self):
         """从控件回填配置对象并持久化。"""
@@ -132,12 +180,19 @@ class SettingsPanel(QWidget):
             return
         c = self.config
         c.planting.player_level = self._player_level.value()
-        c.planting.strategy = PlantMode(self._strategy_combo.currentData())
+        strategy_value = self._strategy_combo.currentData() or PlantMode.BEST_EXP_RATE.value
+        c.planting.strategy = PlantMode(strategy_value)
         idx = self._crop_combo.currentIndex()
         if 0 <= idx < len(self._crop_names):
             c.planting.preferred_crop = self._crop_names[idx]
         c.planting.window_platform = WindowPlatform(self._window_platform.currentData())
         c.safety.run_mode = RunMode(self._run_mode.currentData())
+        delay_min = float(self._random_delay_min.value())
+        delay_max = float(self._random_delay_max.value())
+        c.safety.random_delay_min = min(delay_min, delay_max)
+        c.safety.random_delay_max = max(delay_min, delay_max)
+        c.safety.click_offset_range = int(self._click_offset_range.value())
+        c.safety.max_actions_per_round = int(self._max_actions_per_round.value())
         c.window_title_keyword = self._window_keyword.text().strip()
         c.planting.window_position = WindowPosition(self._window_position.currentData())
         c.save()
@@ -183,7 +238,7 @@ class SettingsPanel(QWidget):
         """将配置文件中的值回填到界面控件。"""
         c = self.config
         self._player_level.setValue(c.planting.player_level)
-        strategy_idx = 0 if c.planting.strategy == PlantMode.BEST_EXP_RATE else 1
+        strategy_idx = 0
         self._strategy_combo.setCurrentIndex(strategy_idx)
         # 先设置策略，再同步推荐文案与作物列表，保证控件状态一致。
         self._on_strategy_changed(strategy_idx)
@@ -199,6 +254,10 @@ class SettingsPanel(QWidget):
             if self._run_mode.itemData(i) == c.safety.run_mode.value:
                 self._run_mode.setCurrentIndex(i)
                 break
+        self._random_delay_min.setValue(float(c.safety.random_delay_min))
+        self._random_delay_max.setValue(float(c.safety.random_delay_max))
+        self._click_offset_range.setValue(int(c.safety.click_offset_range))
+        self._max_actions_per_round.setValue(int(c.safety.max_actions_per_round))
         self._window_keyword.setText(c.window_title_keyword)
         for i in range(self._window_position.count()):
             if self._window_position.itemData(i) == c.planting.window_position.value:
