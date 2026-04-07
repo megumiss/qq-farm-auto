@@ -6,8 +6,9 @@ from loguru import logger
 
 from core.base.timer import Timer
 from core.engine.task.registry import TaskResult
+from core.exceptions import BuySeedError
 from core.ui.assets import *
-from core.ui.page import page_main
+from core.ui.page import page_main, page_shop
 from models.farm_state import ActionType
 from tasks.base import TaskBase
 from utils.shop_item_ocr import ShopItemOCR
@@ -164,7 +165,7 @@ class TaskMain(TaskBase):
 
             has_land = self.ui.appear_any(
                 [LAND_EMPTY, LAND_EMPTY_2, LAND_EMPTY_3],
-                offset=(30, 30),
+                offset=30,
                 threshold=0.89,
                 static=False,
             )
@@ -186,7 +187,7 @@ class TaskMain(TaskBase):
             return None
 
         # 第一步：点击扩建入口。
-        if not self.ui.appear_then_click(BTN_EXPAND, offset=(30, 30), interval=1, threshold=0.8, static=False):
+        if not self.ui.appear_then_click(BTN_EXPAND, offset=30, interval=1, threshold=0.8, static=False):
             return None
         self.ui.device.sleep(0.5)
 
@@ -196,13 +197,9 @@ class TaskMain(TaskBase):
                 return None
 
             action_name = None
-            if self.ui.appear_then_click(
-                BTN_EXPAND_DIRECT_CONFIRM, offset=(30, 30), interval=1, threshold=0.8, static=False
-            ):
+            if self.ui.appear_then_click(BTN_EXPAND_DIRECT_CONFIRM, offset=30, interval=1, threshold=0.8, static=False):
                 action_name = '直接扩建'
-            elif self.ui.appear_then_click(
-                BTN_EXPAND_CONFIRM, offset=(30, 30), interval=1, threshold=0.8, static=False
-            ):
+            elif self.ui.appear_then_click(BTN_EXPAND_CONFIRM, offset=30, interval=1, threshold=0.8, static=False):
                 action_name = '扩建确认'
 
             if action_name:
@@ -211,7 +208,7 @@ class TaskMain(TaskBase):
                 if self.ui.device.screenshot(rect=rect, save=False) is not None:
                     self.ui.appear_then_click_any(
                         [BTN_CLOSE, BTN_CONFIRM, BTN_CLAIM],
-                        offset=(30, 30),
+                        offset=30,
                         interval=1,
                         threshold=0.8,
                         static=False,
@@ -220,7 +217,7 @@ class TaskMain(TaskBase):
 
             if self.ui.appear_then_click_any(
                 [BTN_CLOSE, BTN_CONFIRM, BTN_CLAIM],
-                offset=(30, 30),
+                offset=30,
                 interval=1,
                 threshold=0.8,
                 static=False,
@@ -299,108 +296,41 @@ class TaskMain(TaskBase):
         self.ui.device.sleep(0.5)
         cv_check = self.ui.device.screenshot(rect=rect, save=False)
         if cv_check is not None:
-            if BTN_SHOP_CLOSE is not None and self.ui.appear(
-                BTN_SHOP_CLOSE, offset=(30, 30), threshold=0.8, static=False
-            ):
+            if BTN_SHOP_CLOSE is not None and self.ui.appear(BTN_SHOP_CLOSE, offset=30, threshold=0.8, static=False):
                 self._close_shop_and_buy(rect, crop_name, all_actions)
 
             if BTN_FERTILIZE_POPUP is not None and self.ui.appear(
-                BTN_FERTILIZE_POPUP, offset=(30, 30), threshold=0.8, static=False
+                BTN_FERTILIZE_POPUP, offset=30, threshold=0.8, static=False
             ):
                 x, y = self.engine._resolve_goto_main_point(rect)
                 self.engine.device.click_point(x, y, desc='点击回主按钮')
 
         return all_actions
 
-    def _close_shop_and_buy(self, rect: tuple[int, int, int, int], crop_name: str, actions_done: list[str]):
+    def _close_shop_and_buy(self, crop_name: str, actions_done: list[str]):
         """关闭商店后立刻执行一次补种购买。"""
-        self._close_shop(rect)
-        buy_result = self._buy_seeds(rect, crop_name)
+        buy_result = self._buy_seeds(crop_name)
         if buy_result:
             actions_done.append(buy_result)
 
-    def _buy_seeds(self, rect: tuple[int, int, int, int], crop_name: str) -> str | None:
+    def _buy_seeds(self, crop_name: str) -> str | None:
         """执行买种流程：开商店 -> OCR 定位 -> 选择并确认购买。"""
-        cv_img = self.ui.device.screenshot(rect=rect, save=False)
-        if cv_img is None:
-            return None
+        logger.info('购买流程: 开始 | 商品={}', crop_name)
+        self.ui.ui_ensure(page_shop, confirm_wait=0.5)
 
-        if BTN_SHOP is None:
-            logger.warning('购买流程: 未配置商店按钮模板')
-            return None
-        if not self.ui.appear_then_click(BTN_SHOP, offset=(30, 30), interval=1, threshold=0.8, static=False):
-            logger.warning('购买流程: 未找到商店按钮')
-            return None
-        self.ui.device.sleep(1.0)
+        cv_img = self.ui.device.screenshot()
+        ocr_match = self.shop_ocr.find_item(cv_img, crop_name, min_similarity=0.70)
+        if not ocr_match.target:
+            logger.error(f"购买流程: OCR未找到 '{crop_name}'")
+            raise BuySeedError
 
-        shop_cv = None
-        for _ in range(5):
-            cv_img = self.ui.device.screenshot(rect=rect, save=False)
-            if cv_img is None:
-                return None
-            if BTN_SHOP_CLOSE is not None and self.ui.appear(
-                BTN_SHOP_CLOSE, offset=(30, 30), threshold=0.8, static=False
-            ):
-                shop_cv = cv_img
-                break
-            self.ui.device.sleep(0.5)
-        if shop_cv is None:
-            self._close_shop(rect)
-            return None
+        while 1:
+            self.ui.device.screenshot()
 
-        matched_item = None
-        for _ in range(3):
-            ocr_match = self.shop_ocr.find_item(shop_cv, crop_name, min_similarity=0.70)
-            if ocr_match.target:
-                matched_item = ocr_match.target
-                break
-            self.ui.device.sleep(0.3)
-            cv_img = self.ui.device.screenshot(rect=rect, save=False)
-            if cv_img is None:
-                return None
-            shop_cv = cv_img
-
-        if not matched_item:
-            logger.warning(f"购买流程: OCR未找到 '{crop_name}'")
-            self._close_shop(rect)
-            return None
-
-        self.ui.device.click_point(int(matched_item.center_x), int(matched_item.center_y), desc=f'选择{crop_name}')
-        self.ui.device.sleep(1.0)
-        return self._confirm_purchase(rect, crop_name)
-
-    def _confirm_purchase(self, rect: tuple[int, int, int, int], crop_name: str) -> str | None:
-        """在购买弹窗中执行确认并处理伴随弹窗。"""
-        for _ in range(5):
-            cv_img = self.ui.device.screenshot(rect=rect, save=False)
-            if cv_img is None:
-                return None
-
-            if BTN_BUY_CONFIRM is not None and self.ui.appear_then_click(
-                BTN_BUY_CONFIRM, offset=(30, 30), interval=1, threshold=0.8, static=False
-            ):
-                self.ui.device.sleep(0.3)
-                self._close_shop(rect)
+            self.ui.device.click_point(
+                int(ocr_match.target.center_x), int(ocr_match.target.center_y), desc=f'选择{crop_name}'
+            )
+            if self.ui.appear_then_click(BTN_BUY_CONFIRM, offset=30, interval=1):
                 return f'购买{crop_name}'
 
-            if self.ui.appear_then_click_any(
-                [BTN_CLOSE, BTN_CONFIRM, BTN_CLAIM], offset=(30, 30), interval=1, threshold=0.8, static=False
-            ):
-                self.ui.device.sleep(0.2)
-                continue
-
-            self.ui.device.sleep(0.3)
-
-        self._close_shop(rect)
-        return None
-
-    def _close_shop(self, rect: tuple[int, int, int, int]):
-        """尽可能关闭商店页残留弹窗，回到主流程页面。"""
-        for _ in range(3):
-            cv_img = self.ui.device.screenshot(rect=rect, save=False)
-            if cv_img is None:
-                return
-            buttons = [BTN_CLOSE] if BTN_SHOP_CLOSE is None else [BTN_SHOP_CLOSE, BTN_CLOSE]
-            if not self.ui.appear_then_click_any(buttons, offset=(30, 30), interval=1, threshold=0.8, static=False):
-                return
-            self.ui.device.sleep(0.3)
+        self.ui.ui_ensure(page_main)
