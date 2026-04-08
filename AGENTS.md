@@ -9,6 +9,7 @@
 - 项目名：`QQ Farm Copilot`
 - 调度模式：`TaskExecutor` 单线程串行执行
 - 任务配置：`configs/config.json -> tasks`（动态字典）
+- 高级配置：`config.safety.debug_log_enabled` 控制 Debug 日志输出
 - 视觉按钮来源：`core/ui/assets.py`（由 `tools/button_extract.py` 生成）
 
 ## 1. 核心架构与职责

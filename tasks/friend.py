@@ -171,11 +171,11 @@ class TaskFriend(TaskBase):
         """按启用功能收集下方横向列表中的可操作 icon（detail 模板）。"""
         icons: list[Button] = []
         if enable_steal:
-            icons.extend(self.ui.match_icon_multi(ICON_STEAL_IN_FRIEND_DETAIL, threshold=0.75))
+            icons.extend(self.ui.match_icon_multi(ICON_STEAL_IN_FRIEND_DETAIL, threshold=0.85))
         if enable_help:
-            icons.extend(self.ui.match_icon_multi(ICON_WATER_IN_FRIEND_DETAIL, threshold=0.75))
-            icons.extend(self.ui.match_icon_multi(ICON_WEED_IN_FRIEND_DETAIL, threshold=0.75))
-            icons.extend(self.ui.match_icon_multi(ICON_BUG_IN_FRIEND_DETAIL, threshold=0.75))
+            icons.extend(self.ui.match_icon_multi(ICON_WATER_IN_FRIEND_DETAIL, threshold=0.85))
+            icons.extend(self.ui.match_icon_multi(ICON_WEED_IN_FRIEND_DETAIL, threshold=0.85))
+            icons.extend(self.ui.match_icon_multi(ICON_BUG_IN_FRIEND_DETAIL, threshold=0.85))
 
         if not icons:
             return []
@@ -191,11 +191,11 @@ class TaskFriend(TaskBase):
         """收集好友列表页（纵向）上的可操作 icon（list 模板）。"""
         icons: list[Button] = []
         if enable_steal:
-            icons.extend(self.ui.match_icon_multi(ICON_STEAL_IN_FRIEND_LIST, threshold=0.75))
+            icons.extend(self.ui.match_icon_multi(ICON_STEAL_IN_FRIEND_LIST, threshold=0.85))
         if enable_help:
-            icons.extend(self.ui.match_icon_multi(ICON_WATER_IN_FRIEND_LIST, threshold=0.75))
-            icons.extend(self.ui.match_icon_multi(ICON_WEED_IN_FRIEND_LIST, threshold=0.75))
-            icons.extend(self.ui.match_icon_multi(ICON_BUG_IN_FRIEND_LIST, threshold=0.75))
+            icons.extend(self.ui.match_icon_multi(ICON_WATER_IN_FRIEND_LIST, threshold=0.85))
+            icons.extend(self.ui.match_icon_multi(ICON_WEED_IN_FRIEND_LIST, threshold=0.85))
+            icons.extend(self.ui.match_icon_multi(ICON_BUG_IN_FRIEND_LIST, threshold=0.85))
 
         if not icons:
             return []

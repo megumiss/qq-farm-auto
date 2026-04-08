@@ -99,6 +99,7 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 核心字段：
 
 - `window_title_keyword`：窗口标题关键词（默认 `QQ经典农场`）
+- `safety`：运行方式、随机延迟、点击抖动、单轮点击上限、`debug_log_enabled`
 - `planting`：种植策略、等级、平台、窗口位置
 - `executor`：空队列策略、默认间隔、最大失败次数
 - `tasks`：动态任务字典
@@ -145,6 +146,7 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 - 任务调度：任务开关、间隔/每日时间、执行器策略
 - 任务设置：`tasks.<task>.features` 开关
 - 设置：窗口关键词、平台、位置、种植策略
+- 高级：随机延迟、点击抖动、单轮最大点击数、Debug 日志开关
 
 > 说明：`priority` 目前在配置文件中维护，未在面板提供编辑控件。
 

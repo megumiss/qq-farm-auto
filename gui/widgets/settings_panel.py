@@ -2,6 +2,7 @@
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QDoubleSpinBox,
     QFormLayout,
     QFrame,
@@ -159,6 +160,9 @@ class SettingsPanel(QWidget):
         self._max_actions_per_round = QSpinBox()
         self._max_actions_per_round.setRange(1, 500)
         af.addRow('单轮最大点击数:', self._max_actions_per_round)
+        self._debug_log_enabled = QCheckBox('输出 Debug 日志')
+        self._debug_log_enabled.setToolTip('开启后，控制台、日志文件和界面日志都会输出 DEBUG 级别日志')
+        af.addRow('调试日志:', self._debug_log_enabled)
         self._advanced_group.setLayout(af)
         layout.addWidget(self._advanced_group)
 
@@ -190,6 +194,7 @@ class SettingsPanel(QWidget):
         self._random_delay_max.valueChanged.connect(self._auto_save)
         self._click_offset_range.valueChanged.connect(self._auto_save)
         self._max_actions_per_round.valueChanged.connect(self._auto_save)
+        self._debug_log_enabled.toggled.connect(self._auto_save)
         self._window_keyword.editingFinished.connect(self._auto_save)
         self._window_position.currentIndexChanged.connect(self._auto_save)
 
@@ -212,6 +217,7 @@ class SettingsPanel(QWidget):
         c.safety.random_delay_max = max(delay_min, delay_max)
         c.safety.click_offset_range = int(self._click_offset_range.value())
         c.safety.max_actions_per_round = int(self._max_actions_per_round.value())
+        c.safety.debug_log_enabled = bool(self._debug_log_enabled.isChecked())
         c.window_title_keyword = self._window_keyword.text().strip()
         c.planting.window_position = WindowPosition(self._window_position.currentData())
         c.save()
@@ -295,6 +301,7 @@ class SettingsPanel(QWidget):
         self._random_delay_max.setValue(float(c.safety.random_delay_max))
         self._click_offset_range.setValue(int(c.safety.click_offset_range))
         self._max_actions_per_round.setValue(int(c.safety.max_actions_per_round))
+        self._debug_log_enabled.setChecked(bool(c.safety.debug_log_enabled))
         self._window_keyword.setText(c.window_title_keyword)
         for i in range(self._window_position.count()):
             if self._window_position.itemData(i) == c.planting.window_position.value:

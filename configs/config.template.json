@@ -5,7 +5,8 @@
     "random_delay_max": 0.3,
     "click_offset_range": 5,
     "max_actions_per_round": 20,
-    "run_mode": "background"
+    "run_mode": "background",
+    "debug_log_enabled": false
   },
   "screenshot": {
     "save_history": true,

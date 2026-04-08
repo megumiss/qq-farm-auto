@@ -36,15 +36,15 @@ def _set_windows_app_id() -> None:
 
 
 def main():
-    # 初始化日志
-    setup_logger()
-
     # 初始化用户配置目录（Windows: %APPDATA%/QQFarmCopilot/configs）
     ensure_user_configs()
 
     # 加载配置
     config_path = user_configs_dir() / 'config.json'
     config = AppConfig.load(str(config_path))
+
+    # 初始化日志
+    setup_logger(enable_debug=config.safety.debug_log_enabled)
 
     # 启动GUI
     _set_windows_app_id()

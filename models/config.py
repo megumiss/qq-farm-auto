@@ -85,6 +85,7 @@ class SafetyConfig(BaseModel):
     click_offset_range: int = 5
     max_actions_per_round: int = 20
     run_mode: RunMode = RunMode.BACKGROUND
+    debug_log_enabled: bool = False
 
 
 class ScreenshotConfig(BaseModel):

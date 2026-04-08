@@ -14,6 +14,17 @@ from core.engine.bot.local_engine import LocalBotEngine
 from models.config import AppConfig
 
 
+def _configure_worker_logger(event_queue, enable_debug: bool) -> None:
+    """按配置重建 worker 日志输出级别。"""
+    level = 'DEBUG' if bool(enable_debug) else 'INFO'
+    logger.remove()
+    logger.add(
+        lambda m: _safe_put(event_queue, {'type': 'log', 'data': str(m).strip()}),
+        level=level,
+        format='{time:HH:mm:ss} | {level:<7} | {message}',
+    )
+
+
 def _safe_put(event_queue, payload: dict[str, Any]) -> None:
     """安全写入事件队列，避免队列异常影响主流程。"""
     try:
@@ -56,14 +67,8 @@ def _make_command_result(cmd_id: str, cmd: str, ok: bool, error: str = '') -> di
 
 def bot_worker_main(initial_config: dict[str, Any], command_queue, event_queue) -> None:
     """worker 进程主循环。"""
-    logger.remove()
-    logger.add(
-        lambda m: _safe_put(event_queue, {'type': 'log', 'data': str(m).strip()}),
-        level='DEBUG',
-        format='{time:HH:mm:ss} | {level:<7} | {message}',
-    )
-
     config = _load_config(initial_config)
+    _configure_worker_logger(event_queue, config.safety.debug_log_enabled)
     engine = LocalBotEngine(config)
 
     def _forward_image_event(event_type: str, image: Any) -> None:
@@ -153,6 +158,7 @@ def bot_worker_main(initial_config: dict[str, Any], command_queue, event_queue) 
 
                 if cmd == 'update_config':
                     new_cfg = _load_config(payload)
+                    _configure_worker_logger(event_queue, new_cfg.safety.debug_log_enabled)
                     engine.update_config(new_cfg)
                     _safe_put(event_queue, _make_command_result(cmd_id, cmd, True))
                     continue

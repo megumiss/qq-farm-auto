@@ -70,12 +70,13 @@ class BotVisionMixin:
             return None
         if not self.action_executor:
             return None
-        rel_x, rel_y = self.resolve_live_click_point(int(seed.x), int(seed.y))
+        live_x, live_y = self.resolve_live_click_point(int(seed.x), int(seed.y))
         action = Action(
             type=ActionType.PLANT,
-            click_position={'x': int(rel_x), 'y': int(rel_y)},
+            click_position={'x': int(seed.x), 'y': int(seed.y)},
             priority=0,
             description=f'播种{crop_name}',
+            extra={'live_click_position': {'x': int(live_x), 'y': int(live_y)}},
         )
         result = self.action_executor.execute_action(action)
         if not result.success:

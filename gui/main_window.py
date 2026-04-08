@@ -41,7 +41,7 @@ from gui.widgets.status_panel import StatusPanel
 from gui.widgets.task_panel import TaskPanel
 from models.config import AppConfig
 from utils.app_paths import resolve_runtime_path
-from utils.logger import get_log_signal
+from utils.logger import get_log_signal, update_logger_level
 
 STYLESHEET_TEMPLATE = """
 QMainWindow { background-color: #f5f5f7; }
@@ -443,6 +443,7 @@ class MainWindow(QMainWindow):
     def _on_config_changed(self, config: AppConfig):
         """接收子面板配置变更并同步到引擎。"""
         self.config = config
+        update_logger_level(config.safety.debug_log_enabled)
         self.engine.update_config(config)
 
     def _show_free_notice(self):
