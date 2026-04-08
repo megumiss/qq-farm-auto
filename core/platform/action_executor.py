@@ -279,8 +279,16 @@ class ActionExecutor:
         if not pos or 'x' not in pos or 'y' not in pos:
             return OperationResult(action=action, success=False, message='缺少点击坐标', timestamp=time.time())
 
+        exec_pos = action.extra.get('live_click_position', {}) if isinstance(action.extra, dict) else {}
+        if exec_pos and 'x' in exec_pos and 'y' in exec_pos:
+            target_rel_x = int(exec_pos['x'])
+            target_rel_y = int(exec_pos['y'])
+        else:
+            target_rel_x = int(pos['x'])
+            target_rel_y = int(pos['y'])
+
         # 转换坐标
-        abs_x, abs_y = self.relative_to_absolute(int(pos['x']), int(pos['y']))
+        abs_x, abs_y = self.relative_to_absolute(target_rel_x, target_rel_y)
         # 检查坐标是否在窗口范围内
         if not (
             self._window_left <= abs_x <= self._window_left + self._window_width

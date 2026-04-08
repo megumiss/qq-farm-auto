@@ -164,12 +164,13 @@ class Device:
             return False
         self._handle_control_check(desc)
 
-        rel_x, rel_y = self.engine.resolve_live_click_point(int(x), int(y))
+        live_x, live_y = self.engine.resolve_live_click_point(int(x), int(y))
         action = Action(
             type=str(action_type),
-            click_position={'x': int(rel_x), 'y': int(rel_y)},
+            click_position={'x': int(x), 'y': int(y)},
             priority=0,
             description=str(desc or 'device_click'),
+            extra={'live_click_position': {'x': int(live_x), 'y': int(live_y)}},
         )
         result = self.engine.action_executor.execute_action(action)
         return bool(result.success)
