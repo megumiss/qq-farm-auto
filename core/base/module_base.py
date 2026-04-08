@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import cv2
 import numpy as np
+from loguru import logger
 
 from core.base.button import Button
 from core.base.timer import Timer
@@ -341,6 +342,37 @@ class ModuleBase:
             hit = button.appear_on(image, threshold=t)
 
         return bool(hit)
+
+    def appear_location(
+        self,
+        button: Button,
+        offset=0,
+        threshold=0.74,
+        static=True,
+    ) -> tuple[int, int] | None:
+        """判断按钮是否出现并返回中心坐标（对齐 NIKKE appear_location 语义）。"""
+        self.device.stuck_record_add(button)
+        image = self.device.image
+        if image is None:
+            return None
+
+        if offset:
+            t = float(threshold) if threshold is not None else 0.8
+            hit = button.match(image, offset=offset, threshold=t, static=static)
+        else:
+            t = float(threshold) if threshold is not None else 20.0
+            hit = button.appear_on(image, threshold=t)
+
+        if not hit:
+            return None
+
+        button_offset = getattr(button, '_button_offset', None)
+        if not button_offset:
+            logger.warning(f"Button '{button.name}' matched but no offset recorded")
+            return None
+
+        x1, y1, x2, y2 = button_offset
+        return (int(x1 + x2) // 2, int(y1 + y2) // 2)
 
     def appear_then_click(
         self, button: Button, offset=0, click_offset=0, interval=1, threshold=0.74, static=True
