@@ -18,6 +18,8 @@ from utils.shop_item_ocr import ShopItemOCR
 SHOP_LIST_SWIPE_START = (270, 300)
 SHOP_LIST_SWIPE_END = (270, 860)
 
+LAND_LIST = [LAND_EMPTY, LAND_EMPTY_2, LAND_EMPTY_3]
+
 
 class TaskMain(TaskBase):
     """封装 `TaskMain` 任务的执行入口与步骤。"""
@@ -31,53 +33,38 @@ class TaskMain(TaskBase):
     def run(self, rect: tuple[int, int, int, int]) -> TaskResult:
         """执行主流程：在 run 内按 feature 显式控制每个子方法。"""
         features = self.get_features('main')
-        actions: list[str] = []
 
         self.ui.ui_ensure(page_main)
 
         # 一键收获
         if self.has_feature(features, 'auto_harvest'):
-            action = self._run_feature_harvest()
-            if action:
-                actions.append(action)
+            self._run_feature_harvest()
 
         # 一键除草
         if self.has_feature(features, 'auto_weed'):
-            action = self._run_feature_weed()
-            if action:
-                actions.append(action)
+            self._run_feature_weed()
 
         # 一键除虫
         if self.has_feature(features, 'auto_bug'):
-            action = self._run_feature_bug()
-            if action:
-                actions.append(action)
+            self._run_feature_bug()
 
         # 一键浇水
         if self.has_feature(features, 'auto_water'):
-            action = self._run_feature_water()
-            if action:
-                actions.append(action)
+            self._run_feature_water()
 
         # 自动播种
         if self.has_feature(features, 'auto_plant'):
-            action = self._run_feature_plant()
-            if action:
-                actions.append(action)
+            self._run_feature_plant()
 
         # TODO 自动施肥
         if self.has_feature(features, 'auto_fertilize'):
-            action = self._run_feature_fertilize()
-            if action:
-                actions.append(action)
+            self._run_feature_fertilize()
 
         # TODO 自动扩建
         if self.has_feature(features, 'auto_upgrade'):
-            action = self._run_feature_upgrade()
-            if action:
-                actions.append(action)
+            self._run_feature_upgrade()
 
-        return self.ok(actions=actions)
+        return self.ok()
 
     def _run_feature_harvest(self) -> str | None:
         """一键收获"""
@@ -122,8 +109,10 @@ class TaskMain(TaskBase):
         """一键浇水"""
         return self._run_feature_single_action(BTN_WATER, ActionType.WATER, '一键浇水')
 
+    # TODO 优化操作速度
     def _run_feature_single_action(self, button, stat_action: str, done_text: str) -> str | None:
         """通用单按钮循环动作：首检未命中直接返回，命中后点击到消失。"""
+        logger.info('一键{}流程: 开始', done_text)
         self.ui.device.screenshot()
         if not self.ui.appear(button, offset=30, static=False):
             return None
@@ -153,27 +142,30 @@ class TaskMain(TaskBase):
 
     def _run_feature_plant(self) -> str | None:
         """自动播种"""
-        self._buy_seeds(self.engine._resolve_crop_name())
+        logger.info('自动播种流程: 开始')
+        self.ui.ui_ensure(page_main)
 
-        while 1:
-            has_land = self.ui.appear_any(
-                [LAND_EMPTY, LAND_EMPTY_2, LAND_EMPTY_3], offset=30, threshold=0.89, static=False
-            )
-            if not has_land:
-                return None
+        # TODO 点击空白处
+        self.ui.device.screenshot()
 
-            actions = self._plant_all(self.engine._resolve_crop_name())
-            if not actions:
-                return None
-            return actions[-1]
+        # TODO 检查地块左右两侧标记
+        # TODO 如果地块偏移，则向反方向滑动，最多重复三次
+
+        # 判断是否需要播种
+        self.ui.device.screenshot()
+        has_land = self.ui.appear_any(LAND_LIST, offset=30, threshold=0.89, static=False)
+        if not has_land:
+            logger.info('无需播种')
+            return None
+
+        self._plant_all(self.engine._resolve_crop_name())
 
     def _plant_all(self, crop_name: str) -> list[str]:
         """执行整块农田播种流程（识别空地、拉种子、补种购买）。"""
         all_actions: list[str] = []
 
         cv_img = self.ui.device.screenshot()
-        if cv_img is None:
-            return all_actions
+        # 切换为icon模板
         dets = self.engine.cv_detector.detect_templates(
             cv_img,
             template_names=['land_empty', 'land_empty_2', 'land_empty_3'],
@@ -185,7 +177,6 @@ class TaskMain(TaskBase):
             return all_actions
 
         self.ui.device.click_point(int(lands[0].x), int(lands[0].y), desc='点击空地')
-        self.ui.device.sleep(0.3)
 
         seed_det = None
         for _ in range(2):
@@ -196,7 +187,6 @@ class TaskMain(TaskBase):
             if seed_dets:
                 seed_det = seed_dets[0]
                 break
-            self.ui.device.sleep(0.3)
 
         if not seed_det:
             buy_result = self._buy_seeds(crop_name)

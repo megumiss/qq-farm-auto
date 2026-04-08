@@ -64,4 +64,8 @@ def main():
 
 if __name__ == '__main__':
     mp.freeze_support()
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        # 调试器停止或终端中断时，直接退出，避免输出误导性的 traceback。
+        sys.exit(130)

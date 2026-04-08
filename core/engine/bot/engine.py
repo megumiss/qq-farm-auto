@@ -38,7 +38,6 @@ class _SchedulerSnapshot:
             'running_tasks': 0,
             'pending_tasks': 0,
             'waiting_tasks': 0,
-            'last_result': '--',
             'last_tick_ms': '--',
             'elapsed': '--',
             'next_farm_check': '--',

@@ -72,7 +72,7 @@ class TaskFriend(TaskBase):
         self.back_to_home()
         logger.info('好友流程: 结束 | 动作={}', '、'.join(actions) if actions else '无动作')
 
-        return self.ok(actions=actions)
+        return self.ok()
 
     def _run_friend_progressive(self, *, enable_help: bool, enable_steal: bool) -> list[str]:
         """好友任务递进流程：进入详情后执行动作，再切到下一个可操作好友。"""

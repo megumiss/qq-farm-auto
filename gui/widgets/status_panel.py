@@ -53,7 +53,6 @@ class StatusPanel(QWidget):
         self._add_cell(task_layout, 0, 3, self._cell_labels.get('waiting_tasks', 'Waiting'), 'waiting_tasks', '0')
         self._add_cell(task_layout, 1, 0, self._cell_labels.get('failure_count', 'Failures'), 'failure_count', '0')
         self._add_cell(task_layout, 1, 1, self._cell_labels.get('last_tick_ms', 'Last tick'), 'last_tick_ms', '--')
-        self._add_cell(task_layout, 1, 2, self._cell_labels.get('last_result', 'Last result'), 'last_result', '--')
         task_group.setLayout(task_layout)
         outer.addWidget(task_group)
 
@@ -118,6 +117,5 @@ class StatusPanel(QWidget):
         self._labels['pending_tasks'].setText(str(stats.get('pending_tasks', 0)))
         self._labels['waiting_tasks'].setText(str(stats.get('waiting_tasks', 0)))
         self._labels['last_tick_ms'].setText(str(stats.get('last_tick_ms', '--')))
-        self._labels['last_result'].setText(str(stats.get('last_result', '--')))
         for key in ('harvest', 'plant', 'water', 'weed', 'bug', 'sell'):
             self._labels[key].setText(str(stats.get(key, 0)))

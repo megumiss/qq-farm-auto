@@ -197,7 +197,6 @@ class BotRuntimeMixin:
             running_tasks=0,
             pending_tasks=0,
             waiting_tasks=0,
-            last_result='--',
             last_tick_ms='--',
         )
         self._init_executor()
@@ -220,7 +219,6 @@ class BotRuntimeMixin:
             running_tasks=0,
             pending_tasks=0,
             waiting_tasks=0,
-            last_result='--',
             last_tick_ms='--',
         )
         self.scheduler.set_next_checks(farm_ts=0.0, friend_ts=0.0)
