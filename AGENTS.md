@@ -148,7 +148,7 @@
 2. 在 `configs/config.template.json` 与用户配置中增加 `tasks.<name>`。
 3. 任务业务代码放入 `core/tasks/<name>.py`（或复用已有子任务）。
 4. 在任务中通过 `engine.get_task_features('<name>')` 读取开关。
-5. 必要时补充 `configs/ui_labels.json` 文案映射。
+5. 必要时补充 `utils/ui_labels.py` 文案映射。
 
 ## 6. 配置字段约定（tasks）
 
@@ -187,6 +187,9 @@ rg -n "from core\.ops|core\.ops|model_fields\.keys\(\)" core gui models
 
 - 任务未执行
 : 检查 `tasks.<name>.enabled`、`trigger/daily_time/interval_seconds`、`priority`。
+
+- 修改文案后界面未更新
+: UI 文案已内置在 `utils/ui_labels.py`；修改后需重启程序，运行中不会热重建已创建面板。
 
 - 点击偏移明显
 : 检查 `resolve_live_click_point` 是否被绕过；优先走 `device.click_minitouch` / `ActionExecutor`。

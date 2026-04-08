@@ -1,5 +1,7 @@
 """任务设置面板（按 tasks.<task>.features 生成）。"""
 
+from pathlib import Path
+
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -19,6 +21,26 @@ class FeaturePanel(QWidget):
     """承载 `FeaturePanel` 相关界面控件与交互逻辑。"""
 
     config_changed = pyqtSignal(object)
+    _FORCED_OFF_ICON = (Path(__file__).resolve().parents[1] / 'icons' / 'disabled_x.svg').as_posix()
+    _FORCED_OFF_STYLE = (
+        'QCheckBox { color: #9ca3af; }'
+        'QCheckBox::indicator {'
+        '  width: 14px; height: 14px; border: 1.5px solid #d1d5db;'
+        '  border-radius: 3px; background: #f3f4f6;'
+        '}'
+        'QCheckBox::indicator:unchecked:disabled {'
+        f'  image: url({_FORCED_OFF_ICON});'
+        '}'
+        'QCheckBox::indicator:checked:disabled {'
+        f'  image: url({_FORCED_OFF_ICON});'
+        '}'
+    )
+    _FORCED_OFF_FEATURES: set[tuple[str, str]] = {
+        ('main', 'auto_plant'),
+        ('main', 'auto_upgrade'),
+        ('main', 'auto_fertilize'),
+        ('share', 'auto_task'),
+    }
 
     def __init__(self, config: AppConfig, parent=None):
         """初始化对象并准备运行所需状态。"""
@@ -98,7 +120,10 @@ class FeaturePanel(QWidget):
             if task_cfg is None:
                 continue
             feature_map = dict(getattr(task_cfg, 'features', {}) or {})
-            feature_map[str(feature_name)] = bool(cb.isChecked())
+            if (task_name, feature_name) in self._FORCED_OFF_FEATURES:
+                feature_map[str(feature_name)] = False
+            else:
+                feature_map[str(feature_name)] = bool(cb.isChecked())
             task_cfg.features = feature_map
         c.save()
         self.config_changed.emit(c)
@@ -111,4 +136,14 @@ class FeaturePanel(QWidget):
             if task_cfg is None:
                 continue
             feature_map = getattr(task_cfg, 'features', {}) or {}
-            cb.setChecked(bool(feature_map.get(feature_name, False)))
+            forced = (task_name, feature_name) in self._FORCED_OFF_FEATURES
+            if forced:
+                cb.setChecked(False)
+                cb.setEnabled(False)
+                cb.setToolTip('该功能为固定禁用项')
+                cb.setStyleSheet(self._FORCED_OFF_STYLE)
+            else:
+                cb.setEnabled(True)
+                cb.setToolTip('')
+                cb.setStyleSheet('')
+                cb.setChecked(bool(feature_map.get(feature_name, False)))

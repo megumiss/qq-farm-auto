@@ -22,11 +22,11 @@
       "failure_interval_seconds": 30,
       "features": {
         "auto_harvest": true,
-        "auto_plant": true,
+        "auto_plant": false,
         "auto_weed": true,
         "auto_water": true,
         "auto_bug": true,
-        "auto_upgrade": true,
+        "auto_upgrade": false,
         "auto_fertilize": false
       }
     },
@@ -51,7 +51,7 @@
       "daily_time": "00:00",
       "failure_interval_seconds": 300,
       "features": {
-        "auto_task": true
+        "auto_task": false
       }
     },
     "sell": {

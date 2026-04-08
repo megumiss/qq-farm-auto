@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import threading
 from datetime import datetime, timedelta
 from functools import lru_cache
@@ -24,26 +23,22 @@ from tasks.friend import TaskFriend
 from tasks.main import TaskMain
 from tasks.sell import TaskSell
 from tasks.share import TaskShare
-from utils.app_paths import ensure_user_configs, resolve_config_file
+from utils.ui_labels import load_ui_labels
 
 
 class BotExecutorMixin:
     """Bot 执行器与调度相关逻辑。"""
 
+    _OPTIONAL_FEATURE_FORCE_OFF: dict[str, set[str]] = {
+        'main': {'auto_plant', 'auto_upgrade', 'auto_fertilize'},
+        'share': {'auto_task'},
+    }
+
     @staticmethod
     @lru_cache(maxsize=1)
     def _task_title_map() -> dict[str, str]:
         """读取任务中文标题映射。"""
-        ensure_user_configs()
-        labels_path = resolve_config_file('ui_labels.json', prefer_user=True)
-        if not labels_path.exists():
-            return {}
-        try:
-            data = json.loads(labels_path.read_text(encoding='utf-8'))
-        except Exception:
-            return {}
-        if not isinstance(data, dict):
-            return {}
+        data = load_ui_labels()
         panel = data.get('task_panel', {})
         if not isinstance(panel, dict):
             return {}
@@ -230,7 +225,10 @@ class BotExecutorMixin:
         raw = getattr(cfg, 'features', {}) or {}
         if not isinstance(raw, dict):
             return {}
-        return {str(k): bool(v) for k, v in raw.items()}
+        features = {str(k): bool(v) for k, v in raw.items()}
+        for key in self._OPTIONAL_FEATURE_FORCE_OFF.get(str(task_name), set()):
+            features[key] = False
+        return features
 
     def _sync_executor_tasks_from_config(
         self,

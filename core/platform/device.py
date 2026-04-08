@@ -212,6 +212,7 @@ class Device:
         p2: tuple[int, int],
         *,
         speed: float = 15,
+        hold: float = 0.0,
         delay: float = 0.0,
     ) -> bool:
         """执行鼠标滑动。"""
@@ -230,6 +231,7 @@ class Device:
                 abs1,
                 abs2,
                 speed=float(speed),
+                hold=float(hold),
                 rel_p1=(int(rel1[0]), int(rel1[1])),
                 rel_p2=(int(rel2[0]), int(rel2[1])),
             )

@@ -1,6 +1,7 @@
 """操作执行器 - 支持后台消息点击与前台回退。"""
 
 import ctypes
+import math
 import random
 import time
 from ctypes import wintypes
@@ -98,6 +99,10 @@ class ActionExecutor:
         dmin = min(float(self._delay_min), float(self._delay_max))
         dmax = max(float(self._delay_min), float(self._delay_max))
         time.sleep(random.uniform(dmin, dmax))
+
+    def _debug(self, message: str):
+        """输出调试日志。"""
+        logger.debug(message)
 
     @staticmethod
     def _format_action_name(desc: str) -> str:
@@ -338,6 +343,7 @@ class ActionExecutor:
         p2: tuple[int, int],
         *,
         speed: float = 15.0,
+        hold: float = 0.0,
         rel_p1: tuple[int, int] | None = None,
         rel_p2: tuple[int, int] | None = None,
     ) -> bool:
@@ -353,49 +359,133 @@ class ActionExecutor:
             logger.warning(f'滑动越界: ({x1}, {y1}) -> ({x2}, {y2})')
             return False
 
-        distance = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+        distance = math.hypot(x2 - x1, y2 - y1)
         if distance <= 0:
             return True
 
         speed_value = max(0.1, float(speed))
-        total_duration = max(0.12, min(distance / (70 * speed_value), 0.42))
-        brake_start_ratio = 0.7
-        phase1_steps = max(1, int((distance * brake_start_ratio) / 12))
-        # 末段刹车：1-2px 级别的细分步进
-        phase2_steps = max(1, int((distance * (1.0 - brake_start_ratio)) / 1.5))
-        weighted_steps = float(phase1_steps + phase2_steps * 2.8)
-        phase1_step_duration = max(0.003, total_duration / weighted_steps)
-        phase2_step_duration = max(0.008, phase1_step_duration * 2.8)
+        hold_value = max(0.0, float(hold))
+        # 统一滑动速度参数：不按运行模式区分。
+        duration_scale = 33.0
+        total_duration = distance / speed_value / 1000.0 * duration_scale
+        max_duration = 0.56
+        min_duration = 0.08
+        if total_duration > max_duration:
+            total_duration = max_duration
+        if total_duration < min_duration:
+            total_duration = min_duration
+        # 分两段滑动：前段正常推进，末段减速；严格受 total_duration 预算约束。
+        tail_ratio = 0.35
+        total_steps = max(14, min(60, int(distance / 12)))
+        tail_steps = max(8, int(total_steps * tail_ratio))
+        head_steps = max(8, total_steps - tail_steps)
+        tail_weight = 2.0
+        weighted_steps = float(head_steps) + float(tail_steps) * tail_weight
+        head_step_duration = total_duration / weighted_steps
+        tail_step_duration = head_step_duration * tail_weight
+        planned_duration = head_steps * head_step_duration + tail_steps * tail_step_duration
 
-        if not self.move_abs(x1, y1, duration=0.01):
+        start_rel = rel_p1 if rel_p1 is not None else (x1, y1)
+        end_rel = rel_p2 if rel_p2 is not None else (x2, y2)
+        self._debug(
+            '滑动调试: start_rel=({},{}) end_rel=({},{}) start_abs=({},{}) end_abs=({},{}) '
+            'distance={:.2f} speed={:.2f} hold={:.3f} duration={:.3f} planned={:.3f} total_steps={} '
+            'head_steps={} tail_steps={} head_dt={:.4f} tail_dt={:.4f} run_mode={}'.format(
+                int(start_rel[0]),
+                int(start_rel[1]),
+                int(end_rel[0]),
+                int(end_rel[1]),
+                x1,
+                y1,
+                x2,
+                y2,
+                distance,
+                speed_value,
+                hold_value,
+                total_duration,
+                planned_duration,
+                total_steps,
+                head_steps,
+                tail_steps,
+                head_step_duration,
+                tail_step_duration,
+                self._run_mode.value if hasattr(self._run_mode, 'value') else str(self._run_mode),
+            )
+        )
+
+        if not self.move_abs(x1, y1, duration=0.0):
+            self._debug('滑动调试: move_to_start failed')
             return False
+        time.sleep(0.03)
         if not self.mouse_down():
+            self._debug('滑动调试: mouse_down failed')
             return False
 
         ok = True
         try:
-            for i in range(1, phase1_steps + 1):
-                ratio = brake_start_ratio * (i / float(phase1_steps))
+            self._debug('滑动调试: path=interpolated decel')
+            head_ratio = 1.0 - tail_ratio
+            for i in range(1, head_steps + 1):
+                ratio = head_ratio * (i / float(head_steps))
                 tx = int(round(x1 + (x2 - x1) * ratio))
                 ty = int(round(y1 + (y2 - y1) * ratio))
-                if not self.move_abs(tx, ty, duration=phase1_step_duration):
+                if not self.move_abs(tx, ty, duration=head_step_duration):
                     ok = False
                     break
 
             if ok:
-                for i in range(1, phase2_steps + 1):
-                    ratio = brake_start_ratio + (1.0 - brake_start_ratio) * (i / float(phase2_steps))
+                for i in range(1, tail_steps + 1):
+                    ratio = head_ratio + tail_ratio * (i / float(tail_steps))
                     tx = int(round(x1 + (x2 - x1) * ratio))
                     ty = int(round(y1 + (y2 - y1) * ratio))
-                    if not self.move_abs(tx, ty, duration=phase2_step_duration):
+                    if not self.move_abs(tx, ty, duration=tail_step_duration):
                         ok = False
                         break
 
+            if ok and distance >= 120:
+                # 抬手前微回拉刹车，降低释放瞬间速度。
+                sign_x = 0 if x2 == x1 else (1 if x2 > x1 else -1)
+                sign_y = 0 if y2 == y1 else (1 if y2 > y1 else -1)
+                brake_px = max(1, min(3, int(distance * 0.0045)))
+                back_x = x2 - sign_x * brake_px
+                back_y = y2 - sign_y * brake_px
+                if self._in_window(back_x, back_y):
+                    self._debug(f'滑动调试: brake back=({back_x},{back_y}) -> end=({x2},{y2}) brake_px={brake_px}')
+                    self.move_abs(back_x, back_y, duration=0.012)
+                    self.move_abs(x2, y2, duration=0.016)
+
             if ok:
-                # 终点停驻后再抬手，进一步降低释放瞬间触发惯性概率。
-                time.sleep(0.18)
+                # hold 阶段不只 sleep：终点附近 1~2px 微抖动，避免同坐标 move 被合并。
+                if hold_value > 0:
+                    stop_frames = max(1, min(80, int(hold_value / 0.016)))
+                    stop_dt = hold_value / float(stop_frames)
+                else:
+                    stop_frames = 6
+                    stop_dt = 0.012
+                axis_x = abs(x2 - x1) >= abs(y2 - y1)
+                settle_sign_x = 0 if x2 == x1 else (1 if x2 > x1 else -1)
+                settle_sign_y = 0 if y2 == y1 else (1 if y2 > y1 else -1)
+                settle_amp = 2 if distance >= 420 else 1
+                self._debug(
+                    f'滑动调试: stop_frames={stop_frames} stop_dt={stop_dt:.4f} '
+                    f'axis={"x" if axis_x else "y"} settle_amp={settle_amp}'
+                )
+                for _ in range(stop_frames):
+                    if axis_x:
+                        settle_x = x2 - settle_sign_x * settle_amp
+                        settle_y = y2
+                    else:
+                        settle_x = x2
+                        settle_y = y2 - settle_sign_y * settle_amp
+                    if not self.move_abs(settle_x, settle_y, duration=stop_dt * 0.5):
+                        ok = False
+                        break
+                    if not self.move_abs(x2, y2, duration=stop_dt * 0.5):
+                        ok = False
+                        break
         finally:
             self.mouse_up()
+            self._debug('滑动调试: mouse_up done')
 
         if rel_p1 is None:
             log_p1 = (x1, y1)
@@ -410,4 +500,5 @@ class ActionExecutor:
             logger.info(f'滑动: ({log_p1[0]}, {log_p1[1]}) -> ({log_p2[0]}, {log_p2[1]})')
         else:
             logger.error(f'滑动失败: ({log_p1[0]}, {log_p1[1]}) -> ({log_p2[0]}, {log_p2[1]})')
+        self._debug(f'滑动调试: result={ok}')
         return ok

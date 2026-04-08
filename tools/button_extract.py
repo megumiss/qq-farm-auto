@@ -8,7 +8,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 from dataclasses import dataclass
@@ -24,10 +23,10 @@ from utils.template_paths import (
     normalize_template_platform,
     template_scan_roots,
 )
+from utils.button_aliases import load_button_aliases
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES_DIR = ROOT / 'templates'
-ALIAS_PATH = ROOT / 'configs' / 'button_aliases.json'
 OUTPUT_PATH = ROOT / 'core' / 'ui' / 'assets.py'
 OVERRIDE_SUFFIXES = {'AREA', 'COLOR', 'BUTTON'}
 SUPPORTED_PLATFORMS = [DEFAULT_TEMPLATE_PLATFORM] + sorted(
@@ -71,13 +70,7 @@ class SourceBundle:
 
 def load_aliases() -> dict[str, str]:
     """读取按钮别名配置。"""
-
-    if not ALIAS_PATH.exists():
-        return {}
-    data = json.loads(ALIAS_PATH.read_text(encoding='utf-8'))
-    if not isinstance(data, dict):
-        return {}
-    return {str(k): str(v) for k, v in data.items()}
+    return load_button_aliases()
 
 
 def extract_bbox_and_color(image_path: Path) -> tuple[tuple[int, int, int, int], tuple[int, int, int]]:

@@ -58,7 +58,6 @@
 2. 将 `exe` 放到任意目录后双击运行。
 3. 首次运行会自动在用户目录生成配置文件：
    - `%APPDATA%\QQFarmCopilot\configs\config.json`
-   - `%APPDATA%\QQFarmCopilot\configs\ui_labels.json`
 4. 打开 QQ 农场窗口，点击程序内“开始”。
 
 
@@ -117,7 +116,9 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
     "failure_interval_seconds": 30,
     "features": {
       "auto_harvest": true,
-      "auto_plant": true
+      "auto_plant": false,
+      "auto_upgrade": false,
+      "auto_fertilize": false
     }
   },
   "share": {
@@ -128,11 +129,18 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
     "interval_seconds": 86400,
     "failure_interval_seconds": 300,
     "features": {
-      "auto_task": true
+      "auto_task": false
     }
   }
 }
 ```
+
+固定禁用项（运行时强制关闭）：
+
+- `main.auto_plant`
+- `main.auto_upgrade`
+- `main.auto_fertilize`
+- `share.auto_task`
 
 调度规则：
 
@@ -148,13 +156,18 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 - 设置：窗口关键词、平台、位置、种植策略
 - 高级：随机延迟、点击抖动、单轮最大点击数、Debug 日志开关
 
+### UI 文案配置
+
+- 任务/功能/状态面板文案已内置在代码中（`utils/ui_labels.py`）。
+- 修改文案后需要重新运行程序，运行中不会热重建已创建面板。
+
 > 说明：`priority` 目前在配置文件中维护，未在面板提供编辑控件。
 
 ## 新增任务（当前实现方式）
 
 1. 在 `core/engine/bot/executor.py` 增加 `_run_task_<name>` 方法
 2. 在 `configs/config.json` 的 `tasks` 增加 `<name>` 配置
-3. （可选）在 `gui/configs/ui_labels.json` 增加任务与功能文案
+3. （可选）在 `utils/ui_labels.py` 增加任务与功能文案
 
 执行器会自动发现 `_run_task_*` 并参与调度。
 
@@ -172,7 +185,6 @@ core/
 configs/
   config.template.json
   config.json
-  ui_labels.json
 tools/
   template_collector.py
   button_extract.py
