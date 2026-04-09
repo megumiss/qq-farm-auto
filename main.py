@@ -67,5 +67,5 @@ if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
-        # 调试器停止或终端中断时，直接退出，避免输出误导性的 traceback。
-        sys.exit(130)
+        # 在调试器或终端主动中断时静默退出，避免额外抛出 SystemExit 干扰开发体验。
+        pass

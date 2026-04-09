@@ -66,13 +66,20 @@ class BotEngine(QObject):
     stats_updated = pyqtSignal(dict)
     detection_result = pyqtSignal(object)
 
-    def __init__(self, config: AppConfig, *, runtime_paths: dict[str, str] | None = None, instance_id: str = 'default'):
+    def __init__(
+        self,
+        config: AppConfig,
+        *,
+        runtime_paths: dict[str, str] | None = None,
+        instance_id: str = 'default',
+        allow_idle_prewarm: bool = True,
+    ):
         super().__init__()
         self.config = config
         self.instance_id = str(instance_id or 'default')
         self.runtime_paths = dict(runtime_paths or {})
         self.scheduler = _SchedulerSnapshot()
-        self._allow_idle_prewarm = True
+        self._allow_idle_prewarm = bool(allow_idle_prewarm)
         self._window_manager = WindowManager()
 
         self._ctx = mp.get_context('spawn')

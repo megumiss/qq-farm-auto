@@ -306,6 +306,7 @@ class MainWindow(QMainWindow):
             session.config,
             runtime_paths=self._runtime_paths(session),
             instance_id=session.instance_id,
+            allow_idle_prewarm=False,
         )
 
         container = QWidget()
