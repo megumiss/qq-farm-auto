@@ -35,7 +35,8 @@ from gui.widgets.settings_panel import SettingsPanel
 from gui.widgets.status_panel import StatusPanel
 from gui.widgets.task_panel import TaskPanel
 from models.config import AppConfig
-from utils.app_paths import resolve_runtime_path
+from utils.app_paths import resolve_runtime_path, user_app_dir
+from utils.logger import setup_logger
 
 STYLESHEET_TEMPLATE = """
 QMainWindow { background-color: #f5f5f7; }
@@ -466,6 +467,11 @@ class MainWindow(QMainWindow):
         ws.btn_stop.setEnabled(running)
         ws.btn_pause.setText('恢复' if ws.state == 'paused' else '暂停')
 
+    def _reset_process_logger_to_app_scope(self) -> None:
+        ws = self._get_active_session()
+        enable_debug = bool(ws and ws.session.config.safety.debug_log_enabled)
+        setup_logger(log_dir=str(user_app_dir() / 'logs'), enable_debug=enable_debug)
+
     def _on_workspace_log(self, instance_id: str, text: str) -> None:
         ws = self._workspaces.get(instance_id)
         if ws is None:
@@ -603,6 +609,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, '重命名失败', '实例名仅支持英文和数字。')
             return
         old_id = ws.instance_id
+        self._reset_process_logger_to_app_scope()
         ws.engine.stop(keep_prewarm=False)
         try:
             session = self.instance_manager.rename_instance(old_id, text)
@@ -634,6 +641,7 @@ class MainWindow(QMainWindow):
         ret = QMessageBox.question(self, '确认删除', f'确认删除实例 `{ws.name}` 吗？')
         if ret != QMessageBox.StandardButton.Yes:
             return
+        self._reset_process_logger_to_app_scope()
         ws.engine.stop(keep_prewarm=False)
         try:
             self.instance_manager.delete_instance(instance_id)

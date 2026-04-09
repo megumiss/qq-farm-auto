@@ -11,7 +11,7 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
 
 from core.instance.manager import InstanceManager
-from utils.app_paths import resolve_runtime_path
+from utils.app_paths import resolve_runtime_path, user_app_dir
 from utils.logger import setup_logger
 
 
@@ -41,7 +41,7 @@ def main():
     instance_manager.load()
     active = instance_manager.get_active()
     enable_debug = bool(active and active.config.safety.debug_log_enabled)
-    log_dir = str(active.paths.logs_dir) if active is not None else 'logs'
+    log_dir = str(user_app_dir() / 'logs')
 
     # 初始化日志（主进程日志）
     setup_logger(log_dir=log_dir, enable_debug=enable_debug)
