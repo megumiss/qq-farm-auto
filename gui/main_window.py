@@ -209,8 +209,8 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(QIcon(icon_path))
 
         ratio = self.devicePixelRatioF()
-        self.setMinimumWidth(int(540 / ratio) + 760)
-        self.resize(int(540 / ratio) + 860, 100)
+        self.setMinimumWidth(int(540 / ratio) + 620)
+        self.resize(int(540 / ratio) + 720, 100)
         self.setStyleSheet(_build_stylesheet())
 
         screen = self.screen().availableGeometry()
@@ -248,7 +248,9 @@ class MainWindow(QMainWindow):
         self._instance_sidebar.clone_requested.connect(self._on_instance_clone)
         self._instance_sidebar.rename_requested.connect(self._on_instance_rename)
         self._instance_sidebar.collapse_toggled.connect(self._on_instance_sidebar_toggled)
+        self._sidebar_expand_delta = self._instance_sidebar.expanded_width() - self._instance_sidebar.collapsed_width()
         root.addWidget(self._instance_sidebar)
+        self._on_instance_sidebar_toggled(self._instance_sidebar.is_collapsed())
 
     @staticmethod
     def _runtime_paths(session: InstanceSession) -> dict[str, str]:
@@ -458,7 +460,12 @@ class MainWindow(QMainWindow):
         return state in {'running', 'paused'}
 
     def _on_instance_sidebar_toggled(self, _collapsed: bool) -> None:
-        self.adjustSize()
+        delta = int(self._sidebar_expand_delta)
+        if _collapsed:
+            target_width = max(self.minimumWidth(), self.width() - delta)
+        else:
+            target_width = self.width() + delta
+        self.resize(target_width, self.height())
 
     def _get_active_session(self) -> InstanceWorkspace | None:
         return self._workspaces.get(self._active_instance_id)

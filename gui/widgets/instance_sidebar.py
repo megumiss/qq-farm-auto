@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -27,15 +27,18 @@ class InstanceSidebar(QWidget):
     clone_requested = pyqtSignal(str)
     rename_requested = pyqtSignal(str)
     collapse_toggled = pyqtSignal(bool)
+    ROLE_INSTANCE_ID = 0x0100
+    ROLE_INSTANCE_NAME = 0x0101
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._id_to_state: dict[str, str] = {}
+        self._id_to_name: dict[str, str] = {}
         self._collapsed = False
         self._expanded_width = 196
         self._collapsed_width = 44
         self._build_ui()
-        self._apply_collapsed_state(False)
+        self._apply_collapsed_state(True)
 
     def _build_ui(self) -> None:
         self.setObjectName('instanceSidebar')
@@ -78,6 +81,7 @@ class InstanceSidebar(QWidget):
                 border-radius: 6px;
                 padding: 4px 8px;
                 color: #334155;
+                text-align: left;
             }
             QListWidget#instanceList::item:selected {
                 background: #dbeafe;
@@ -153,6 +157,15 @@ class InstanceSidebar(QWidget):
 
         root.addWidget(self._actions_wrap, 0)
 
+    def expanded_width(self) -> int:
+        return int(self._expanded_width)
+
+    def collapsed_width(self) -> int:
+        return int(self._collapsed_width)
+
+    def is_collapsed(self) -> bool:
+        return bool(self._collapsed)
+
     def toggle_collapse(self) -> None:
         self._apply_collapsed_state(not self._collapsed)
 
@@ -171,7 +184,7 @@ class InstanceSidebar(QWidget):
         item = self._list.currentItem()
         if item is None:
             return ''
-        return str(item.data(0x0100) or '')
+        return str(item.data(self.ROLE_INSTANCE_ID) or '')
 
     def _emit_delete(self) -> None:
         iid = self._current_instance_id()
@@ -196,13 +209,12 @@ class InstanceSidebar(QWidget):
             self.instance_selected.emit(iid)
 
     @staticmethod
-    def _display_name(name: str, state: str) -> str:
-        state_text = {
-            'running': '●',
-            'paused': '◐',
-            'idle': '○',
-        }.get(str(state or 'idle').lower(), '○')
-        return f'{state_text} {name}'
+    def _state_tip(state: str) -> str:
+        return {
+            'running': '运行中',
+            'paused': '已暂停',
+            'idle': '空闲',
+        }.get(str(state or 'idle').lower(), '未知状态')
 
     def set_instances(self, instances: list[dict[str, Any]]) -> None:
         """刷新实例列表。"""
@@ -210,6 +222,7 @@ class InstanceSidebar(QWidget):
         self._list.blockSignals(True)
         self._list.clear()
         self._id_to_state.clear()
+        self._id_to_name.clear()
         for item in instances:
             iid = str(item.get('id') or '')
             if not iid:
@@ -217,8 +230,12 @@ class InstanceSidebar(QWidget):
             name = str(item.get('name') or iid)
             state = str(item.get('state') or 'idle')
             self._id_to_state[iid] = state
-            ui_item = QListWidgetItem(self._display_name(name, state))
-            ui_item.setData(0x0100, iid)
+            self._id_to_name[iid] = name
+            ui_item = QListWidgetItem(name)
+            ui_item.setData(self.ROLE_INSTANCE_ID, iid)
+            ui_item.setData(self.ROLE_INSTANCE_NAME, name)
+            ui_item.setToolTip(f'{name} - {self._state_tip(state)}')
+            ui_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             self._list.addItem(ui_item)
             if iid == current:
                 self._list.setCurrentItem(ui_item)
@@ -232,7 +249,7 @@ class InstanceSidebar(QWidget):
         self._list.blockSignals(True)
         for index in range(self._list.count()):
             item = self._list.item(index)
-            if str(item.data(0x0100) or '') == iid:
+            if str(item.data(self.ROLE_INSTANCE_ID) or '') == iid:
                 self._list.setCurrentItem(item)
                 break
         self._list.blockSignals(False)
@@ -243,12 +260,14 @@ class InstanceSidebar(QWidget):
         if not iid:
             return
         self._id_to_state[iid] = str(state or 'idle')
+        if name:
+            self._id_to_name[iid] = str(name)
         for index in range(self._list.count()):
             item = self._list.item(index)
-            if str(item.data(0x0100) or '') != iid:
+            if str(item.data(self.ROLE_INSTANCE_ID) or '') != iid:
                 continue
-            text = item.text()
-            current_name = text[2:] if len(text) > 2 else text
-            display_name = str(name or current_name).strip()
-            item.setText(self._display_name(display_name, self._id_to_state[iid]))
+            display_name = str(self._id_to_name.get(iid) or item.data(self.ROLE_INSTANCE_NAME) or iid)
+            item.setData(self.ROLE_INSTANCE_NAME, display_name)
+            item.setText(display_name)
+            item.setToolTip(f'{display_name} - {self._state_tip(self._id_to_state[iid])}')
             break
