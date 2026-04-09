@@ -7,6 +7,7 @@ from typing import Any
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -25,28 +26,114 @@ class InstanceSidebar(QWidget):
     delete_requested = pyqtSignal(str)
     clone_requested = pyqtSignal(str)
     rename_requested = pyqtSignal(str)
+    collapse_toggled = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._id_to_state: dict[str, str] = {}
+        self._collapsed = False
+        self._expanded_width = 196
+        self._collapsed_width = 44
         self._build_ui()
+        self._apply_collapsed_state(False)
 
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(8)
+        self.setObjectName('instanceSidebar')
+        self.setStyleSheet(
+            """
+            QWidget#instanceSidebar {
+                background: #ffffff;
+                border: 1px solid #e2e8f0;
+                border-radius: 10px;
+            }
+            QLabel#instanceTitle {
+                color: #334155;
+                font-weight: 700;
+                font-size: 13px;
+            }
+            QPushButton#collapseBtn {
+                min-width: 24px;
+                max-width: 24px;
+                min-height: 24px;
+                max-height: 24px;
+                border-radius: 6px;
+                border: 1px solid #dbe3ef;
+                background: #f8fafc;
+                color: #334155;
+                font-weight: 700;
+            }
+            QPushButton#collapseBtn:hover {
+                background: #eef2ff;
+                border-color: #c7d2fe;
+            }
+            QListWidget#instanceList {
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                background: #ffffff;
+                padding: 4px;
+                outline: none;
+            }
+            QListWidget#instanceList::item {
+                min-height: 28px;
+                border-radius: 6px;
+                padding: 4px 8px;
+                color: #334155;
+            }
+            QListWidget#instanceList::item:selected {
+                background: #dbeafe;
+                color: #1d4ed8;
+                font-weight: 600;
+            }
+            QListWidget#instanceList::item:hover:!selected {
+                background: #eef2f7;
+            }
+            QFrame#actionsWrap {
+                border-top: 1px solid #eef2f7;
+                padding-top: 6px;
+            }
+            QPushButton#instanceActionBtn {
+                background: #f8fafc;
+                border: 1px solid #dbe3ef;
+                color: #334155;
+                border-radius: 8px;
+                font-weight: 600;
+                padding: 0 8px;
+            }
+            QPushButton#instanceActionBtn:hover {
+                background: #eef2ff;
+                border-color: #c7d2fe;
+            }
+            """
+        )
 
-        title = QLabel('实例')
-        title.setStyleSheet('font-weight: 700; color: #334155;')
-        root.addWidget(title)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(8, 8, 8, 8)
+        root.setSpacing(6)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(6)
+        self._title = QLabel('实例')
+        self._title.setObjectName('instanceTitle')
+        self._btn_collapse = QPushButton('⟩')
+        self._btn_collapse.setObjectName('collapseBtn')
+        self._btn_collapse.setToolTip('折叠实例栏')
+        self._btn_collapse.clicked.connect(self.toggle_collapse)
+        header.addWidget(self._title, 1)
+        header.addWidget(self._btn_collapse, 0)
+        root.addLayout(header)
 
         self._list = QListWidget()
+        self._list.setObjectName('instanceList')
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._list.itemSelectionChanged.connect(self._on_selection_changed)
-        self._list.setMinimumWidth(220)
+        self._list.setMinimumWidth(self._expanded_width - 16)
         root.addWidget(self._list, 1)
 
-        actions = QVBoxLayout()
+        self._actions_wrap = QFrame()
+        self._actions_wrap.setObjectName('actionsWrap')
+        actions = QVBoxLayout(self._actions_wrap)
+        actions.setContentsMargins(0, 0, 0, 0)
         actions.setSpacing(6)
 
         self._btn_create = QPushButton('新增')
@@ -60,13 +147,25 @@ class InstanceSidebar(QWidget):
         self._btn_rename.clicked.connect(self._emit_rename)
 
         for btn in (self._btn_create, self._btn_delete, self._btn_clone, self._btn_rename):
+            btn.setObjectName('instanceActionBtn')
             btn.setFixedHeight(32)
             actions.addWidget(btn)
 
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.addLayout(actions)
-        root.addLayout(row)
+        root.addWidget(self._actions_wrap, 0)
+
+    def toggle_collapse(self) -> None:
+        self._apply_collapsed_state(not self._collapsed)
+
+    def _apply_collapsed_state(self, collapsed: bool) -> None:
+        self._collapsed = bool(collapsed)
+        self._list.setVisible(not self._collapsed)
+        self._actions_wrap.setVisible(not self._collapsed)
+        self._title.setVisible(not self._collapsed)
+        self._btn_collapse.setText('⟨' if not self._collapsed else '⟩')
+        self._btn_collapse.setToolTip('折叠实例栏' if not self._collapsed else '展开实例栏')
+        target_width = self._collapsed_width if self._collapsed else self._expanded_width
+        self.setFixedWidth(target_width)
+        self.collapse_toggled.emit(self._collapsed)
 
     def _current_instance_id(self) -> str:
         item = self._list.currentItem()
@@ -90,6 +189,8 @@ class InstanceSidebar(QWidget):
             self.rename_requested.emit(iid)
 
     def _on_selection_changed(self) -> None:
+        if self._collapsed:
+            return
         iid = self._current_instance_id()
         if iid:
             self.instance_selected.emit(iid)

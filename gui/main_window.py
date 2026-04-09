@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+import re
 import time
 
 import keyboard
@@ -193,6 +194,7 @@ class MainWindow(QMainWindow):
         self._last_screenshot_time = 0.0
         self._pending_free_notice = self._is_free_notice_enabled()
         self._free_notice_shown = False
+        self._instance_name_re = re.compile(r'^[A-Za-z0-9]+$')
 
         self._init_ui()
         self._init_instances()
@@ -245,6 +247,7 @@ class MainWindow(QMainWindow):
         self._instance_sidebar.delete_requested.connect(self._on_instance_delete)
         self._instance_sidebar.clone_requested.connect(self._on_instance_clone)
         self._instance_sidebar.rename_requested.connect(self._on_instance_rename)
+        self._instance_sidebar.collapse_toggled.connect(self._on_instance_sidebar_toggled)
         root.addWidget(self._instance_sidebar)
 
     @staticmethod
@@ -454,6 +457,9 @@ class MainWindow(QMainWindow):
         state = str(ws.state or 'idle')
         return state in {'running', 'paused'}
 
+    def _on_instance_sidebar_toggled(self, _collapsed: bool) -> None:
+        self.adjustSize()
+
     def _get_active_session(self) -> InstanceWorkspace | None:
         return self._workspaces.get(self._active_instance_id)
 
@@ -544,6 +550,9 @@ class MainWindow(QMainWindow):
         text = str(name or '').strip()
         if not text:
             return
+        if not self._instance_name_re.fullmatch(text):
+            QMessageBox.warning(self, '新增失败', '实例名仅支持英文和数字。')
+            return
         try:
             session = self.instance_manager.create_instance(text)
         except Exception as exc:
@@ -560,11 +569,14 @@ class MainWindow(QMainWindow):
         source = self._workspaces.get(source_instance_id)
         if source is None:
             return
-        name, ok = QInputDialog.getText(self, '克隆实例', '新实例名称:', text=f'{source.name}-copy')
+        name, ok = QInputDialog.getText(self, '克隆实例', '新实例名称:', text=f'{source.name}Copy')
         if not ok:
             return
         text = str(name or '').strip()
         if not text:
+            return
+        if not self._instance_name_re.fullmatch(text):
+            QMessageBox.warning(self, '克隆失败', '实例名仅支持英文和数字。')
             return
         try:
             session = self.instance_manager.clone_instance(source_instance_id, text)
@@ -590,6 +602,9 @@ class MainWindow(QMainWindow):
             return
         text = str(name or '').strip()
         if not text:
+            return
+        if not self._instance_name_re.fullmatch(text):
+            QMessageBox.warning(self, '重命名失败', '实例名仅支持英文和数字。')
             return
         old_id = ws.instance_id
         try:

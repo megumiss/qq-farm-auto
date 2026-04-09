@@ -97,7 +97,7 @@ class InstanceManager:
         if base not in existing:
             return base
         for idx in range(2, 10_000):
-            candidate = f'{base}-{idx}'
+            candidate = f'{base}{idx}'
             if candidate not in existing:
                 return candidate
         raise RuntimeError('failed to allocate unique instance id')
@@ -160,7 +160,7 @@ class InstanceManager:
         new_id = candidate
         if new_id in existing:
             for idx in range(2, 10_000):
-                alt = f'{candidate}-{idx}'
+                alt = f'{candidate}{idx}'
                 if alt not in existing:
                     new_id = alt
                     break
