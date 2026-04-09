@@ -315,11 +315,11 @@ class BotEngine(QObject):
         except Exception:
             pass
 
-    def stop(self):
+    def stop(self, *, keep_prewarm: bool = True):
         # 对齐 NIKKE：停止时进程级强停，不依赖业务侧协作取消。
         self._shutdown_worker(force=True)
         self.log_message.emit('Bot已停止')
-        if self._allow_idle_prewarm:
+        if keep_prewarm and self._allow_idle_prewarm:
             QTimer.singleShot(0, self._prewarm_worker)
 
     def pause(self):

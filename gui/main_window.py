@@ -614,13 +614,13 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, '重命名失败', '实例名仅支持英文和数字。')
             return
         old_id = ws.instance_id
+        ws.engine.stop(keep_prewarm=False)
         try:
             session = self.instance_manager.rename_instance(old_id, text)
         except Exception as exc:
             QMessageBox.warning(self, '重命名失败', str(exc))
             return
 
-        ws.engine.stop()
         ws.instance_id = session.instance_id
         ws.name = session.name
         ws.session = session
@@ -645,13 +645,13 @@ class MainWindow(QMainWindow):
         ret = QMessageBox.question(self, '确认删除', f'确认删除实例 `{ws.name}` 吗？')
         if ret != QMessageBox.StandardButton.Yes:
             return
+        ws.engine.stop(keep_prewarm=False)
         try:
             self.instance_manager.delete_instance(instance_id)
         except Exception as exc:
             QMessageBox.warning(self, '删除失败', str(exc))
             return
 
-        ws.engine.stop()
         self._workspace_stack.removeWidget(ws.container)
         ws.container.deleteLater()
         self._workspaces.pop(instance_id, None)
@@ -768,7 +768,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         for ws in self._workspaces.values():
-            ws.engine.stop()
+            ws.engine.stop(keep_prewarm=False)
         super().closeEvent(event)
 
     def resizeEvent(self, event):
