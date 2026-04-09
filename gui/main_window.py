@@ -13,6 +13,7 @@ from PyQt6.QtCore import QSettings, Qt, QTimer, QUrl
 from PyQt6.QtGui import QDesktopServices, QIcon, QImage, QPainter, QPainterPath, QPixmap
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QDialog,
     QGroupBox,
     QHBoxLayout,
     QInputDialog,
@@ -133,6 +134,40 @@ APP_WINDOW_TITLE = 'QQ Farm Copilot（免费软件，谨防倒卖）'
 APP_SETTINGS_ORG = 'QQFarmCopilot'
 APP_SETTINGS_NAME = 'QQFarmCopilot'
 FREE_NOTICE_ENABLED_KEY = 'ui/free_notice_enabled'
+INSTANCE_DIALOG_STYLE = """
+QMessageBox, QInputDialog {
+    background-color: #f8fafc;
+}
+QMessageBox QLabel, QInputDialog QLabel {
+    color: #334155;
+    font-size: 13px;
+}
+QInputDialog QLineEdit {
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 6px 8px;
+    color: #0f172a;
+    min-width: 220px;
+}
+QInputDialog QLineEdit:focus {
+    border-color: #2563eb;
+}
+QMessageBox QPushButton, QInputDialog QPushButton {
+    min-width: 84px;
+    min-height: 30px;
+    border-radius: 8px;
+    border: 1px solid #dbe3ef;
+    background: #f8fafc;
+    color: #334155;
+    font-weight: 600;
+    padding: 2px 10px;
+}
+QMessageBox QPushButton:hover, QInputDialog QPushButton:hover {
+    background: #eef2ff;
+    border-color: #c7d2fe;
+}
+"""
 
 
 @dataclass
@@ -464,6 +499,62 @@ class MainWindow(QMainWindow):
         state = str(ws.state or 'idle')
         return state in {'running', 'paused'}
 
+    @staticmethod
+    def _style_instance_dialog(dialog: QWidget) -> None:
+        dialog.setStyleSheet(INSTANCE_DIALOG_STYLE)
+
+    def _prompt_instance_name(self, *, title: str, label: str, default_text: str = '') -> tuple[str, bool]:
+        dialog = QInputDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.setLabelText(label)
+        dialog.setInputMode(QInputDialog.InputMode.TextInput)
+        dialog.setTextValue(str(default_text or ''))
+        dialog.setOkButtonText('确定')
+        dialog.setCancelButtonText('取消')
+        self._style_instance_dialog(dialog)
+        ok = dialog.exec() == QDialog.DialogCode.Accepted
+        return dialog.textValue().strip(), ok
+
+    def _show_instance_warning(self, title: str, text: str) -> None:
+        box = QMessageBox(self)
+        box.setWindowTitle(title)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setText(text)
+        box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        self._style_instance_dialog(box)
+        ok_btn = box.button(QMessageBox.StandardButton.Ok)
+        if ok_btn is not None:
+            ok_btn.setText('确定')
+        box.exec()
+
+    def _show_instance_info(self, title: str, text: str) -> None:
+        box = QMessageBox(self)
+        box.setWindowTitle(title)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setText(text)
+        box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        self._style_instance_dialog(box)
+        ok_btn = box.button(QMessageBox.StandardButton.Ok)
+        if ok_btn is not None:
+            ok_btn.setText('确定')
+        box.exec()
+
+    def _confirm_instance_delete(self, name: str) -> bool:
+        box = QMessageBox(self)
+        box.setWindowTitle('确认删除')
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setText(f'确认删除实例 `{name}` 吗？')
+        box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        box.setDefaultButton(QMessageBox.StandardButton.No)
+        self._style_instance_dialog(box)
+        yes_btn = box.button(QMessageBox.StandardButton.Yes)
+        no_btn = box.button(QMessageBox.StandardButton.No)
+        if yes_btn is not None:
+            yes_btn.setText('删除')
+        if no_btn is not None:
+            no_btn.setText('取消')
+        return box.exec() == QMessageBox.StandardButton.Yes
+
     def _get_active_session(self) -> InstanceWorkspace | None:
         return self._workspaces.get(self._active_instance_id)
 
@@ -553,19 +644,19 @@ class MainWindow(QMainWindow):
         ws.engine.run_once()
 
     def _on_instance_create(self) -> None:
-        name, ok = QInputDialog.getText(self, '新增实例', '实例名称:')
+        name, ok = self._prompt_instance_name(title='新增实例', label='实例名称:')
         if not ok:
             return
         text = str(name or '').strip()
         if not text:
             return
         if not self._instance_name_re.fullmatch(text):
-            QMessageBox.warning(self, '新增失败', '实例名仅支持英文和数字。')
+            self._show_instance_warning('新增失败', '实例名仅支持英文和数字。')
             return
         try:
             session = self.instance_manager.create_instance(text)
         except Exception as exc:
-            QMessageBox.warning(self, '新增失败', str(exc))
+            self._show_instance_warning('新增失败', str(exc))
             return
 
         ws = self._create_instance_workspace(session)
@@ -578,19 +669,23 @@ class MainWindow(QMainWindow):
         source = self._workspaces.get(source_instance_id)
         if source is None:
             return
-        name, ok = QInputDialog.getText(self, '克隆实例', '新实例名称:', text=f'{source.name}Copy')
+        name, ok = self._prompt_instance_name(
+            title='克隆实例',
+            label='新实例名称:',
+            default_text=f'{source.name}Copy',
+        )
         if not ok:
             return
         text = str(name or '').strip()
         if not text:
             return
         if not self._instance_name_re.fullmatch(text):
-            QMessageBox.warning(self, '克隆失败', '实例名仅支持英文和数字。')
+            self._show_instance_warning('克隆失败', '实例名仅支持英文和数字。')
             return
         try:
             session = self.instance_manager.clone_instance(source_instance_id, text)
         except Exception as exc:
-            QMessageBox.warning(self, '克隆失败', str(exc))
+            self._show_instance_warning('克隆失败', str(exc))
             return
 
         ws = self._create_instance_workspace(session)
@@ -604,16 +699,16 @@ class MainWindow(QMainWindow):
         if ws is None:
             return
         if self._workspace_running(ws):
-            QMessageBox.information(self, '重命名受限', '请先停止该实例再重命名。')
+            self._show_instance_info('重命名受限', '请先停止该实例再重命名。')
             return
-        name, ok = QInputDialog.getText(self, '重命名实例', '新实例名称:', text=ws.name)
+        name, ok = self._prompt_instance_name(title='重命名实例', label='新实例名称:', default_text=ws.name)
         if not ok:
             return
         text = str(name or '').strip()
         if not text:
             return
         if not self._instance_name_re.fullmatch(text):
-            QMessageBox.warning(self, '重命名失败', '实例名仅支持英文和数字。')
+            self._show_instance_warning('重命名失败', '实例名仅支持英文和数字。')
             return
         old_id = ws.instance_id
         self._reset_process_logger_to_app_scope()
@@ -621,7 +716,7 @@ class MainWindow(QMainWindow):
         try:
             session = self.instance_manager.rename_instance(old_id, text)
         except Exception as exc:
-            QMessageBox.warning(self, '重命名失败', str(exc))
+            self._show_instance_warning('重命名失败', str(exc))
             return
 
         ws.instance_id = session.instance_id
@@ -640,20 +735,19 @@ class MainWindow(QMainWindow):
         if ws is None:
             return
         if self._workspace_running(ws):
-            QMessageBox.information(self, '删除受限', '请先停止该实例再删除。')
+            self._show_instance_info('删除受限', '请先停止该实例再删除。')
             return
         if len(self._workspaces) <= 1:
-            QMessageBox.information(self, '删除受限', '至少保留一个实例。')
+            self._show_instance_info('删除受限', '至少保留一个实例。')
             return
-        ret = QMessageBox.question(self, '确认删除', f'确认删除实例 `{ws.name}` 吗？')
-        if ret != QMessageBox.StandardButton.Yes:
+        if not self._confirm_instance_delete(ws.name):
             return
         self._reset_process_logger_to_app_scope()
         ws.engine.stop(keep_prewarm=False)
         try:
             self.instance_manager.delete_instance(instance_id)
         except Exception as exc:
-            QMessageBox.warning(self, '删除失败', str(exc))
+            self._show_instance_warning('删除失败', str(exc))
             return
 
         self._workspace_stack.removeWidget(ws.container)
