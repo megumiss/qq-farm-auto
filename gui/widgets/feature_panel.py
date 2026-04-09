@@ -142,3 +142,10 @@ class FeaturePanel(QWidget):
                 cb.setToolTip('')
                 cb.setStyleSheet('')
                 cb.setChecked(bool(feature_map.get(feature_name, False)))
+
+    def set_config(self, config: AppConfig):
+        """替换配置对象并刷新界面。"""
+        self.config = config
+        self._loading = True
+        self._load_config()
+        self._loading = False
