@@ -66,9 +66,11 @@ class BotEngine(QObject):
     stats_updated = pyqtSignal(dict)
     detection_result = pyqtSignal(object)
 
-    def __init__(self, config: AppConfig):
+    def __init__(self, config: AppConfig, *, runtime_paths: dict[str, str] | None = None, instance_id: str = 'default'):
         super().__init__()
         self.config = config
+        self.instance_id = str(instance_id or 'default')
+        self.runtime_paths = dict(runtime_paths or {})
         self.scheduler = _SchedulerSnapshot()
         self._allow_idle_prewarm = True
         self._window_manager = WindowManager()
@@ -121,7 +123,13 @@ class BotEngine(QObject):
             self._event_queue = self._ctx.Queue()
             self._worker = self._ctx.Process(
                 target=bot_worker_main,
-                args=(self.config.model_dump(), self._command_queue, self._event_queue),
+                args=(
+                    self.config.model_dump(),
+                    self._command_queue,
+                    self._event_queue,
+                    dict(self.runtime_paths),
+                    self.instance_id,
+                ),
                 name='QQFarmWorker',
                 daemon=True,
             )
@@ -155,6 +163,7 @@ class BotEngine(QObject):
             text = str(payload or '').strip()
             if text:
                 self._relay_worker_log(text)
+                self.log_message.emit(text)
             return
 
         if etype == 'state':
