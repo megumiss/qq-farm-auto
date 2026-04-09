@@ -134,6 +134,7 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 
 PROJECT_URL = 'https://github.com/megumiss/qq-farm-copilot'
 PROJECT_URL_TEXT = 'github.com/megumiss/qq-farm-copilot'
+APP_WINDOW_TITLE = 'QQ Farm Copilot（免费软件，谨防倒卖）'
 APP_SETTINGS_ORG = 'QQFarmCopilot'
 APP_SETTINGS_NAME = 'QQFarmCopilot'
 FREE_NOTICE_ENABLED_KEY = 'ui/free_notice_enabled'
@@ -199,7 +200,7 @@ class MainWindow(QMainWindow):
 
     def _init_ui(self):
         """构建主界面布局：左侧截图预览，右侧控制区和标签页。"""
-        self.setWindowTitle('QQ Farm Copilot')
+        self.setWindowTitle(APP_WINDOW_TITLE)
         icon_path = str(resolve_runtime_path('gui', 'icons', 'app_icon.ico'))
         if not os.path.exists(icon_path):
             icon_path = str(resolve_runtime_path('gui', 'icons', 'app_icon.svg'))
