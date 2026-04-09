@@ -8,11 +8,12 @@ from core.base.timer import Timer
 from core.engine.task.registry import TaskResult
 from core.exceptions import BuySeedError
 from core.ui.assets import *
-from core.ui.page import page_main, page_shop
+from core.ui.page import GOTO_MAIN, page_main, page_shop
 from models.config import PlantMode
 from models.farm_state import ActionType
 from models.game_data import get_best_crop_for_level, get_latest_crop_for_level
 from tasks.base import TaskBase
+from utils.land_grid import get_lands_from_land_anchor
 from utils.shop_item_ocr import ShopItemOCR
 
 SHOP_LIST_SWIPE_START = (270, 300)
@@ -146,70 +147,79 @@ class TaskMain(TaskBase):
         self.ui.ui_ensure(page_main)
         self._buy_seeds(self.engine._resolve_crop_name())
 
-        # TODO 点击空白处
+        # 点击空白处
+        self.ui.device.click_button(GOTO_MAIN)
         self.ui.device.screenshot()
-
-        # TODO 检查地块左右两侧标记
-        # TODO 如果地块偏移，则向反方向滑动，最多重复三次
+        # 检查土地位置
+        if not self.ui.appear_any([BTN_LAND_RIGHT, BTN_LAND_LEFT], offset=30, static=False):
+            # TODO 如果地块偏移，则向反方向滑动，最多重复三次
+            # self.ui.device.screenshot()
+            logger.error('土地存在遮挡，请调整画面位置')
+            return
 
         # 判断是否需要播种
-        self.ui.device.screenshot()
         has_land = self.ui.appear_any(LAND_LIST, offset=30, threshold=0.89, static=False)
         if not has_land:
             logger.info('无需播种')
-            return None
+            return
 
         self._plant_all(self.engine._resolve_crop_name())
 
     def _plant_all(self, crop_name: str) -> list[str]:
         """执行整块农田播种流程（识别空地、拉种子、补种购买）。"""
-        all_actions: list[str] = []
-
-        cv_img = self.ui.device.screenshot()
-        # 切换为icon模板
-        dets = self.engine.cv_detector.detect_templates(
-            cv_img,
-            template_names=['land_empty', 'land_empty_2', 'land_empty_3'],
-            default_threshold=0.89,
-            thresholds={'land_empty': 0.89, 'land_empty_2': 0.89, 'land_empty_3': 0.89},
-        )
-        lands = [d for d in dets if d.name.startswith('land_empty')]
+        # TODO 改为只匹配空地
+        # 使用 BTN_LAND_RIGHT, BTN_LAND_LEFT 获取所有的地块位置
+        land_right_location = self.ui.appear_location(BTN_LAND_RIGHT, offset=30, static=False)
+        land_left_location = self.ui.appear_location(BTN_LAND_LEFT, offset=30, static=False)
+        lands = get_lands_from_land_anchor(land_right_location, land_left_location)
         if not lands:
-            return all_actions
+            logger.warning('自动播种流程: 未识别到有效地块锚点，跳过播种')
+            return
 
-        self.ui.device.click_point(int(lands[0].x), int(lands[0].y), desc='点击空地')
-
-        seed_det = None
-        for _ in range(2):
-            cv_img = self.ui.device.screenshot()
-            if cv_img is None:
-                return all_actions
-            seed_dets = self.engine.cv_detector.detect_seed_template(cv_img, crop_name_or_template=crop_name)
-            if seed_dets:
-                seed_det = seed_dets[0]
+        while 1:
+            self.ui.device.screenshot()
+            # 检查种子选择框出现
+            if self.ui.appear(BTN_SEED_SELECT_POPUP_RIGHT, offset=30, static=False):
                 break
+            # 点击一个空地
+            if self.ui.appear_then_click_any(LAND_LIST, offset=30, threshold=0.89, interval=0.5, static=False):
+                continue
 
-        if not seed_det:
-            buy_result = self._buy_seeds(crop_name)
-            if buy_result:
-                all_actions.append(buy_result)
-                return all_actions + self._plant_all(crop_name)
-            return all_actions
+        # 选择种子
+        seed_det = None
+        while 1:
+            cv_img = self.ui.device.screenshot()
+            # 使用原始模板图匹配种子
+            if self.ui.appear(BTN_SEED_SELECT_POPUP_RIGHT, offset=30, static=False):
+                seed_dets = self.engine.cv_detector.detect_seed_template(cv_img, crop_name_or_template=crop_name)
+                if seed_dets:
+                    seed_det = seed_dets[0]
+                    break
+                # 没有找到种子
+                if seed_det is None:
+                    buy_result = self._buy_seeds(crop_name)
+                    if buy_result:
+                        return self._plant_all(crop_name)
+            if self.ui.appear_then_click(BTN_SEED_SELECT_POPUP_RIGHT, offset=30, interval=1, static=False):
+                continue
+            # 种子选择框右侧按钮消失
+            if not self.ui.appear(BTN_SEED_SELECT_POPUP_RIGHT, offset=30, static=False):
+                logger.error('未匹配到种子，请联系作者调整模板')
+                return
 
-        if not self.engine.action_executor or not self.engine.device:
-            return all_actions
-
+        # 先将种子拖到刚刚点击的空地上
         planted_count = 0
         dragging = False
         try:
             if not self.engine.device.drag_down_point(int(seed_det.x), int(seed_det.y), duration=0.05):
-                return all_actions
+                return
             dragging = True
             if not self.ui.device.sleep(0.1):
-                return all_actions
+                return
 
             for land in lands:
-                if not self.engine.device.drag_move_point(int(land.x), int(land.y), duration=0.1):
+                land_x, land_y = land.center
+                if not self.engine.device.drag_move_point(int(land_x), int(land_y), duration=0.1):
                     break
                 if not self.ui.device.sleep(0.15):
                     break
@@ -218,14 +228,10 @@ class TaskMain(TaskBase):
             if dragging:
                 self.engine.device.drag_up()
 
-        if planted_count > 0:
-            all_actions.append(f'播种{crop_name}×{planted_count}')
-
-        self.ui.device.sleep(0.5)
         cv_check = self.ui.device.screenshot()
         if cv_check is not None:
             if BTN_SHOP_CLOSE is not None and self.ui.appear(BTN_SHOP_CLOSE, offset=30, threshold=0.8, static=False):
-                self._close_shop_and_buy(crop_name, all_actions)
+                self._close_shop_and_buy(crop_name)
 
             if BTN_FERTILIZE_POPUP is not None and self.ui.appear(
                 BTN_FERTILIZE_POPUP, offset=30, threshold=0.8, static=False
@@ -233,7 +239,7 @@ class TaskMain(TaskBase):
                 x, y = self.engine._resolve_goto_main_point()
                 self.engine.device.click_point(x, y, desc='点击回主按钮')
 
-        return all_actions
+        return
 
     def _close_shop_and_buy(self, crop_name: str, actions_done: list[str]):
         """关闭商店后立刻执行一次补种购买。"""
@@ -282,7 +288,7 @@ class TaskMain(TaskBase):
                 logger.error("购买流程: 已到达商店首页且未找到种子 '{}'", crop_name)
                 raise BuySeedError
 
-            self.ui.device.swipe(SHOP_LIST_SWIPE_START, SHOP_LIST_SWIPE_END, speed=30, delay=1,hold=0.1)
+            self.ui.device.swipe(SHOP_LIST_SWIPE_START, SHOP_LIST_SWIPE_END, speed=30, delay=1, hold=0.1)
             ocr_match, has_white_radish = self._scan_shop_page_for_seed(crop_name)
             if ocr_match.target:
                 logger.info('购买流程: 已定位目标 | 商品={}', crop_name)
