@@ -120,7 +120,7 @@ class SettingsPanel(QWidget):
         self._window_select_refresh.setObjectName('windowSelectRefreshButton')
         self._window_select_refresh.setCursor(Qt.CursorShape.PointingHandCursor)
         self._window_select_refresh.setFixedWidth(64)
-        self._window_select_refresh.setFixedHeight(28)
+        self._window_select_refresh.setFixedHeight(self._window_select.sizeHint().height())
         self._window_select_refresh.setStyleSheet("""
             QPushButton#windowSelectRefreshButton {
                 background: #f8fafc;
