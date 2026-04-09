@@ -328,6 +328,13 @@ class TaskPanel(QWidget):
                 break
         self._max_failures.setValue(max(1, int(c.executor.max_failures)))
 
+    def set_config(self, config: AppConfig):
+        """替换配置对象并刷新界面。"""
+        self.config = config
+        self._loading = True
+        self._load_config()
+        self._loading = False
+
     @staticmethod
     def _split_interval_for_display(seconds: int) -> tuple[int, int]:
         """将秒数拆分为界面可读的值与单位。"""
