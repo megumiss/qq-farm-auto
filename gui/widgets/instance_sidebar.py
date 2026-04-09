@@ -8,7 +8,6 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QFrame,
-    QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -26,7 +25,6 @@ class InstanceSidebar(QWidget):
     delete_requested = pyqtSignal(str)
     clone_requested = pyqtSignal(str)
     rename_requested = pyqtSignal(str)
-    collapse_toggled = pyqtSignal(bool)
     ROLE_INSTANCE_ID = 0x0100
     ROLE_INSTANCE_NAME = 0x0101
 
@@ -34,11 +32,9 @@ class InstanceSidebar(QWidget):
         super().__init__(parent)
         self._id_to_state: dict[str, str] = {}
         self._id_to_name: dict[str, str] = {}
-        self._collapsed = False
-        self._expanded_width = 196
-        self._collapsed_width = 44
+        self._sidebar_width = 168
         self._build_ui()
-        self._apply_collapsed_state(True)
+        self.setFixedWidth(self._sidebar_width)
 
     def _build_ui(self) -> None:
         self.setObjectName('instanceSidebar')
@@ -53,21 +49,6 @@ class InstanceSidebar(QWidget):
                 color: #334155;
                 font-weight: 700;
                 font-size: 13px;
-            }
-            QPushButton#collapseBtn {
-                min-width: 24px;
-                max-width: 24px;
-                min-height: 24px;
-                max-height: 24px;
-                border-radius: 6px;
-                border: 1px solid #dbe3ef;
-                background: #f8fafc;
-                color: #334155;
-                font-weight: 700;
-            }
-            QPushButton#collapseBtn:hover {
-                background: #eef2ff;
-                border-color: #c7d2fe;
             }
             QListWidget#instanceList {
                 border: 1px solid #e2e8f0;
@@ -101,7 +82,7 @@ class InstanceSidebar(QWidget):
                 color: #334155;
                 border-radius: 8px;
                 font-weight: 600;
-                padding: 0 8px;
+                padding: 0 6px;
             }
             QPushButton#instanceActionBtn:hover {
                 background: #eef2ff;
@@ -114,24 +95,15 @@ class InstanceSidebar(QWidget):
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(6)
 
-        header = QHBoxLayout()
-        header.setContentsMargins(0, 0, 0, 0)
-        header.setSpacing(6)
         self._title = QLabel('实例')
         self._title.setObjectName('instanceTitle')
-        self._btn_collapse = QPushButton('⟩')
-        self._btn_collapse.setObjectName('collapseBtn')
-        self._btn_collapse.setToolTip('折叠实例栏')
-        self._btn_collapse.clicked.connect(self.toggle_collapse)
-        header.addWidget(self._title, 1)
-        header.addWidget(self._btn_collapse, 0)
-        root.addLayout(header)
+        root.addWidget(self._title)
 
         self._list = QListWidget()
         self._list.setObjectName('instanceList')
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._list.itemSelectionChanged.connect(self._on_selection_changed)
-        self._list.setMinimumWidth(self._expanded_width - 16)
+        self._list.setMinimumWidth(self._sidebar_width - 16)
         root.addWidget(self._list, 1)
 
         self._actions_wrap = QFrame()
@@ -152,33 +124,10 @@ class InstanceSidebar(QWidget):
 
         for btn in (self._btn_create, self._btn_delete, self._btn_clone, self._btn_rename):
             btn.setObjectName('instanceActionBtn')
-            btn.setFixedHeight(32)
+            btn.setFixedHeight(30)
             actions.addWidget(btn)
 
         root.addWidget(self._actions_wrap, 0)
-
-    def expanded_width(self) -> int:
-        return int(self._expanded_width)
-
-    def collapsed_width(self) -> int:
-        return int(self._collapsed_width)
-
-    def is_collapsed(self) -> bool:
-        return bool(self._collapsed)
-
-    def toggle_collapse(self) -> None:
-        self._apply_collapsed_state(not self._collapsed)
-
-    def _apply_collapsed_state(self, collapsed: bool) -> None:
-        self._collapsed = bool(collapsed)
-        self._list.setVisible(not self._collapsed)
-        self._actions_wrap.setVisible(not self._collapsed)
-        self._title.setVisible(not self._collapsed)
-        self._btn_collapse.setText('⟨' if not self._collapsed else '⟩')
-        self._btn_collapse.setToolTip('折叠实例栏' if not self._collapsed else '展开实例栏')
-        target_width = self._collapsed_width if self._collapsed else self._expanded_width
-        self.setFixedWidth(target_width)
-        self.collapse_toggled.emit(self._collapsed)
 
     def _current_instance_id(self) -> str:
         item = self._list.currentItem()
@@ -202,8 +151,6 @@ class InstanceSidebar(QWidget):
             self.rename_requested.emit(iid)
 
     def _on_selection_changed(self) -> None:
-        if self._collapsed:
-            return
         iid = self._current_instance_id()
         if iid:
             self.instance_selected.emit(iid)
