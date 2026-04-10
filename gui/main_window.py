@@ -361,10 +361,6 @@ class MainWindow(QMainWindow):
                 background: #dbeafe;
                 color: #1d4ed8;
             }
-            QLabel#instanceRailHint {
-                color: #94a3b8;
-                font-size: 11px;
-            }
             """
         )
         rail_layout = QVBoxLayout(self._instance_rail)
@@ -386,10 +382,6 @@ class MainWindow(QMainWindow):
         self._instance_rail_list.itemSelectionChanged.connect(self._on_rail_instance_selected)
         rail_layout.addWidget(self._instance_rail_list, 1)
 
-        self._instance_rail_hint = QLabel('>')
-        self._instance_rail_hint.setObjectName('instanceRailHint')
-        self._instance_rail_hint.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        rail_layout.addWidget(self._instance_rail_hint, 0)
         root.addWidget(self._instance_rail, 0)
 
         self._instance_sidebar = InstanceSidebar()
@@ -687,7 +679,6 @@ class MainWindow(QMainWindow):
         self._instance_drawer.setVisible(bool(visible))
         if visible:
             self._instance_drawer.raise_()
-        self._instance_rail_hint.setText('<' if visible else '>')
 
     def _toggle_instance_drawer(self) -> None:
         """切换右侧实例抽屉显隐。"""
