@@ -100,10 +100,6 @@ class ActionExecutor:
         dmax = max(float(self._delay_min), float(self._delay_max))
         time.sleep(random.uniform(dmin, dmax))
 
-    def _debug(self, message: str):
-        """输出调试日志。"""
-        logger.debug(message)
-
     @staticmethod
     def _format_action_name(desc: str) -> str:
         """格式化日志中的动作名称。"""
@@ -391,7 +387,6 @@ class ActionExecutor:
             logger.info(f'滑动: ({log_p1[0]}, {log_p1[1]}) -> ({log_p2[0]}, {log_p2[1]})')
         else:
             logger.error(f'滑动失败: ({log_p1[0]}, {log_p1[1]}) -> ({log_p2[0]}, {log_p2[1]})')
-        self._debug(f'滑动调试: result={ok}')
         return ok
 
     @DecoratorConfig.when(RUN_MODE=RunMode.FOREGROUND)
@@ -421,19 +416,11 @@ class ActionExecutor:
         if distance <= 0:
             return True
 
-        speed_value = max(0.1, float(speed))
+        speed_value = max(0.1, float(speed)) * 1.8
         hold_value = max(0.0, float(hold))
-        ok = self._swipe_decel_profile(
-            x1=x1,
-            y1=y1,
-            x2=x2,
-            y2=y2,
-            distance=distance,
-            speed=speed_value,
-            hold=hold_value,
-            rel_p1=rel_p1,
-            rel_p2=rel_p2,
-        )
+        duration_scale = 33.0
+        duration = distance / speed_value / 1000.0 * duration_scale
+        duration = max(0.05, min(0.35, float(duration)))
 
         if rel_p1 is None:
             log_p1 = (x1, y1)
@@ -444,12 +431,22 @@ class ActionExecutor:
         else:
             log_p2 = (int(rel_p2[0]), int(rel_p2[1]))
 
-        if ok:
+        try:
+            pyautogui.moveTo(x1, y1, duration=0.0)
+            pyautogui.mouseDown()
+            pyautogui.moveTo(x2, y2, duration=duration)
+            if hold_value > 0:
+                time.sleep(hold_value)
+            pyautogui.mouseUp()
             logger.info(f'滑动: ({log_p1[0]}, {log_p1[1]}) -> ({log_p2[0]}, {log_p2[1]})')
-        else:
-            logger.error(f'滑动失败: ({log_p1[0]}, {log_p1[1]}) -> ({log_p2[0]}, {log_p2[1]})')
-        self._debug(f'滑动调试: result={ok}')
-        return ok
+            return True
+        except Exception as e:
+            try:
+                pyautogui.mouseUp()
+            except Exception:
+                pass
+            logger.error(f'滑动失败: ({log_p1[0]}, {log_p1[1]}) -> ({log_p2[0]}, {log_p2[1]}) | 错误: {e}')
+            return False
 
     def _swipe_decel_profile(
         self,
@@ -484,45 +481,14 @@ class ActionExecutor:
         tail_step_duration = head_step_duration * tail_weight
         planned_duration = head_steps * head_step_duration + tail_steps * tail_step_duration
 
-        start_rel = rel_p1 if rel_p1 is not None else (x1, y1)
-        end_rel = rel_p2 if rel_p2 is not None else (x2, y2)
-        self._debug(
-            '滑动调试: start_rel=({},{}) end_rel=({},{}) start_abs=({},{}) end_abs=({},{}) '
-            'distance={:.2f} speed={:.2f} hold={:.3f} duration={:.3f} planned={:.3f} total_steps={} '
-            'head_steps={} tail_steps={} head_dt={:.4f} tail_dt={:.4f} run_mode={}'.format(
-                int(start_rel[0]),
-                int(start_rel[1]),
-                int(end_rel[0]),
-                int(end_rel[1]),
-                x1,
-                y1,
-                x2,
-                y2,
-                distance,
-                speed,
-                hold,
-                total_duration,
-                planned_duration,
-                total_steps,
-                head_steps,
-                tail_steps,
-                head_step_duration,
-                tail_step_duration,
-                self._run_mode.value if hasattr(self._run_mode, 'value') else str(self._run_mode),
-            )
-        )
-
         if not self.move_abs(x1, y1, duration=0.0):
-            self._debug('滑动调试: move_to_start failed')
             return False
         time.sleep(0.03)
         if not self.mouse_down():
-            self._debug('滑动调试: mouse_down failed')
             return False
 
         ok = True
         try:
-            self._debug('滑动调试: path=interpolated decel')
             head_ratio = 1.0 - tail_ratio
             for i in range(1, head_steps + 1):
                 ratio = head_ratio * (i / float(head_steps))
@@ -548,7 +514,6 @@ class ActionExecutor:
                 back_x = x2 - sign_x * brake_px
                 back_y = y2 - sign_y * brake_px
                 if self._in_window(back_x, back_y):
-                    self._debug(f'滑动调试: brake back=({back_x},{back_y}) -> end=({x2},{y2}) brake_px={brake_px}')
                     self.move_abs(back_x, back_y, duration=0.012)
                     self.move_abs(x2, y2, duration=0.016)
 
@@ -563,10 +528,6 @@ class ActionExecutor:
                 settle_sign_x = 0 if x2 == x1 else (1 if x2 > x1 else -1)
                 settle_sign_y = 0 if y2 == y1 else (1 if y2 > y1 else -1)
                 settle_amp = 2 if distance >= 420 else 1
-                self._debug(
-                    f'滑动调试: stop_frames={stop_frames} stop_dt={stop_dt:.4f} '
-                    f'axis={"x" if axis_x else "y"} settle_amp={settle_amp}'
-                )
                 for _ in range(stop_frames):
                     if axis_x:
                         settle_x = x2 - settle_sign_x * settle_amp
@@ -582,6 +543,5 @@ class ActionExecutor:
                         break
         finally:
             self.mouse_up()
-            self._debug('滑动调试: mouse_up done')
 
         return ok

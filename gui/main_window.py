@@ -238,6 +238,7 @@ class MainWindow(QMainWindow):
         keyboard.add_hotkey('F10', self._on_stop)
 
     def _init_ui(self):
+        """构建主界面布局：左侧截图预览，右侧控制区和标签页。"""
         self.setWindowTitle(APP_WINDOW_TITLE)
         icon_path = str(resolve_runtime_path('gui', 'icons', 'app_icon.ico'))
         if not os.path.exists(icon_path):
