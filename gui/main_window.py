@@ -339,7 +339,7 @@ class MainWindow(QMainWindow):
         rail_layout = QVBoxLayout(self._instance_rail)
         rail_layout.setContentsMargins(6, 8, 6, 8)
         rail_layout.setSpacing(8)
-        self._instance_rail_toggle = QPushButton('实例')
+        self._instance_rail_toggle = QPushButton('管理')
         self._instance_rail_toggle.setObjectName('instanceRailToggle')
         self._instance_rail_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
         self._instance_rail_toggle.setFixedHeight(32)
@@ -362,7 +362,6 @@ class MainWindow(QMainWindow):
 
         self._instance_sidebar = InstanceSidebar()
         self._instance_sidebar.instance_selected.connect(self._switch_instance)
-        self._instance_sidebar.collapse_requested.connect(lambda: self._set_instance_drawer_visible(False))
         self._instance_sidebar.create_requested.connect(self._on_instance_create)
         self._instance_sidebar.delete_requested.connect(self._on_instance_delete)
         self._instance_sidebar.clone_requested.connect(self._on_instance_clone)
@@ -637,7 +636,6 @@ class MainWindow(QMainWindow):
         if visible:
             self._instance_drawer.raise_()
         self._instance_rail_hint.setText('<' if visible else '>')
-        self._instance_rail_toggle.setText('收起' if visible else '实例')
 
     def _toggle_instance_drawer(self) -> None:
         """切换右侧实例抽屉显隐。"""
