@@ -65,9 +65,19 @@ class InstanceManager:
             self._sessions.append(session)
 
         self._active_instance_id = sanitize_instance_name(meta.get('active_instance_id', ''))
-        if self._active_instance_id not in {session.instance_id for session in self._sessions} and self._sessions:
-            self._active_instance_id = self._sessions[0].instance_id
-            self.save()
+        if self._sessions:
+            changed = False
+            active_cf = self._active_instance_id.casefold()
+            matched = next((s.instance_id for s in self._sessions if s.instance_id.casefold() == active_cf), '')
+            if matched:
+                if self._active_instance_id != matched:
+                    changed = True
+                self._active_instance_id = matched
+            else:
+                self._active_instance_id = self._sessions[0].instance_id
+                changed = True
+            if changed:
+                self.save()
 
     def save(self) -> None:
         """保存实例元数据。"""
@@ -93,12 +103,12 @@ class InstanceManager:
 
     def _ensure_unique_id(self, preferred: str) -> str:
         base = sanitize_instance_name(preferred)
-        existing = {session.instance_id for session in self._sessions}
-        if base not in existing:
+        existing = {session.instance_id.casefold() for session in self._sessions}
+        if base.casefold() not in existing:
             return base
         for idx in range(2, 10_000):
             candidate = f'{base}{idx}'
-            if candidate not in existing:
+            if candidate.casefold() not in existing:
                 return candidate
         raise RuntimeError('failed to allocate unique instance id')
 
@@ -107,8 +117,9 @@ class InstanceManager:
 
     def get_session(self, instance_id: str) -> InstanceSession | None:
         iid = sanitize_instance_name(instance_id)
+        iid_cf = iid.casefold()
         for session in self._sessions:
-            if session.instance_id == iid:
+            if session.instance_id.casefold() == iid_cf:
                 return session
         return None
 
@@ -150,18 +161,22 @@ class InstanceManager:
             raise KeyError(f'instance not found: {instance_id}')
 
         candidate = sanitize_instance_name(new_name)
-        if candidate == session.instance_id:
+        if candidate.casefold() == session.instance_id.casefold():
             session.name = str(new_name or session.instance_id)
             session.touch()
             self.save()
             return session
 
-        existing = {item.instance_id for item in self._sessions if item.instance_id != session.instance_id}
+        existing = {
+            item.instance_id.casefold()
+            for item in self._sessions
+            if item.instance_id.casefold() != session.instance_id.casefold()
+        }
         new_id = candidate
-        if new_id in existing:
+        if new_id.casefold() in existing:
             for idx in range(2, 10_000):
                 alt = f'{candidate}{idx}'
-                if alt not in existing:
+                if alt.casefold() not in existing:
                     new_id = alt
                     break
             else:

@@ -554,22 +554,27 @@ class MainWindow(QMainWindow):
         return workspace
 
     def _connect_workspace_signals(self, workspace: InstanceWorkspace) -> None:
-        iid = workspace.instance_id
         engine = workspace.engine
-        engine.log_message.connect(lambda text, _iid=iid: self._on_workspace_log(_iid, text))
-        engine.screenshot_updated.connect(lambda image, _iid=iid: self._on_workspace_screenshot(_iid, image))
-        engine.detection_result.connect(lambda image, _iid=iid: self._on_workspace_screenshot(_iid, image))
-        engine.state_changed.connect(lambda state, _iid=iid: self._on_workspace_state_changed(_iid, state))
+        engine.log_message.connect(lambda text, _ws=workspace: self._on_workspace_log(_ws.instance_id, text))
+        engine.screenshot_updated.connect(
+            lambda image, _ws=workspace: self._on_workspace_screenshot(_ws.instance_id, image)
+        )
+        engine.detection_result.connect(
+            lambda image, _ws=workspace: self._on_workspace_screenshot(_ws.instance_id, image)
+        )
+        engine.state_changed.connect(
+            lambda state, _ws=workspace: self._on_workspace_state_changed(_ws.instance_id, state)
+        )
         engine.stats_updated.connect(workspace.status_panel.update_stats)
 
         workspace.settings_panel.config_changed.connect(
-            lambda config, _iid=iid: self._on_workspace_config_changed(_iid, config)
+            lambda config, _ws=workspace: self._on_workspace_config_changed(_ws.instance_id, config)
         )
         workspace.task_panel.config_changed.connect(
-            lambda config, _iid=iid: self._on_workspace_config_changed(_iid, config)
+            lambda config, _ws=workspace: self._on_workspace_config_changed(_ws.instance_id, config)
         )
         workspace.feature_panel.config_changed.connect(
-            lambda config, _iid=iid: self._on_workspace_config_changed(_iid, config)
+            lambda config, _ws=workspace: self._on_workspace_config_changed(_ws.instance_id, config)
         )
 
     def _init_instances(self) -> None:
