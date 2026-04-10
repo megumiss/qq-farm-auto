@@ -304,6 +304,28 @@ class MainWindow(QMainWindow):
                 border-color: #c7d2fe;
                 color: #1e40af;
             }
+            QPushButton#instanceRailNav {
+                background: #f8fafc;
+                border: 1px solid #dbe3ef;
+                color: #334155;
+                border-radius: 8px;
+                font-weight: 700;
+                padding: 0;
+            }
+            QPushButton#instanceRailNav:hover {
+                background: #eef2ff;
+                border-color: #c7d2fe;
+                color: #1e40af;
+            }
+            QLabel#instanceRailCurrent {
+                color: #334155;
+                font-size: 11px;
+                font-weight: 700;
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                padding: 4px 2px;
+            }
             QLabel#instanceRailHint {
                 color: #94a3b8;
                 font-size: 11px;
@@ -319,6 +341,27 @@ class MainWindow(QMainWindow):
         self._instance_rail_toggle.setFixedHeight(32)
         self._instance_rail_toggle.clicked.connect(self._toggle_instance_drawer)
         rail_layout.addWidget(self._instance_rail_toggle, 0)
+
+        self._instance_prev_btn = QPushButton('˄')
+        self._instance_prev_btn.setObjectName('instanceRailNav')
+        self._instance_prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._instance_prev_btn.setFixedHeight(24)
+        self._instance_prev_btn.clicked.connect(lambda: self._switch_relative_instance(-1))
+        rail_layout.addWidget(self._instance_prev_btn, 0)
+
+        self._instance_rail_current = QLabel('--')
+        self._instance_rail_current.setObjectName('instanceRailCurrent')
+        self._instance_rail_current.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._instance_rail_current.setToolTip('当前实例')
+        rail_layout.addWidget(self._instance_rail_current, 0)
+
+        self._instance_next_btn = QPushButton('˅')
+        self._instance_next_btn.setObjectName('instanceRailNav')
+        self._instance_next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._instance_next_btn.setFixedHeight(24)
+        self._instance_next_btn.clicked.connect(lambda: self._switch_relative_instance(1))
+        rail_layout.addWidget(self._instance_next_btn, 0)
+
         self._instance_rail_hint = QLabel('>')
         self._instance_rail_hint.setObjectName('instanceRailHint')
         self._instance_rail_hint.setAlignment(Qt.AlignmentFlag.AlignHCenter)
@@ -537,6 +580,40 @@ class MainWindow(QMainWindow):
         self._instance_sidebar.set_instances(items)
         if self._active_instance_id:
             self._instance_sidebar.set_active_instance(self._active_instance_id)
+        self._update_instance_rail_current()
+
+    def _ordered_instance_ids(self) -> list[str]:
+        """按实例管理器顺序返回实例 ID 列表。"""
+        return [s.instance_id for s in self.instance_manager.iter_sessions() if s.instance_id in self._workspaces]
+
+    def _switch_relative_instance(self, offset: int) -> None:
+        """在窄轨上快速切换前/后实例。"""
+        ids = self._ordered_instance_ids()
+        if not ids:
+            return
+        if self._active_instance_id not in ids:
+            self._switch_instance(ids[0])
+            return
+        index = ids.index(self._active_instance_id)
+        target_index = (index + int(offset)) % len(ids)
+        self._switch_instance(ids[target_index])
+
+    def _update_instance_rail_current(self) -> None:
+        """刷新窄轨当前实例名称。"""
+        ws = self._workspaces.get(self._active_instance_id)
+        if ws is None:
+            self._instance_rail_current.setText('--')
+            self._instance_rail_current.setToolTip('当前实例')
+            self._instance_prev_btn.setEnabled(False)
+            self._instance_next_btn.setEnabled(False)
+            return
+        name = str(ws.name or ws.instance_id)
+        short = name if len(name) <= 6 else f'{name[:6]}…'
+        self._instance_rail_current.setText(short)
+        self._instance_rail_current.setToolTip(f'当前实例: {name}')
+        has_multiple = len(self._ordered_instance_ids()) > 1
+        self._instance_prev_btn.setEnabled(has_multiple)
+        self._instance_next_btn.setEnabled(has_multiple)
 
     def _layout_instance_drawer(self) -> None:
         """按当前窗口尺寸定位右侧实例抽屉（覆盖主区，不挤压布局）。"""
@@ -589,6 +666,7 @@ class MainWindow(QMainWindow):
             self._screenshot_label.setText('启动后显示\n实时截图')
             self._screenshot_label.setPixmap(QPixmap())
         self._sync_buttons(ws)
+        self._update_instance_rail_current()
 
     def _workspace_running(self, ws: InstanceWorkspace) -> bool:
         state = str(ws.state or 'idle')
