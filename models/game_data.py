@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from utils.app_paths import load_config_json_array
 
+EXCLUDED_CROP_NAMES = {'新春红包', '哈哈南瓜'}
+
 
 def _parse_grow_phases_seconds(grow_phases: str) -> list[int]:
     """Parse `种子:30;发芽:30;成熟:0;` into [30, 30, 0]."""
@@ -55,6 +57,8 @@ def _load_crops_from_plant_json() -> list[tuple]:
     for item in data:
         name = str(item.get('name', '')).strip()
         if not name:
+            continue
+        if name in EXCLUDED_CROP_NAMES:
             continue
 
         seed_id = int(item.get('seed_id', 0))
