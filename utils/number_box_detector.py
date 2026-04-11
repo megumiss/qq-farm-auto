@@ -32,7 +32,10 @@ class NumberBoxDetector:
         y_min_px: int = 400,
         y_max_px: int = 750,
         max_box_width_px: int = 30,
-        left_anchor_max_right_gap_px: int = 35,
+        result_cluster_distance_px: int = 30,
+        left_anchor_template_threshold: float = 0.7,
+        left_anchor_max_right_gap_px: int = 40,
+        left_anchor_max_y_gap_px: int = 15,
         iou_dedup_threshold: float = 0.35,
         digit_template_threshold: float = 0.7,
         digit_iou_dedup_threshold: float = 0.50,
@@ -43,7 +46,10 @@ class NumberBoxDetector:
         self.y_min_px = int(y_min_px)
         self.y_max_px = int(y_max_px)
         self.max_box_width_px = int(max_box_width_px)
+        self.result_cluster_distance_px = int(result_cluster_distance_px)
+        self.left_anchor_template_threshold = float(left_anchor_template_threshold)
         self.left_anchor_max_right_gap_px = int(left_anchor_max_right_gap_px)
+        self.left_anchor_max_y_gap_px = int(left_anchor_max_y_gap_px)
         self.iou_dedup_threshold = float(iou_dedup_threshold)
         self.digit_template_threshold = float(digit_template_threshold)
         self.digit_iou_dedup_threshold = float(digit_iou_dedup_threshold)
@@ -114,7 +120,7 @@ class NumberBoxDetector:
         if left_anchor_button is not None:
             left_matches = self.ui.match_icon_multi(
                 left_anchor_button,
-                threshold=float(self.digit_template_threshold),
+                threshold=float(self.left_anchor_template_threshold),
                 roi=detect_roi,
             )
             for det in left_matches:
@@ -190,7 +196,7 @@ class NumberBoxDetector:
             gap_right = int(dx1 - lx2)
             if gap_right < 0 or gap_right > int(self.left_anchor_max_right_gap_px):
                 continue
-            if abs(dcy - lcy) > max(14, int(round((ly2 - ly1) * 0.75))):
+            if abs(dcy - lcy) > int(self.left_anchor_max_y_gap_px):
                 continue
             return True
         return False
@@ -270,6 +276,55 @@ class NumberBoxDetector:
             deduped.append(box)
         return deduped
 
+    @staticmethod
+    def _aggregate_nearby_boxes(
+        boxes: list[tuple[int, int, int, int]],
+        *,
+        distance_px: int,
+    ) -> list[tuple[int, int, int, int]]:
+        """将中心点距离在阈值内的候选框聚合为一个结果框。"""
+        if not boxes:
+            return []
+        distance = max(1, int(distance_px))
+        dist_sq = distance * distance
+        remaining = [tuple(int(v) for v in box) for box in boxes]
+        merged: list[tuple[int, int, int, int]] = []
+
+        while remaining:
+            seed = remaining.pop(0)
+            cluster = [seed]
+            changed = True
+            while changed:
+                changed = False
+                keep: list[tuple[int, int, int, int]] = []
+                for candidate in remaining:
+                    ccx = (candidate[0] + candidate[2]) // 2
+                    ccy = (candidate[1] + candidate[3]) // 2
+                    near_cluster = False
+                    for item in cluster:
+                        icx = (item[0] + item[2]) // 2
+                        icy = (item[1] + item[3]) // 2
+                        dx = ccx - icx
+                        dy = ccy - icy
+                        if (dx * dx + dy * dy) <= dist_sq:
+                            near_cluster = True
+                            break
+                    if near_cluster:
+                        cluster.append(candidate)
+                        changed = True
+                    else:
+                        keep.append(candidate)
+                remaining = keep
+
+            x1 = min(item[0] for item in cluster)
+            y1 = min(item[1] for item in cluster)
+            x2 = max(item[2] for item in cluster)
+            y2 = max(item[3] for item in cluster)
+            merged.append((x1, y1, x2, y2))
+
+        merged.sort(key=lambda box: (box[0], box[1]))
+        return merged
+
     def detect_boxes(
         self,
         img_bgr: np.ndarray | None,
@@ -326,7 +381,11 @@ class NumberBoxDetector:
             y_min=y_min,
             y_max=y_max,
         )
-        selected = sorted(boxes, key=lambda box: box[0])
+        selected = self._aggregate_nearby_boxes(
+            boxes,
+            distance_px=int(self.result_cluster_distance_px),
+        )
+        selected = sorted(selected, key=lambda box: box[0])
 
         out: list[NumberBox] = []
         for idx, box in enumerate(selected, start=1):
