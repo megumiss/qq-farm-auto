@@ -159,6 +159,14 @@ class TaskMain(TaskBase):
 
     def _emit_config_updated(self) -> None:
         """向主进程广播配置已更新，触发设置面板刷新。"""
+        emit_now = getattr(self.engine, '_emit_config_now', None)
+        if callable(emit_now):
+            try:
+                emit_now()
+                return
+            except Exception as exc:
+                logger.debug('等级识别: 复用引擎配置广播失败: {}', exc)
+
         payload = dict(self.engine.config.model_dump())
         direct_sender = getattr(self.engine, 'emit_config_event', None)
         if callable(direct_sender):

@@ -31,6 +31,8 @@ from utils.feature_policy import get_forced_off_features
 class BotExecutorMixin:
     """Bot 执行器与调度相关逻辑。"""
 
+    _NEXT_RUN_PARSE_FORMATS = ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M')
+
     @staticmethod
     @lru_cache(maxsize=1)
     def _task_title_map() -> dict[str, str]:
@@ -60,6 +62,23 @@ class BotExecutorMixin:
                 pass
         self.stats_updated.emit(stats)
 
+    def _emit_config_now(self):
+        """立即推送一次配置快照，确保 UI 读取到最新持久化配置。"""
+        payload = self.config.model_dump()
+        sender = getattr(self, 'emit_config_event', None)
+        if callable(sender):
+            try:
+                sender(payload)
+                return
+            except Exception:
+                pass
+        emitter = getattr(self, 'config_updated', None)
+        if emitter is not None:
+            try:
+                emitter.emit(payload)
+            except Exception:
+                pass
+
     def _reset_device_runtime_guards(self):
         """任务开始前重置设备卡死/点击守卫记录。"""
         if not self.device:
@@ -87,6 +106,42 @@ class BotExecutorMixin:
             return [str(name) for name in tasks_cfg.model_dump().keys()]
         except Exception:
             return []
+
+    @classmethod
+    def _parse_task_next_run_text(cls, text: str | None) -> datetime | None:
+        """解析配置中的 `next_run` 文本。"""
+        raw = str(text or '').strip().replace('T', ' ')
+        if not raw:
+            return None
+        for fmt in cls._NEXT_RUN_PARSE_FORMATS:
+            try:
+                return datetime.strptime(raw, fmt)
+            except Exception:
+                continue
+        return None
+
+    @staticmethod
+    def _serialize_task_next_run_text(next_run: datetime) -> str:
+        """序列化 `next_run` 以写入配置。"""
+        return next_run.replace(microsecond=0).strftime('%Y-%m-%d %H:%M:%S')
+
+    def _persist_task_next_run(self, task_name: str) -> None:
+        """将任务下次执行时间回写到配置文件。"""
+        item = self._executor_tasks.get(task_name)
+        if item is None:
+            return
+        cfg = self._get_task_cfg(task_name)
+        if cfg is None:
+            return
+        next_run_text = self._serialize_task_next_run_text(item.next_run)
+        if str(getattr(cfg, 'next_run', '') or '') == next_run_text:
+            return
+        cfg.next_run = next_run_text
+        try:
+            self.config.save()
+            self._emit_config_now()
+        except Exception as exc:
+            logger.debug(f'persist next_run failed({task_name}): {exc}')
 
     def _collect_task_runners(self) -> dict[str, Callable[[TaskContext], TaskResult]]:
         """自动发现 `_run_task_*` 任务入口方法并构建 runner 映射。"""
@@ -137,8 +192,12 @@ class BotExecutorMixin:
             )
 
             next_run = now
-            if cfg is not None and getattr(cfg, 'trigger', TaskTriggerType.INTERVAL) == TaskTriggerType.DAILY:
-                next_run = now + timedelta(seconds=self._task_seconds_by_trigger(task_name, now))
+            if cfg is not None:
+                parsed_next_run = self._parse_task_next_run_text(getattr(cfg, 'next_run', ''))
+                if parsed_next_run is not None:
+                    next_run = parsed_next_run
+                elif getattr(cfg, 'trigger', TaskTriggerType.INTERVAL) == TaskTriggerType.DAILY:
+                    next_run = now + timedelta(seconds=self._task_seconds_by_trigger(task_name, now))
 
             out[task_name] = TaskItem(
                 name=task_name,
@@ -171,12 +230,12 @@ class BotExecutorMixin:
     def _seconds_to_next_daily(daily_time: str, now: datetime | None = None) -> int:
         """计算距离下一次每日触发时间的秒数。"""
         current = now or datetime.now()
-        text = str(daily_time or '04:00')
+        text = str(daily_time or '00:01')
         try:
             hour = int(text[:2])
             minute = int(text[3:5])
         except Exception:
-            hour, minute = 4, 0
+            hour, minute = 0, 1
         target = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
         if target <= current:
             target = target + timedelta(days=1)
@@ -269,8 +328,9 @@ class BotExecutorMixin:
                 'max_failures': max_failures,
             }
 
-            if cfg is not None and getattr(cfg, 'trigger', TaskTriggerType.INTERVAL) == TaskTriggerType.DAILY:
-                kwargs['next_run'] = now + timedelta(seconds=self._task_seconds_by_trigger(task_name, now))
+            parsed_next_run = self._parse_task_next_run_text(getattr(cfg, 'next_run', '')) if cfg is not None else None
+            if parsed_next_run is not None:
+                kwargs['next_run'] = parsed_next_run
             elif enabled and item and item.next_run < now:
                 kwargs['next_run'] = now
 
@@ -404,6 +464,8 @@ class BotExecutorMixin:
         elif result.success:
             self._task_error_delay_overrides.pop(task_name, None)
             self._task_error_type_names.pop(task_name, None)
+
+        self._persist_task_next_run(task_name)
 
         status_text = '成功' if result.success else '失败'
         next_run_text = self._format_task_next_run(self._executor_tasks.get(task_name))

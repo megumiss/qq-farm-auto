@@ -125,6 +125,7 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 - `planting`：种植策略、等级、平台、窗口位置、`warehouse_first`（仓库优先选种）、等级 OCR 开关
 - `executor`：空队列策略、默认间隔、最大失败次数
 - `tasks`：动态任务字典
+- `tasks.<task>.next_run`：任务下次执行时间（持久化到配置，默认 `2026-01-01 00:00`）
 
 等级 OCR 相关（`planting`）：
 
@@ -141,6 +142,7 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
     "trigger": "interval",
     "interval_seconds": 60,
     "daily_time": "04:00",
+    "next_run": "2026-01-01 00:00",
     "failure_interval_seconds": 30,
     "features": {
       "auto_harvest": true,
@@ -154,6 +156,7 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
     "priority": 30,
     "trigger": "daily",
     "daily_time": "04:00",
+    "next_run": "2026-01-01 00:00",
     "interval_seconds": 86400,
     "failure_interval_seconds": 300,
     "features": {
@@ -191,6 +194,7 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 - 到期任务按 `priority` 从小到大执行
 - 任务执行后按成功/失败间隔或 `TaskResult.next_run_seconds` 计算下一次执行
+- 每次计算出的下次执行时间会回写到 `tasks.<task>.next_run`
 - `DAILY` 与 `INTERVAL` 共用同一套执行器队列
 
 ## UI 面板

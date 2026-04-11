@@ -19,7 +19,8 @@
       "priority": 10,
       "trigger": "interval",
       "interval_seconds": 60,
-      "daily_time": "00:00",
+      "daily_time": "00:01",
+      "next_run": "2026-01-01 00:00",
       "failure_interval_seconds": 30,
       "features": {
         "auto_harvest": true,
@@ -36,7 +37,8 @@
       "priority": 20,
       "trigger": "interval",
       "interval_seconds": 1800,
-      "daily_time": "00:00",
+      "daily_time": "00:01",
+      "next_run": "2026-01-01 00:00",
       "failure_interval_seconds": 60,
       "features": {
         "auto_steal": false,
@@ -49,7 +51,8 @@
       "priority": 30,
       "trigger": "daily",
       "interval_seconds": 86400,
-      "daily_time": "00:00",
+      "daily_time": "00:01",
+      "next_run": "2026-01-01 00:00",
       "failure_interval_seconds": 300,
       "features": {
         "auto_task": false
@@ -73,7 +76,8 @@
       "priority": 40,
       "trigger": "interval",
       "interval_seconds": 21600,
-      "daily_time": "00:00",
+      "daily_time": "00:01",
+      "next_run": "2026-01-01 00:00",
       "failure_interval_seconds": 300,
       "features": {}
     }

@@ -10,7 +10,7 @@
 - UI 结构：左侧截图预览 + 中间实例运行面板 + 最右侧竖向实例栏
 - 实例纳管操作：`新增 / 删除 / 切换 / 克隆 / 重命名`
 - 调度模式：`TaskExecutor` 单线程串行执行
-- 任务配置：`%APPDATA%/QQFarmCopilot/instances/<instance_id>/configs/config.json -> tasks`（动态字典）
+- 任务配置：`%APPDATA%/QQFarmCopilot/instances/<instance_id>/configs/config.json -> tasks`（动态字典，包含持久化 `next_run`）
 - 高级配置：`config.safety.debug_log_enabled` 控制 Debug 日志输出
 - 播种选种：`config.planting.warehouse_first` 默认开启；开启时优先按 `number_box_detector` 选择最左种子
 - 等级同步：播种前执行等级 OCR；由 `config.planting.level_ocr_enabled` 控制，识别后回写 `config.planting.player_level`；QQ/微信 ROI 使用 `tasks/main.py` 内常量
@@ -58,6 +58,7 @@
 - `trigger=interval`：按 `interval_seconds`。
 - `trigger=daily`：按 `daily_time` 计算距离下一次秒数。
 - `TaskResult.next_run_seconds` 若设置，会覆盖本次默认成功/失败间隔。
+- 执行器每次计算后的 `next_run` 会回写 `config.tasks.<name>.next_run`。
 
 ### 2.4 失败语义
 
@@ -178,6 +179,7 @@
 - `trigger: "interval" | "daily"`
 - `interval_seconds: int`（>=1）
 - `daily_time: "HH:MM"`
+- `next_run: "YYYY-MM-DD HH:MM[:SS]"`（默认 `2026-01-01 00:00`）
 - `failure_interval_seconds: int`（>=1）
 - `features: {str: bool}`
 

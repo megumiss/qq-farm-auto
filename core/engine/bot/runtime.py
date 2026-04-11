@@ -250,5 +250,6 @@ class BotRuntimeMixin:
         if not self._task_executor or not self._task_executor.is_running():
             self.log_message.emit('执行器未运行，无法立即执行')
             return
-        self._task_executor.task_call('main')
+        if self._task_executor.task_call('main'):
+            self._persist_task_next_run('main')
         self._task_executor.resume()

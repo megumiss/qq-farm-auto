@@ -1,8 +1,9 @@
 """任务配置面板（根据 tasks 配置自动生成）。"""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from PyQt6.QtCore import Qt, QTime, pyqtSignal
+from PyQt6.QtGui import QFontMetrics
 from PyQt6.QtWidgets import (
     QAbstractSpinBox,
     QCheckBox,
@@ -11,14 +12,14 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
-    QLabel,
+    QLineEdit,
     QSpinBox,
     QTimeEdit,
     QWidget,
 )
 
 from gui.widgets.no_wheel_combo_box import NoWheelComboBox
-from models.config import AppConfig, TaskTriggerType
+from models.config import DEFAULT_TASK_NEXT_RUN, AppConfig, TaskTriggerType
 from utils.app_paths import load_config_json_object
 
 
@@ -52,9 +53,6 @@ class TaskPanel(QWidget):
         self._policy_stay = str(panel_labels.get('policy_stay', 'Stay'))
         self._policy_goto_main = str(panel_labels.get('policy_goto_main', 'Goto main'))
         self._max_failures_label = str(panel_labels.get('max_failures_label', 'Max failures:'))
-        self._disabled_text = str(panel_labels.get('disabled', 'Disabled'))
-        self._today_text = str(panel_labels.get('today', 'Today'))
-        self._tomorrow_text = str(panel_labels.get('tomorrow', 'Tomorrow'))
         self._task_title_suffix = str(panel_labels.get('task_title_suffix', ' task'))
         self._loading = True
         self._task_order: list[str] = []
@@ -104,7 +102,7 @@ class TaskPanel(QWidget):
 
         - 固定提供任务开关。
         - `INTERVAL` 任务显示“执行间隔（秒/分钟/小时）”。
-        - `DAILY` 任务显示“每日执行时间 + 下次执行提示”。
+        - `DAILY` 任务显示“每日执行时间 + 下次执行”。
         """
         title = self._task_title_map.get(task_name, f'{task_name}{self._task_title_suffix}')
         group = QGroupBox(title)
@@ -134,7 +132,20 @@ class TaskPanel(QWidget):
                 '}'
                 'QTimeEdit:focus { border-color: #2563eb; }'
             )
-            next_label = QLabel('--')
+            next_run = QLineEdit()
+            # 固定模板输入，支持逐位编辑，不需要先全选。
+            next_run.setInputMask('0000-00-00 00:00:00;_')
+            next_run.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            next_run.setStyleSheet(
+                'QLineEdit {'
+                'background-color: #ffffff;'
+                'border: 1px solid #cbd5e1;'
+                'border-radius: 6px;'
+                'padding: 4px 8px;'
+                'font-weight: 600;'
+                '}'
+                'QLineEdit:focus { border-color: #2563eb; }'
+            )
 
             row_widget = QWidget()
             row_layout = QHBoxLayout(row_widget)
@@ -144,16 +155,51 @@ class TaskPanel(QWidget):
             row_layout.addStretch()
 
             form.addRow(self._daily_time_label, row_widget)
-            form.addRow(self._next_run_label, next_label)
+            form.addRow(self._next_run_label, next_run)
             widgets['daily_time'] = time_edit
-            widgets['next_label'] = next_label
+            widgets['next_run'] = next_run
         else:
             interval_value = QSpinBox()
             interval_value.setRange(1, 999999)
+            interval_value.setFixedWidth(84)
             interval_unit = NoWheelComboBox()
             interval_unit.addItem(self._interval_unit_second, 1)
             interval_unit.addItem(self._interval_unit_minute, 60)
             interval_unit.addItem(self._interval_unit_hour, 3600)
+            interval_unit.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+            metrics = QFontMetrics(interval_unit.font())
+            max_unit_text_width = max(
+                metrics.horizontalAdvance(self._interval_unit_second),
+                metrics.horizontalAdvance(self._interval_unit_minute),
+                metrics.horizontalAdvance(self._interval_unit_hour),
+            )
+            # 额外预留左右内边距与下拉箭头区域，避免文本被省略号截断。
+            interval_unit.setFixedWidth(max(96, max_unit_text_width + 44))
+            interval_unit.setStyleSheet(
+                'QComboBox {'
+                'min-height: 28px;'
+                'padding: 4px 24px 4px 8px;'
+                '}'
+                'QComboBox::drop-down {'
+                'width: 20px;'
+                'subcontrol-origin: padding;'
+                'subcontrol-position: top right;'
+                '}'
+            )
+            next_run = QLineEdit()
+            # 固定模板输入，支持逐位编辑，不需要先全选。
+            next_run.setInputMask('0000-00-00 00:00:00;_')
+            next_run.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            next_run.setStyleSheet(
+                'QLineEdit {'
+                'background-color: #ffffff;'
+                'border: 1px solid #cbd5e1;'
+                'border-radius: 6px;'
+                'padding: 4px 8px;'
+                'font-weight: 600;'
+                '}'
+                'QLineEdit:focus { border-color: #2563eb; }'
+            )
 
             row_widget = QWidget()
             row_layout = QHBoxLayout(row_widget)
@@ -164,8 +210,10 @@ class TaskPanel(QWidget):
             row_layout.addStretch()
 
             form.addRow(self._interval_label, row_widget)
+            form.addRow(self._next_run_label, next_run)
             widgets['interval_value'] = interval_value
             widgets['interval_unit'] = interval_unit
+            widgets['next_run'] = next_run
 
         group.setLayout(form)
         self._task_widgets[task_name] = widgets
@@ -223,6 +271,10 @@ class TaskPanel(QWidget):
             if isinstance(daily_time, QTimeEdit):
                 daily_time.timeChanged.connect(self._auto_save)
 
+            next_run = widgets.get('next_run')
+            if isinstance(next_run, QLineEdit):
+                next_run.editingFinished.connect(lambda name=task_name: self._on_next_run_edit_finished(name))
+
         self._empty_policy.currentIndexChanged.connect(self._auto_save)
         self._max_failures.valueChanged.connect(self._auto_save)
 
@@ -231,7 +283,7 @@ class TaskPanel(QWidget):
 
         行为：
         - 更新 executor 全局策略。
-        - 更新每个任务的 enabled/trigger/interval/daily_time。
+        - 更新每个任务的 enabled/trigger/interval/daily_time/next_run。
         - 保存后发出 `config_changed`，驱动引擎热更新。
         """
         if self._loading:
@@ -261,36 +313,17 @@ class TaskPanel(QWidget):
             if isinstance(daily_time, QTimeEdit):
                 task_cfg.trigger = TaskTriggerType.DAILY
                 task_cfg.daily_time = daily_time.time().toString('HH:mm')
-                self._refresh_daily_next_text(task_name)
+
+            next_run = widgets.get('next_run')
+            if isinstance(next_run, QLineEdit):
+                normalized = self._normalize_next_run_text(next_run.text())
+                if normalized is not None:
+                    task_cfg.next_run = normalized
+                    if next_run.text() != normalized:
+                        next_run.setText(normalized)
 
         c.save()
         self.config_changed.emit(c)
-
-    def _refresh_daily_next_text(self, task_name: str):
-        """刷新每日任务的“下次执行”文案（今天/明天 + 时间）。"""
-        widgets = self._task_widgets.get(task_name, {})
-        enabled = widgets.get('enabled')
-        daily_time = widgets.get('daily_time')
-        next_label = widgets.get('next_label')
-        if (
-            not isinstance(enabled, QCheckBox)
-            or not isinstance(daily_time, QTimeEdit)
-            or not isinstance(next_label, QLabel)
-        ):
-            return
-
-        if not enabled.isChecked():
-            next_label.setText(self._disabled_text)
-            return
-
-        now = datetime.now()
-        selected = daily_time.time()
-        target = now.replace(hour=selected.hour(), minute=selected.minute(), second=0, microsecond=0)
-        day_hint = self._today_text
-        if target <= now:
-            target = target + timedelta(days=1)
-            day_hint = self._tomorrow_text
-        next_label.setText(f'{day_hint} {target:%m-%d %H:%M}')
 
     def _load_config(self):
         """从配置对象加载初始值到界面控件。"""
@@ -312,6 +345,12 @@ class TaskPanel(QWidget):
                 display_value, unit_factor = self._split_interval_for_display(seconds)
                 self._set_combo_data(interval_unit, unit_factor)
                 interval_value.setValue(display_value)
+                next_run = widgets.get('next_run')
+                if isinstance(next_run, QLineEdit):
+                    normalized = self._normalize_next_run_text(str(getattr(task_cfg, 'next_run', '')))
+                    if normalized is None:
+                        normalized = self._normalize_next_run_text(DEFAULT_TASK_NEXT_RUN) or '2026-01-01 00:00:00'
+                    next_run.setText(normalized)
 
             daily_time = widgets.get('daily_time')
             if isinstance(daily_time, QTimeEdit):
@@ -319,8 +358,13 @@ class TaskPanel(QWidget):
                     hh, mm = str(task_cfg.daily_time).split(':')
                     daily_time.setTime(QTime(int(hh), int(mm)))
                 except Exception:
-                    daily_time.setTime(QTime(4, 0))
-                self._refresh_daily_next_text(task_name)
+                    daily_time.setTime(QTime(0, 1))
+                next_run = widgets.get('next_run')
+                if isinstance(next_run, QLineEdit):
+                    normalized = self._normalize_next_run_text(str(getattr(task_cfg, 'next_run', '')))
+                    if normalized is None:
+                        normalized = self._normalize_next_run_text(DEFAULT_TASK_NEXT_RUN) or '2026-01-01 00:00:00'
+                    next_run.setText(normalized)
 
         for i in range(self._empty_policy.count()):
             if self._empty_policy.itemData(i) == c.executor.empty_queue_policy:
@@ -353,3 +397,31 @@ class TaskPanel(QWidget):
             if int(combo.itemData(idx) or 0) == target:
                 combo.setCurrentIndex(idx)
                 return
+
+    @staticmethod
+    def _normalize_next_run_text(text: str) -> str | None:
+        """将 `next_run` 文本规范化为 `YYYY-MM-DD HH:MM:SS`。"""
+        raw = str(text or '').strip().replace('T', ' ')
+        for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M'):
+            try:
+                parsed = datetime.strptime(raw, fmt)
+                return parsed.strftime('%Y-%m-%d %H:%M:%S')
+            except Exception:
+                continue
+        return None
+
+    def _on_next_run_edit_finished(self, task_name: str):
+        """校验并规范化任务的 `next_run` 输入。"""
+        widgets = self._task_widgets.get(task_name, {})
+        next_run = widgets.get('next_run')
+        if not isinstance(next_run, QLineEdit):
+            return
+        normalized = self._normalize_next_run_text(next_run.text())
+        if normalized is None:
+            cfg = self.config.tasks.get(task_name)
+            normalized = self._normalize_next_run_text(str(getattr(cfg, 'next_run', '')))
+            if normalized is None:
+                normalized = self._normalize_next_run_text(DEFAULT_TASK_NEXT_RUN) or '2026-01-01 00:00:00'
+        if next_run.text() != normalized:
+            next_run.setText(normalized)
+        self._auto_save()
