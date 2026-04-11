@@ -4,7 +4,7 @@
       "main": "农场巡查",
       "friend": "好友巡查",
       "share": "分享",
-      "gift": "免费礼包",
+      "gift": "物品领取",
       "sell": "出售"
     },
     "feature_labels": {
@@ -32,7 +32,7 @@
       "main": "农场巡查",
       "friend": "好友巡查",
       "share": "分享",
-      "gift": "免费礼包",
+      "gift": "物品领取",
       "sell": "出售"
     },
     "switch_label": "开关:",

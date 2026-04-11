@@ -64,6 +64,7 @@
       "trigger": "daily",
       "interval_seconds": 86400,
       "daily_time": "00:00",
+      "next_run": "2026-01-01 00:00",
       "failure_interval_seconds": 300,
       "features": {
         "auto_svip_gift": true,
