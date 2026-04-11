@@ -73,14 +73,22 @@ jobs:
         run: |
           $tag = '${{ steps.meta.outputs.tag }}'
           $src = 'dist/QQFarmCopilot.exe'
-          $asset = "QQFarmCopilot-$tag-windows-x64.exe"
+          $asset = "QQFarmCopilot-$tag-windows-x64.zip"
+          $stageDir = Join-Path $PWD '_release_stage'
+          $stagedExe = Join-Path $stageDir 'QQFarmCopilot.exe'
           if (-not (Test-Path $src)) {
             throw "Build output not found: $src"
           }
+          if (Test-Path $stageDir) {
+            Remove-Item -LiteralPath $stageDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $stageDir | Out-Null
+          Copy-Item -LiteralPath $src -Destination $stagedExe
           if (Test-Path $asset) {
             Remove-Item -LiteralPath $asset -Force
           }
-          Copy-Item -LiteralPath $src -Destination $asset
+          Compress-Archive -Path $stagedExe -DestinationPath $asset -Force
+          Remove-Item -LiteralPath $stageDir -Recurse -Force
           "asset=$asset" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           Write-Host "Package: $asset"
 
