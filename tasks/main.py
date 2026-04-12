@@ -726,14 +726,18 @@ class TaskMain(TaskBase):
             if self.ui.appear(BTN_SHOP_BUY_CHECK, offset=30) and self.ui.appear_then_click(
                 BTN_SHOP_BUY_CONFIRM, offset=30, interval=1
             ):
+                click_buy = True
                 continue
             # 点击物品
-            if self.ui.appear(SHOP_CHECK, offset=30) and not self.ui.appear(BTN_SHOP_BUY_CHECK, offset=30):
+            if (
+                self.ui.appear(SHOP_CHECK, offset=30)
+                and not self.ui.appear(BTN_SHOP_BUY_CHECK, offset=30)
+                and not self.ui.appear(BTN_SHOP_BUY_CONFIRM, offset=30)
+            ):
                 self.ui.device.click_point(
                     int(target_item.center_x), int(target_item.center_y), desc=f'选择{crop_name}'
                 )
                 self.ui.device.sleep(0.5)
-                click_buy = True
                 continue
 
     def _buy_seeds(self, crop_name: str) -> str | bool:
