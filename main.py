@@ -7,12 +7,37 @@ import sys
 # 确保项目根目录在 Python 路径中
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from PyQt6.QtCore import QEvent, QObject
 from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QAbstractSpinBox, QApplication, QWidget
 
 from core.instance.manager import InstanceManager
 from utils.app_paths import resolve_runtime_path, user_app_dir
 from utils.logger import setup_logger
+
+
+class _NoWheelSpinBoxFilter(QObject):
+    """全局拦截数字输入框滚轮事件，避免悬停时误改值。"""
+
+    @staticmethod
+    def _spin_ancestor(widget: QWidget | None) -> QAbstractSpinBox | None:
+        current = widget
+        while current is not None:
+            if isinstance(current, QAbstractSpinBox):
+                return current
+            current = current.parentWidget()
+        return None
+
+    def eventFilter(self, watched, event):
+        if event.type() != QEvent.Type.Wheel:
+            return False
+        widget = watched if isinstance(watched, QWidget) else None
+        if widget is None:
+            return False
+        if self._spin_ancestor(widget) is None:
+            return False
+        event.ignore()
+        return True
 
 
 def _resolve_app_icon_path() -> str:
@@ -50,6 +75,9 @@ def main():
     _set_windows_app_id()
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
+    wheel_filter = _NoWheelSpinBoxFilter(app)
+    app.installEventFilter(wheel_filter)
+    app._no_wheel_spin_box_filter = wheel_filter
     icon_path = _resolve_app_icon_path()
     app.setWindowIcon(QIcon(icon_path))
 
