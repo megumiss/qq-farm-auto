@@ -9,7 +9,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
 
-from utils.app_paths import ensure_user_configs, instance_config_file, resolve_config_file
+from utils.app_paths import ensure_user_configs, instance_config_file, resolve_config_file, resolve_runtime_path
 
 
 class PlantMode(str, Enum):
@@ -269,6 +269,11 @@ class AppConfig(BaseModel):
         return {}
 
     @classmethod
+    def _is_project_root_config_enabled(cls) -> bool:
+        """是否启用项目根目录配置（用于本地开发调试）。"""
+        return str(os.getenv('QFARM_DEV') or '').strip().lower() == 'true'
+
+    @classmethod
     def _resolve_template_path(cls, config_path: str, template_path: str | None = None) -> str:
         """解析并计算 `template_path` 的最终结果。"""
         if template_path:
@@ -280,6 +285,10 @@ class AppConfig(BaseModel):
     @classmethod
     def _resolve_config_path(cls, path: str | None = None) -> str:
         """解析并计算用户配置文件路径。"""
+        if cls._is_project_root_config_enabled():
+            # VSCode 调试等开发场景：统一走仓库根目录配置，便于快速验证。
+            return str(resolve_runtime_path('configs', 'config.json'))
+
         raw = str(path or '').strip()
         if not raw:
             return str(instance_config_file('default'))

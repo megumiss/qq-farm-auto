@@ -99,6 +99,12 @@ python main.py
 pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
+### VSCode 调试使用项目根目录配置
+
+- 在 VSCode `launch.json` 的 `env` 设置 `QFARM_DEV=true`。
+- 开启后 `AppConfig` 会优先读取项目根目录配置文件：`configs/config.json`。
+- 设置 `QFARM_DEV=false`（或不设置）后，恢复默认实例配置路径：`%APPDATA%\QQFarmCopilot\instances\<instance_id>\configs\config.json`。
+
 ### 首次运行建议检查
 
 1. `window_title_keyword` 与实际窗口标题一致（默认 `QQ经典农场`）。
