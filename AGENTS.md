@@ -35,7 +35,7 @@
 : 通用任务执行器（pending/waiting 队列、优先级排序、结果回写 next_run）。
 
 - `core/tasks/*.py`
-: 业务任务实现（`main/friend/share` 及子任务）。
+: 业务任务实现（`main/friend/share/reward` 及子任务）。
 
 - `core/ui/ui.py` + `core/base/module_base.py`
 : 页面识别、导航、弹窗清理、`appear/appear_then_click` 等模板点击能力。
@@ -158,7 +158,10 @@
 : 独立好友任务，复用 `TaskFriend`。
 
 - `share`
-: 独立分享/任务奖励任务，复用 `TaskReward`。
+: 独立分享任务，仅执行分享领奖流程（仅支持微信平台；无 `features` 分项开关）。
+
+- `reward`
+: 独立任务奖励领取任务，仅执行任务奖励领取（无 `features` 分项开关）。
 
 - `gift`
 : 物品领取任务，支持分项开关：`features.auto_svip_gift`（默认 true）、`features.auto_mall_gift`（默认 true）、`features.auto_mail`（默认 true，依赖 `menu_goto_mail` 模板，缺失时自动跳过）。

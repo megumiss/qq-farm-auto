@@ -4,6 +4,7 @@
       "main": "农场巡查",
       "friend": "好友巡查",
       "share": "分享",
+      "reward": "奖励领取",
       "gift": "物品领取",
       "sell": "出售"
     },
@@ -17,7 +18,6 @@
       "auto_help": "帮忙",
       "auto_steal": "偷菜",
       "auto_accept_request": "同意好友请求",
-      "auto_task": "任务奖励",
       "auto_fertilize": "施肥",
       "auto_svip_gift": "SVIP礼包领取",
       "auto_mall_gift": "商城礼包领取",
@@ -32,8 +32,12 @@
       "main": "农场巡查",
       "friend": "好友巡查",
       "share": "分享",
+      "reward": "奖励领取",
       "gift": "物品领取",
       "sell": "出售"
+    },
+    "task_hints": {
+      "share": "仅支持微信平台"
     },
     "switch_label": "开关:",
     "enabled": "启用",

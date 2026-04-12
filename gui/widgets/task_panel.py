@@ -8,13 +8,17 @@ from PyQt6.QtWidgets import (
     QAbstractSpinBox,
     QCheckBox,
     QComboBox,
+    QFrame,
     QFormLayout,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
+    QScrollArea,
     QSpinBox,
     QTimeEdit,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -45,6 +49,8 @@ class TaskPanel(QWidget):
         self.config = config
         panel_labels = load_config_json_object('ui_labels.json', prefer_user=False).get('task_panel', {})
         self._task_title_map = panel_labels.get('task_titles', {})
+        task_hints = panel_labels.get('task_hints', {})
+        self._task_hint_map = task_hints if isinstance(task_hints, dict) else {}
         self._switch_label = str(panel_labels.get('switch_label', 'Switch:'))
         self._enabled_text = str(panel_labels.get('enabled', 'Enable'))
         self._daily_time_label = str(panel_labels.get('daily_time_label', 'Daily time:'))
@@ -76,9 +82,26 @@ class TaskPanel(QWidget):
         - 额外附加一张“执行器”卡片。
         - 卡片按两列排布并做同一行高度对齐。
         """
-        root = QGridLayout(self)
-        root.setContentsMargins(10, 8, 10, 8)
-        root.setSpacing(10)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setStyleSheet('QScrollArea { background: transparent; border: none; }')
+        scroll.viewport().setAutoFillBackground(False)
+        root.addWidget(scroll)
+
+        content = QWidget()
+        content.setStyleSheet('background: transparent;')
+        scroll.setWidget(content)
+
+        grid = QGridLayout(content)
+        grid.setContentsMargins(10, 8, 10, 8)
+        grid.setSpacing(10)
 
         self._task_order = [str(name) for name in getattr(self.config, 'tasks', {}).keys()]
         for task_name in self._task_order:
@@ -94,11 +117,11 @@ class TaskPanel(QWidget):
         for idx, card in enumerate(self._cards):
             row = idx // 2
             col = idx % 2
-            root.addWidget(card, row, col)
+            grid.addWidget(card, row, col)
 
-        root.setColumnStretch(0, 1)
-        root.setColumnStretch(1, 1)
-        root.setRowStretch((len(self._cards) + 1) // 2, 1)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        grid.setRowStretch((len(self._cards) + 1) // 2, 1)
         self._align_cards_in_rows()
 
     def _build_task_group(self, task_name: str, trigger: TaskTriggerType) -> QGroupBox:
@@ -118,8 +141,21 @@ class TaskPanel(QWidget):
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
         enabled = QCheckBox(self._enabled_text)
-        form.addRow(self._switch_label, enabled)
         widgets: dict[str, object] = {'enabled': enabled}
+        hint_text = str(self._task_hint_map.get(task_name, '') or '').strip()
+        if hint_text:
+            switch_row = QWidget()
+            switch_layout = QHBoxLayout(switch_row)
+            switch_layout.setContentsMargins(0, 0, 0, 0)
+            switch_layout.setSpacing(8)
+            switch_layout.addWidget(enabled)
+            hint_label = QLabel(hint_text)
+            hint_label.setWordWrap(True)
+            hint_label.setStyleSheet('color: #94a3b8; font-size: 12px;')
+            switch_layout.addWidget(hint_label, 1)
+            form.addRow(self._switch_label, switch_row)
+        else:
+            form.addRow(self._switch_label, enabled)
 
         if trigger == TaskTriggerType.DAILY:
             time_edit = QTimeEdit()

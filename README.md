@@ -21,9 +21,10 @@
 
 当前内置任务（通过 `_run_task_*` 自动发现）：
 
-- `main`：农场主流程（收获维护、播种、扩建、出售、任务奖励、好友求助入口）
+- `main`：农场主流程（收获维护、播种、扩建、出售、好友求助入口）
 - `friend`：独立好友任务
-- `share`：独立分享/任务奖励任务（通常配合每日触发）
+- `share`：独立分享任务（仅支持微信平台，通常配合每日触发）
+- `reward`：独立任务奖励领取（默认每 6 小时执行一次）
 - `gift`：物品领取任务（QQSVIP礼包、商城礼包、可选邮件领取；支持分项开关）
 
 ## 已实现功能
@@ -167,9 +168,17 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
     "next_run": "2026-01-01 00:00",
     "interval_seconds": 86400,
     "failure_interval_seconds": 300,
-    "features": {
-      "auto_task": false
-    }
+    "features": {}
+  },
+  "reward": {
+    "enabled": true,
+    "priority": 32,
+    "trigger": "interval",
+    "daily_time": "04:00",
+    "next_run": "2026-01-01 00:00",
+    "interval_seconds": 21600,
+    "failure_interval_seconds": 300,
+    "features": {}
   },
   "gift": {
     "enabled": true,
@@ -192,7 +201,6 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 - `main.auto_plant`
 - `main.auto_upgrade`
 - `main.auto_fertilize`
-- `share.auto_task`
 
 调度规则：
 

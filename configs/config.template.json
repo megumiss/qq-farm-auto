@@ -54,9 +54,17 @@
       "daily_time": "00:01",
       "next_run": "2026-01-01 00:00",
       "failure_interval_seconds": 300,
-      "features": {
-        "auto_task": false
-      }
+      "features": {}
+    },
+    "reward": {
+      "enabled": true,
+      "priority": 32,
+      "trigger": "interval",
+      "interval_seconds": 21600,
+      "daily_time": "00:01",
+      "next_run": "2026-01-01 00:00",
+      "failure_interval_seconds": 300,
+      "features": {}
     },
     "gift": {
       "enabled": true,

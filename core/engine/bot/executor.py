@@ -23,6 +23,7 @@ from models.config import TaskTriggerType, resolve_task_min_interval_seconds
 from tasks.friend import TaskFriend
 from tasks.gift import TaskGift
 from tasks.main import TaskMain
+from tasks.reward import TaskReward
 from tasks.sell import TaskSell
 from tasks.share import TaskShare
 from utils.app_paths import load_config_json_object
@@ -410,6 +411,15 @@ class BotExecutorMixin:
             return err or TaskResult(success=False, error='窗口未找到')
         self._reset_device_runtime_guards()
         task = TaskShare(engine=self, ui=self.ui)
+        return task.run(rect=rect)
+
+    def _run_task_reward(self, _ctx: TaskContext) -> TaskResult:
+        """执行 `task_reward` 子流程。"""
+        rect, err = self._prepare_task_scene('reward')
+        if err is not None or rect is None:
+            return err or TaskResult(success=False, error='窗口未找到')
+        self._reset_device_runtime_guards()
+        task = TaskReward(engine=self, ui=self.ui)
         return task.run(rect=rect)
 
     def _run_task_sell(self, _ctx: TaskContext) -> TaskResult:

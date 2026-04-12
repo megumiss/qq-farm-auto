@@ -56,6 +56,7 @@ page_unknown.link(button=GOTO_MAIN, destination=page_main)
 
 page_menu = Page('page_menu', SETTING_CHECK, cn_name='菜单')
 page_mail = Page('page_mail', MAIL_CHECK, cn_name='邮箱')
+page_share = Page('page_share', SHARE_CHECK, cn_name='分享')
 page_shop = Page('page_shop', SHOP_CHECK, cn_name='商店')
 page_friend_list = Page('page_friend_list', FRIEND_CHECK, cn_name='好友列表')
 page_friend_farm = Page('page_friend_farm', BTN_HOME, cn_name='好友农场')
@@ -93,3 +94,6 @@ page_menu.link(button=MENU_GOTO_MAIN, destination=page_main)
 
 page_menu.link(button=MENU_GOTO_MAIL, destination=page_mail)
 page_mail.link(button=BTN_CLOSE, destination=page_main)
+
+page_main.link(button=MAIN_GOTO_SHARE, destination=page_share)
+page_share.link(button=BTN_CLOSE, destination=page_main)
