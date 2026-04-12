@@ -200,7 +200,7 @@ class TaskMain(TaskBase):
         ):
             return None
 
-        confirm_timer = Timer(1, count=3)
+        confirm_timer = Timer(0.2, count=1)
         while 1:
             self.ui.device.screenshot()
 
@@ -243,7 +243,7 @@ class TaskMain(TaskBase):
         if not self.ui.appear(button, offset=30, static=False):
             return None
 
-        confirm_timer = Timer(1, count=3)
+        confirm_timer = Timer(0.2, count=1)
         while 1:
             self.ui.device.screenshot()
 
