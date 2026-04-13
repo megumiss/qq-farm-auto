@@ -6,7 +6,7 @@ import math
 import threading
 from datetime import datetime, timedelta
 from functools import lru_cache
-from typing import Callable
+from typing import Any, Callable
 
 from loguru import logger
 
@@ -287,7 +287,7 @@ class BotExecutorMixin:
             return self._seconds_to_next_daily(cfg.daily_time, current)
         return max(min_interval, int(cfg.interval_seconds))
 
-    def get_task_features(self, task_name: str) -> dict[str, bool]:
+    def get_task_features(self, task_name: str) -> dict[str, Any]:
         """获取 `task_features` 信息。"""
         cfg = self._get_task_cfg(task_name)
         if cfg is None:
@@ -295,7 +295,21 @@ class BotExecutorMixin:
         raw = getattr(cfg, 'features', {}) or {}
         if not isinstance(raw, dict):
             return {}
-        features = {str(k): bool(v) for k, v in raw.items()}
+        features: dict[str, Any] = {}
+        for key, value in raw.items():
+            name = str(key)
+            if isinstance(value, list):
+                cleaned: list[str] = []
+                seen: set[str] = set()
+                for item in value:
+                    text = str(item or '').strip()
+                    if not text or text in seen:
+                        continue
+                    seen.add(text)
+                    cleaned.append(text)
+                features[name] = cleaned
+                continue
+            features[name] = bool(value)
         for key in get_forced_off_features(str(task_name)):
             features[key] = False
         return features

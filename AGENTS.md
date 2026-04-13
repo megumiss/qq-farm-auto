@@ -1,7 +1,14 @@
 # AGENTS
 
 本文件定义本仓库内自动化/编码代理的工作约定。以当前代码实现为准。
-- 每次修改完后，使用项目 `.venv` 下的 `ruff format` 进行代码格式化（如 `.\.venv\Scripts\ruff format` 或 `.\.venv\Scripts\python.exe -m ruff format`）。
+- 每次修改完后，使用项目 `.venv` 下的 `ruff format` 进行代码格式化。
+: 仅格式化 Python 文件，跳过 `json/md` 等非 Python 文件（避免改坏 JSON 语法与文档排版）。
+: 推荐命令：`.\.venv\Scripts\python.exe -m ruff format core gui models tasks utils main.py private\main_window_core.py`
+
+- `private/main_window_core.py` 与 `gui/main_window_core.pyd` 的关系与更新方式：
+: `private/main_window_core.py` 是 GUI 源码；`gui/main_window_core.pyd` 是实际发布/默认运行加载的二进制产物。
+: GUI 更新流程（必须遵守）：先改 `private/main_window_core.py`，验证通过后执行 `.\private\build_main_window_core_pyd.ps1` 重新编译并覆盖 `gui/main_window_core.pyd`。
+: 首次编译先执行：`.\private\build_main_window_core_pyd.ps1 -InstallDeps`。
 
 
 ## 0. 当前状态
@@ -11,6 +18,7 @@
 - 实例纳管操作：`新增 / 删除 / 切换 / 克隆 / 重命名`
 - 调度模式：`TaskExecutor` 单线程串行执行
 - 任务配置：`%APPDATA%/QQFarmCopilot/instances/<instance_id>/configs/config.json -> tasks`（动态字典，包含持久化 `next_run`）
+- 好友黑名单配置：`config.tasks.friend.features.blacklist`（`list[str]`，在任务设置详情弹窗维护）
 - 高级配置：`config.safety.debug_log_enabled` 控制 Debug 日志输出
 - 播种选种：`config.planting.warehouse_first` 默认开启；开启时优先按 `number_box_detector` 选择最左种子
 - 等级同步：播种前执行等级 OCR；由 `config.planting.level_ocr_enabled` 控制，识别后回写 `config.planting.player_level`；QQ/微信 ROI 使用 `tasks/main.py` 内常量
@@ -155,7 +163,7 @@
 4. 浇水
 
 - `friend`
-: 独立好友任务，复用 `TaskFriend`。
+: 独立好友任务，复用 `TaskFriend`；支持 `features.blacklist: list[str]` 配置。
 
 - `share`
 : 独立分享任务，仅执行分享领奖流程（仅支持微信平台；无 `features` 分项开关）。
@@ -185,7 +193,7 @@
 - `daily_time: "HH:MM"`
 - `next_run: "YYYY-MM-DD HH:MM[:SS]"`（默认 `2026-01-01 00:00`）
 - `failure_interval_seconds: int`（>=1，实际生效下限见 `executor.min_task_interval_seconds`）
-- `features: {str: bool}`
+- `features: {str: bool | list[str]}`
 
 ## 7. 修改边界与禁令
 

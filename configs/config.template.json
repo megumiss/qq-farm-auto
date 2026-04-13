@@ -43,7 +43,8 @@
       "features": {
         "auto_steal": false,
         "auto_help": true,
-        "auto_accept_request": true
+        "auto_accept_request": true,
+        "blacklist": []
       }
     },
     "share": {

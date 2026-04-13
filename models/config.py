@@ -6,6 +6,7 @@ import re
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
 
@@ -129,7 +130,7 @@ class TaskScheduleItemConfig(BaseModel):
     daily_time: str = '00:01'
     next_run: str = DEFAULT_TASK_NEXT_RUN
     failure_interval_seconds: int = 60
-    features: dict[str, bool] = Field(default_factory=dict)
+    features: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator('priority', mode='before')
     @classmethod
@@ -183,7 +184,22 @@ class TaskScheduleItemConfig(BaseModel):
         """规范化 `features` 输入值。"""
         if not isinstance(value, dict):
             return {}
-        return {str(k): bool(v) for k, v in value.items()}
+        out: dict[str, Any] = {}
+        for key, item in value.items():
+            name = str(key)
+            if isinstance(item, list):
+                cleaned: list[str] = []
+                seen: set[str] = set()
+                for raw in item:
+                    text = str(raw or '').strip()
+                    if not text or text in seen:
+                        continue
+                    seen.add(text)
+                    cleaned.append(text)
+                out[name] = cleaned
+                continue
+            out[name] = bool(item)
+        return out
 
 
 class ExecutorConfig(BaseModel):

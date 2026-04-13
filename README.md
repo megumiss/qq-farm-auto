@@ -41,7 +41,7 @@
 当前内置任务（通过 `_run_task_*` 自动发现）：
 
 - `main`：农场主流程（收获维护、播种、扩建、出售、好友求助入口）
-- `friend`：独立好友任务
+- `friend`：独立好友任务（支持 `features.blacklist` 列表配置，主界面仅显示条目数，详情弹窗可维护名单）
 - `share`：独立分享任务（仅支持微信平台，通常配合每日触发）
 - `reward`：独立任务奖励领取（默认每 6 小时执行一次）
 - `gift`：物品领取任务（QQSVIP礼包、商城礼包、可选邮件领取；支持分项开关）
@@ -155,6 +155,24 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
       "auto_fertilize": false
     }
   },
+  "friend": {
+    "enabled": true,
+    "priority": 20,
+    "trigger": "interval",
+    "daily_time": "04:00",
+    "next_run": "2026-01-01 00:00",
+    "interval_seconds": 1800,
+    "failure_interval_seconds": 60,
+    "features": {
+      "auto_steal": false,
+      "auto_help": true,
+      "auto_accept_request": true,
+      "blacklist": [
+        "测试好友-张三",
+        "测试好友-李四"
+      ]
+    }
+  },
   "share": {
     "enabled": true,
     "priority": 30,
@@ -199,6 +217,11 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 - `main.auto_plant`
 - `main.auto_upgrade`
 - `main.auto_fertilize`
+
+`tasks.<task>.features` 字段说明：
+
+- 布尔开关：`{ "feature_x": true }`
+- 列表项（例如好友黑名单）：`{ "blacklist": ["好友A", "好友B"] }`
 
 调度规则：
 

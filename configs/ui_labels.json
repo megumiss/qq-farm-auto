@@ -18,6 +18,7 @@
       "auto_help": "帮忙",
       "auto_steal": "偷菜",
       "auto_accept_request": "同意好友请求",
+      "blacklist": "好友黑名单",
       "auto_fertilize": "施肥",
       "claim_daily_task": "每日任务",
       "claim_growth_task": "成长任务",
@@ -29,6 +30,23 @@
       "reward.claim_growth_task": "QQ平台会直接领取"
     },
     "enabled": "启用",
+    "detail_text": "详情",
+    "list_empty_text": "未配置",
+    "list_count_text": "已配置 {count} 条",
+    "list_dialog_title_suffix": "详情",
+    "list_dialog_hint": "在弹窗中维护列表项。",
+    "list_add_text": "新增",
+    "list_delete_text": "删除",
+    "list_save_text": "保存",
+    "list_cancel_text": "取消",
+    "list_input_placeholder": "输入内容",
+    "list_texts": {
+      "friend.blacklist": {
+        "list_count_text": "已配置 {count} 位好友",
+        "list_dialog_hint": "名单仅在此弹窗显示，主界面不会展示具体好友昵称。",
+        "list_input_placeholder": "输入好友昵称"
+      }
+    },
     "empty_text": "当前没有可配置的任务功能项",
     "task_title_suffix": "任务"
   },

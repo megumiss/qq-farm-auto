@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Mapping
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Mapping
 
 from core.engine.task.registry import TaskResult
 
@@ -22,12 +21,12 @@ class TaskBase:
         self.engine = engine
         self.ui = ui
 
-    def get_features(self, task_name: str) -> dict[str, bool]:
+    def get_features(self, task_name: str) -> dict[str, Any]:
         """获取任务特性开关字典。"""
         return self.engine.get_task_features(task_name)
 
     @staticmethod
-    def has_feature(features: Mapping[str, bool] | None, key: str, default: bool = False) -> bool:
+    def has_feature(features: Mapping[str, Any] | None, key: str, default: bool = False) -> bool:
         """读取特性开关并归一化为 bool。"""
         if not isinstance(features, Mapping):
             return bool(default)
