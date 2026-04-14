@@ -3,7 +3,7 @@
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 rapidocr_datas = collect_data_files('rapidocr_onnxruntime')
-gui_widgets_hiddenimports = collect_submodules('gui.widgets')
+gui_hiddenimports = ['gui.dialog_styles'] + collect_submodules('gui.widgets')
 core_gui_binary = [('gui/main_window_core.pyd', 'gui')]
 
 a = Analysis(
@@ -26,7 +26,7 @@ a = Analysis(
         'utils.logger',
         'PIL.Image',
     ]
-    + gui_widgets_hiddenimports,
+    + gui_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
