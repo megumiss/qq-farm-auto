@@ -192,11 +192,6 @@ def bot_worker_main(
                     _safe_put(event_queue, _make_command_result(cmd_id, cmd, True))
                     continue
 
-                if cmd == 'run_once':
-                    engine.run_once()
-                    _safe_put(event_queue, _make_command_result(cmd_id, cmd, True))
-                    continue
-
                 if cmd == 'update_config':
                     new_cfg = _load_config(payload, config_path=str((runtime_paths or {}).get('config_path') or ''))
                     _configure_worker_logger(

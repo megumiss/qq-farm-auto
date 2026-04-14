@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QDialog, QFormLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QWidget
+from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtWidgets import QDialog, QFormLayout, QFrame, QHBoxLayout, QVBoxLayout, QWidget
 from qfluentwidgets import (
     BodyLabel,
     CardWidget,
@@ -14,6 +14,7 @@ from qfluentwidgets import (
     ListWidget,
     PrimaryPushButton,
     PushButton,
+    ScrollArea,
 )
 
 from models.config import AppConfig
@@ -108,11 +109,32 @@ class FeaturePanel(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(10, 8, 10, 8)
-        root.setSpacing(10)
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(10)
+        root.setContentsMargins(0, 0, 0, 0)
+
+        scroll = ScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        root.addWidget(scroll)
+
+        content = QWidget(self)
+        scroll.setWidget(content)
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(10, 8, 10, 8)
+        content_layout.setSpacing(10)
+
+        waterfall = QHBoxLayout()
+        waterfall.setContentsMargins(0, 0, 0, 0)
+        waterfall.setSpacing(10)
+        left_col = QVBoxLayout()
+        right_col = QVBoxLayout()
+        left_col.setContentsMargins(0, 0, 0, 0)
+        right_col.setContentsMargins(0, 0, 0, 0)
+        left_col.setSpacing(10)
+        right_col.setSpacing(10)
+        waterfall.addLayout(left_col, 1)
+        waterfall.addLayout(right_col, 1)
+        columns = [left_col, right_col]
+        col_heights = [0, 0]
 
         index = 0
         for task_name, task_cfg in self.config.tasks.items():
@@ -120,16 +142,18 @@ class FeaturePanel(QWidget):
             if not isinstance(feature_map, dict) or not feature_map:
                 continue
             card = self._build_task_card(task_name, feature_map)
-            grid.addWidget(card, index // 2, index % 2)
+            target = 0 if col_heights[0] <= col_heights[1] else 1
+            columns[target].addWidget(card)
+            col_heights[target] += max(1, int(card.sizeHint().height()))
             index += 1
 
         if index == 0:
-            root.addWidget(BodyLabel('当前无可配置的功能项'))
+            content_layout.addWidget(BodyLabel('当前无可配置的功能项'))
         else:
-            grid.setColumnStretch(0, 1)
-            grid.setColumnStretch(1, 1)
-            root.addLayout(grid)
-        root.addStretch()
+            for col in columns:
+                col.addStretch()
+            content_layout.addLayout(waterfall)
+        content_layout.addStretch()
 
     def _build_task_card(self, task_name: str, feature_map: dict[str, Any]) -> CardWidget:
         card = CardWidget(self)

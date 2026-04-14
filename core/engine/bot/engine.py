@@ -344,10 +344,6 @@ class BotEngine(QObject):
     def resume(self):
         self._send_command('resume', wait=False, ensure_worker=False)
 
-    def run_once(self):
-        if not self._send_command('run_once', wait=False, ensure_worker=False):
-            self.log_message.emit('执行器未运行，无法立即执行')
-
     def update_config(self, config: AppConfig):
         self.config = config
         if self._worker and self._worker.is_alive():

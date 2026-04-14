@@ -12,6 +12,10 @@ class NoWheelComboBox(ComboBox):
     def wheelEvent(self, event: QWheelEvent) -> None:
         event.ignore()
 
+    def addItem(self, text: str, user_data=None, icon=None) -> None:
+        """兼容项目内 `addItem(text, data)` 的调用习惯。"""
+        super().addItem(text, icon=icon, userData=user_data)
+
     def select_data(self, value, default_index: int = 0) -> None:
         """按 data 选中项，不存在时回退默认索引。"""
         idx = self.findData(value)

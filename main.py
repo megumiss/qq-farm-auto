@@ -4,6 +4,21 @@ import multiprocessing as mp
 import os
 import sys
 
+DPI_SCALE_ENV = 'QQFARM_DPI_SCALE'
+DEFAULT_DPI_SCALE = 'Auto'
+
+
+def _apply_qt_dpi_env_early() -> None:
+    """在导入 PyQt 前应用 DPI 配置，确保 Qt 能读取到环境变量。"""
+    dpi_scale = str(os.environ.get(DPI_SCALE_ENV, DEFAULT_DPI_SCALE)).strip()
+    if not dpi_scale or dpi_scale.lower() == 'auto':
+        return
+    os.environ['QT_ENABLE_HIGHDPI_SCALING'] = '0'
+    os.environ['QT_SCALE_FACTOR'] = dpi_scale
+
+
+_apply_qt_dpi_env_early()
+
 # 确保项目根目录在 Python 路径中
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 

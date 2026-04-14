@@ -5,9 +5,17 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from PyQt6.QtCore import Qt, QTime, pyqtSignal
-from PyQt6.QtWidgets import QFormLayout, QGridLayout, QHBoxLayout, QVBoxLayout, QWidget
-from qfluentwidgets import BodyLabel, CardWidget, CheckBox, LineEdit, SpinBox, TimeEdit
+from PyQt6.QtCore import QTime, pyqtSignal
+from PyQt6.QtWidgets import QFormLayout, QFrame, QHBoxLayout, QVBoxLayout, QWidget
+from qfluentwidgets import (
+    BodyLabel,
+    CardWidget,
+    CheckBox,
+    LineEdit,
+    ScrollArea,
+    SpinBox,
+    TimeEdit,
+)
 
 from gui.widgets.no_wheel_combo_box import NoWheelComboBox
 from models.config import (
@@ -40,27 +48,51 @@ class TaskPanel(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(10, 8, 10, 8)
-        root.setSpacing(10)
+        root.setContentsMargins(0, 0, 0, 0)
 
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(10)
+        scroll = ScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        root.addWidget(scroll)
+
+        content = QWidget(self)
+        scroll.setWidget(content)
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(10, 8, 10, 8)
+        content_layout.setSpacing(10)
+
+        waterfall = QHBoxLayout()
+        waterfall.setContentsMargins(0, 0, 0, 0)
+        waterfall.setSpacing(10)
+        left_col = QVBoxLayout()
+        right_col = QVBoxLayout()
+        left_col.setContentsMargins(0, 0, 0, 0)
+        right_col.setContentsMargins(0, 0, 0, 0)
+        left_col.setSpacing(10)
+        right_col.setSpacing(10)
+        waterfall.addLayout(left_col, 1)
+        waterfall.addLayout(right_col, 1)
+        columns = [left_col, right_col]
+        col_heights = [0, 0]
         self._task_order = [str(name) for name in getattr(self.config, 'tasks', {}).keys()]
 
-        for i, task_name in enumerate(self._task_order):
+        for task_name in self._task_order:
             task_cfg = self.config.tasks.get(task_name)
             if task_cfg is None:
                 continue
             card = self._build_task_card(task_name, task_cfg.trigger)
-            grid.addWidget(card, i // 2, i % 2)
+            target = 0 if col_heights[0] <= col_heights[1] else 1
+            columns[target].addWidget(card)
+            col_heights[target] += max(1, int(card.sizeHint().height()))
 
         exec_card = self._build_executor_card()
-        grid.addWidget(exec_card, (len(self._task_order)) // 2 + 1, 0, 1, 2)
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
-        root.addLayout(grid)
-        root.addStretch()
+        target = 0 if col_heights[0] <= col_heights[1] else 1
+        columns[target].addWidget(exec_card)
+        for col in columns:
+            col.addStretch()
+
+        content_layout.addLayout(waterfall)
+        content_layout.addStretch()
 
     def _build_task_card(self, task_name: str, trigger: TaskTriggerType) -> CardWidget:
         card = CardWidget(self)
