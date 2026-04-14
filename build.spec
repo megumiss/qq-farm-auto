@@ -1,20 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files
 
 rapidocr_datas = collect_data_files('rapidocr_onnxruntime')
-gui_hiddenimports = ['gui.dialog_styles'] + collect_submodules('gui.widgets')
 core_gui_binary = [('gui/main_window_core.pyd', 'gui')]
-gui_package_datas = collect_data_files(
-    'gui',
-    include_py_files=True,
-    includes=[
-        '__init__.py',
-        'dialog_styles.py',
-        'widgets/__init__.py',
-        'widgets/*.py',
-    ],
-)
 
 a = Analysis(
     ['main.py'],
@@ -25,19 +14,26 @@ a = Analysis(
         ('templates', 'templates'),
         ('gui/icons', 'gui/icons'),
     ]
-    + gui_package_datas
     + rapidocr_datas,
     hiddenimports=[
         'PyQt6.sip',
         'keyboard',
         'core.engine.bot',
         'core.instance.manager',
+        'gui.dialog_styles',
+        'gui.widgets',
         'models.config',
         'utils.app_paths',
         'utils.logger',
         'PIL.Image',
-    ]
-    + gui_hiddenimports,
+        'gui.widgets.feature_panel',
+        'gui.widgets.instance_sidebar',
+        'gui.widgets.land_detail_panel',
+        'gui.widgets.log_panel',
+        'gui.widgets.no_wheel_combo_box',
+        'gui.widgets.status_panel',
+        'gui.widgets.task_panel',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
