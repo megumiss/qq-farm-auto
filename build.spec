@@ -1,8 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 rapidocr_datas = collect_data_files('rapidocr_onnxruntime')
+gui_widgets_hiddenimports = collect_submodules('gui.widgets')
 core_gui_binary = [('gui/main_window_core.pyd', 'gui')]
 
 a = Analysis(
@@ -20,16 +21,12 @@ a = Analysis(
         'keyboard',
         'core.engine.bot',
         'core.instance.manager',
-        'gui.widgets.feature_panel',
-        'gui.widgets.instance_sidebar',
-        'gui.widgets.log_panel',
-        'gui.widgets.status_panel',
-        'gui.widgets.task_panel',
         'models.config',
         'utils.app_paths',
         'utils.logger',
         'PIL.Image',
-    ],
+    ]
+    + gui_widgets_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
