@@ -17,7 +17,7 @@ from core.vision.cv_detector import CVDetector
 from models.config import AppConfig, resolve_effective_run_mode
 from utils.ocr_provider import get_ocr_tool
 from utils.ocr_utils import OCRTool
-from utils.template_paths import DEFAULT_TEMPLATE_PLATFORM, normalize_template_platform
+from utils.template_paths import normalize_template_platform
 
 
 class BotInitMixin:
@@ -47,11 +47,12 @@ class BotInitMixin:
         )
 
         # [2] 图像识别层
-        # 非 seed 模板识别改走 assets，detector 仅保留 seed 识别并固定默认平台。
-        self.cv_detector = CVDetector(templates_dir='templates', template_platform=DEFAULT_TEMPLATE_PLATFORM)
+        # 非 seed 模板识别改走 assets，detector 主要保留 seed 识别能力。
         platform = getattr(config.planting, 'window_platform', 'qq')
         platform_value = platform.value if hasattr(platform, 'value') else str(platform)
-        Button.set_template_platform(normalize_template_platform(platform_value))
+        normalized_platform = normalize_template_platform(platform_value)
+        self.cv_detector = CVDetector(templates_dir='templates', template_platform=normalized_platform)
+        Button.set_template_platform(normalized_platform)
 
         # [3] 操作执行层
         self.action_executor: ActionExecutor | None = None

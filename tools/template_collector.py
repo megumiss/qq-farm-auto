@@ -59,7 +59,7 @@ class TemplateCollector:
         window = self.wm.find_window(keyword)
         if not window:
             print(f"未找到包含 '{keyword}' 的窗口")
-            print('请先打开微信小程序中的QQ农场')
+            print('请先打开QQ农场小程序')
             return False
 
         self.wm.activate_window()

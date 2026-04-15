@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from utils.ocr_provider import get_ocr_tool
-from utils.ocr_utils import OCRTool
+from utils.ocr_utils import OCRItem, OCRTool
 
 
 class FriendNameOCR:
@@ -30,6 +30,7 @@ class FriendNameOCR:
         """识别好友昵称并返回 `(name, score)`。"""
         if img_bgr is None:
             return '', 0.0
+
         text, score = self.ocr.detect_text(
             img_bgr,
             region=region,
@@ -39,3 +40,20 @@ class FriendNameOCR:
             joiner='',
         )
         return str(text or '').strip(), float(score or 0.0)
+
+    def detect_items(
+        self,
+        img_bgr: np.ndarray,
+        *,
+        region: tuple[int, int, int, int] | None = None,
+    ) -> list[OCRItem]:
+        """识别并返回结构化 OCR item 列表。"""
+        if img_bgr is None:
+            return []
+        return self.ocr.detect(
+            img_bgr,
+            region=region,
+            scale=1.4,
+            alpha=1.15,
+            beta=0.0,
+        )

@@ -125,23 +125,17 @@ class CVDetector:
         self._seed_loaded = True
         logger.info(f'已加载 {count} 个 seed 模板（固定目录，不按平台切换）')
 
-    def _iter_template_files(self, root: Path, *, is_legacy_root: bool):
-        """遍历模板文件，legacy 根目录会跳过平台子目录。"""
+    def _iter_template_files(self, root: Path):
+        """遍历模板文件（忽略 `__pycache__` 目录）。"""
         ignored_top_dirs = {'__pycache__'}
-        ignored_platform_dirs = {'qq', 'wechat'}
         root_str = str(root)
         for walk_root, dirs, files in os.walk(root_str):
             rel = os.path.relpath(walk_root, root_str)
             if rel == '.':
-                blocked = set(ignored_top_dirs)
-                if is_legacy_root:
-                    blocked.update(ignored_platform_dirs)
-                dirs[:] = [d for d in dirs if d.lower() not in blocked]
+                dirs[:] = [d for d in dirs if d.lower() not in ignored_top_dirs]
             else:
                 top_dir = rel.split(os.sep)[0].lower()
                 if top_dir in ignored_top_dirs:
-                    continue
-                if is_legacy_root and top_dir in ignored_platform_dirs:
                     continue
                 dirs[:] = [d for d in dirs if d.lower() not in ignored_top_dirs]
 
@@ -156,19 +150,19 @@ class CVDetector:
         if not roots:
             logger.warning(f'模板目录 {self._templates_dir} 为空，请先采集模板')
             return
-        if not any(root.exists() for root, _ in roots):
-            os.makedirs(str(roots[0][0]), exist_ok=True)
-            logger.warning(f'模板目录 {roots[0][0]} 为空，请先采集模板')
+        if not any(root.exists() for root in roots):
+            os.makedirs(str(roots[0]), exist_ok=True)
+            logger.warning(f'模板目录 {roots[0]} 为空，请先采集模板')
             self._templates = {}
             self._templates_by_name = {}
             self._loaded = True
             return
 
         by_name: dict[str, dict] = {}
-        for root, is_legacy in roots:
+        for root in roots:
             if not root.exists():
                 continue
-            for filepath in self._iter_template_files(root, is_legacy_root=is_legacy):
+            for filepath in self._iter_template_files(root):
                 filename = filepath.name
                 # cv2.imread 不支持中文路径，用 numpy 中转
                 template = cv2.imdecode(np.fromfile(str(filepath), dtype=np.uint8), cv2.IMREAD_UNCHANGED)

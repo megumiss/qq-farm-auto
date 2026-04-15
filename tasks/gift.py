@@ -9,6 +9,7 @@ from core.ui.assets import (
     ASSET_NAME_TO_CONST,
     BTN_CLAIM,
     BTN_MALL_FREE,
+    BTN_MALL_FREE_DONE,
     BTN_ONECLICK_OPEN,
     BTN_QQSVIP,
 )
@@ -78,9 +79,9 @@ class TaskGift(TaskBase):
             self.ui.device.screenshot()
             if self.ui.handle_click_close():
                 continue
-            if not self.ui.appear(BTN_MALL_FREE, offset=30):
+            if self.ui.appear(BTN_MALL_FREE_DONE, offset=30):
                 break
-            if self.ui.appear_then_click(BTN_MALL_FREE, offset=30, interval=1):
+            if self.ui.appear_then_click(BTN_MALL_FREE, offset=30, threshold=0.65, interval=1):
                 continue
         logger.info('领取流程: 商城领取流程结束')
         return

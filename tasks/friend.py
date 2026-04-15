@@ -41,15 +41,10 @@ FRIEND_PAGE_ICON_Y_RANGE = (260, 800)
 FRIEND_NEXT_OFFSET_X = 70
 # 连续识别到“当前好友无可执行动作”达到该次数后，结束本轮好友巡查。
 FRIEND_NO_ACTION_EXIT_STREAK = 3
-# 好友昵称 OCR 区域：以当前选中好友框中心点 `current_location(x, y)` 为基准。
-# x 偏移（像素）：从选中框中心向右偏移后，作为昵称识别框左上角 x。
-FRIEND_NAME_OCR_OFFSET_X = 15
-# y 偏移（像素）：从选中框中心向上/下偏移后，作为昵称识别框左上角 y（负值表示向上）。
-FRIEND_NAME_OCR_OFFSET_Y = 25
-# 识别框宽度（像素）。
-FRIEND_NAME_OCR_WIDTH = 100
-# 识别框高度（像素）。
-FRIEND_NAME_OCR_HEIGHT = 25
+# 好友详情页“下一位好友昵称”识别：固定在底部带内取样高度（像素）。
+FRIEND_NEXT_NAME_BOTTOM_BAND_HEIGHT = 75
+# 好友详情页“下一位好友昵称”识别：以选中框按钮中心为起点，向右识别宽度（像素）。
+FRIEND_NEXT_NAME_RIGHT_WIDTH = 130
 # 黑名单前缀匹配的最小有效昵称长度（过短通常是 OCR 噪声）。
 FRIEND_BLACKLIST_MIN_PREFIX_LEN = 1
 # 好友列表“访问”按钮命中黑名单后，向下重试的行高偏移（像素）。
@@ -57,13 +52,15 @@ FRIEND_VISIT_SKIP_STEP_Y = 110
 # 好友列表“访问”按钮黑名单过滤最多重试次数（包含首次）。
 FRIEND_VISIT_SKIP_MAX_TRIES = 6
 # 好友列表昵称 OCR 区域（相对访问按钮中心）：x 偏移（像素）。
-FRIEND_VISIT_NAME_OCR_OFFSET_X = -310
-# 好友列表昵称 OCR 区域（相对访问按钮中心）：y 偏移（像素）。
-FRIEND_VISIT_NAME_OCR_OFFSET_Y = -30
-# 好友列表昵称 OCR 区域宽度（像素）。
-FRIEND_VISIT_NAME_OCR_WIDTH = 150
-# 好友列表昵称 OCR 区域高度（像素）。
-FRIEND_VISIT_NAME_OCR_HEIGHT = 30
+FRIEND_VISIT_NAME_OCR_X1 = 150
+# 好友列表昵称 OCR 固定区域（像素）：右边界 x。
+FRIEND_VISIT_NAME_OCR_X2 = 400
+# 好友列表昵称 OCR 固定区域（像素）：上边界 y。
+FRIEND_VISIT_NAME_OCR_Y1 = 265
+# 好友列表昵称 OCR 固定区域（像素）：下边界 y。
+FRIEND_VISIT_NAME_OCR_Y2 = 780
+# 好友列表昵称 OCR 候选筛选：访问按钮中心点上方 y 方向窗口（像素）。
+FRIEND_VISIT_NAME_ABOVE_Y_WINDOW = 40
 # 好友列表“访问”按钮定向匹配时 ROI 在 x 方向扩展量（像素）。
 FRIEND_VISIT_MATCH_MARGIN_X = 10
 # 好友列表“访问”按钮定向匹配时 ROI 在 y 方向扩展量（像素）。
@@ -235,11 +232,12 @@ class TaskFriend(TaskBase):
         if image is None:
             return ''
 
+        _ = visit_x
         h, w = image.shape[:2]
-        x1 = int(visit_x + FRIEND_VISIT_NAME_OCR_OFFSET_X)
-        y1 = int(visit_y + FRIEND_VISIT_NAME_OCR_OFFSET_Y)
-        x2 = int(x1 + FRIEND_VISIT_NAME_OCR_WIDTH)
-        y2 = int(y1 + FRIEND_VISIT_NAME_OCR_HEIGHT)
+        x1 = int(FRIEND_VISIT_NAME_OCR_X1)
+        y1 = int(FRIEND_VISIT_NAME_OCR_Y1)
+        x2 = int(FRIEND_VISIT_NAME_OCR_X2)
+        y2 = int(FRIEND_VISIT_NAME_OCR_Y2)
 
         x1 = max(0, min(x1, w - 1))
         y1 = max(0, min(y1, h - 1))
@@ -248,12 +246,39 @@ class TaskFriend(TaskBase):
         if x2 <= x1 or y2 <= y1:
             return ''
 
-        text, _score = self.friend_name_ocr.detect_name(
+        items = self.friend_name_ocr.detect_items(
             image,
             region=(x1, y1, x2, y2),
         )
-        name = str(text or '').strip()
-        logger.debug('好友巡查: 列表昵称识别 | region=({}, {}, {}, {}) text={}', x1, y1, x2, y2, name or '<empty>')
+        y_low = float(visit_y - FRIEND_VISIT_NAME_ABOVE_Y_WINDOW)
+        y_high = float(visit_y)
+        candidates: list[tuple[float, str]] = []
+        for item in items:
+            text = str(item.text or '').strip()
+            if not text:
+                continue
+            ys = [point[1] for point in item.box]
+            xs = [point[0] for point in item.box]
+            center_y = float(min(ys) + max(ys)) / 2.0
+            if not (y_low <= center_y <= y_high):
+                continue
+            min_x = float(min(xs))
+            candidates.append((min_x, text))
+
+        candidates.sort(key=lambda item: item[0])
+        tokens = [item[1] for item in candidates]
+        name = ''.join(tokens).strip()
+        logger.debug(
+            '好友巡查: 列表昵称识别 | region=({}, {}, {}, {}) pick_y_range=({:.1f}, {:.1f}) tokens={} text={}',
+            x1,
+            y1,
+            x2,
+            y2,
+            y_low,
+            y_high,
+            tokens,
+            name or '<empty>',
+        )
         return name
 
     def _goto_next_friend(self) -> bool:
@@ -322,17 +347,20 @@ class TaskFriend(TaskBase):
         return out
 
     def _detect_friend_name_in_selected_row(self, *, current_x: int, current_y: int) -> str:
-        """在选中好友附近区域识别昵称。"""
+        """识别“下一位好友”昵称：先识别底部 75px，再筛选右侧 130px 内内容。"""
         image = self.ui.device.image
         if image is None:
             return ''
 
         h, w = image.shape[:2]
-        x1 = int(current_x + FRIEND_NAME_OCR_OFFSET_X)
-        y1 = int(current_y + FRIEND_NAME_OCR_OFFSET_Y)
-        x2 = int(x1 + FRIEND_NAME_OCR_WIDTH)
-        y2 = int(y1 + FRIEND_NAME_OCR_HEIGHT)
+        _ = current_y
+        y1 = int(h - FRIEND_NEXT_NAME_BOTTOM_BAND_HEIGHT)
+        detect_x1 = 0
+        detect_x2 = int(w)
+        y2 = int(h)
 
+        x1 = int(current_x)
+        x2 = int(x1 + FRIEND_NEXT_NAME_RIGHT_WIDTH)
         x1 = max(0, min(x1, w - 1))
         y1 = max(0, min(y1, h - 1))
         x2 = max(x1 + 1, min(x2, w))
@@ -340,12 +368,36 @@ class TaskFriend(TaskBase):
         if x2 <= x1 or y2 <= y1:
             return ''
 
-        text, _score = self.friend_name_ocr.detect_name(
+        items = self.friend_name_ocr.detect_items(
             image,
-            region=(x1, y1, x2, y2),
+            region=(detect_x1, y1, detect_x2, y2),
         )
-        name = str(text or '').strip()
-        logger.debug('好友巡查: 好友昵称识别 | region=({}, {}, {}, {}) text={}', x1, y1, x2, y2, name or '<empty>')
+        ranged_items = []
+        for item in items:
+            text = str(item.text or '').strip()
+            if not text:
+                continue
+            min_x = min(point[0] for point in item.box)
+            max_x = max(point[0] for point in item.box)
+            if not (x1 <= min_x and max_x <= x2):
+                continue
+            ranged_items.append(item)
+
+        ranged_items.sort(key=lambda item: min(point[0] for point in item.box))
+        tokens = [str(item.text or '').strip() for item in ranged_items if str(item.text or '').strip()]
+
+        name = ''.join(tokens).strip()
+        logger.debug(
+            '好友巡查: 好友昵称识别 | detect_region=({}, {}, {}, {}) pick_x_range=({}, {}) tokens={} text={}',
+            detect_x1,
+            y1,
+            detect_x2,
+            y2,
+            x1,
+            x2,
+            tokens,
+            name or '<empty>',
+        )
         return name
 
     def _is_blacklisted_friend_name(self, detected_name: str) -> bool:

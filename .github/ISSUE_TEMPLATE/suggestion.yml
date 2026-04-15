@@ -1,0 +1,41 @@
+name: Suggestion
+description: 提交功能建议、优化建议或体验改进意见
+title: "[Suggestion]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: 建议内容
+      description: 请清晰描述你的建议
+      placeholder: 例如：希望支持任务执行完成后的系统通知
+    validations:
+      required: true
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: 使用场景
+      description: 该建议在什么场景下有帮助
+      placeholder: 例如：多实例长时间挂机时，无法及时知道任务是否异常
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_result
+    attributes:
+      label: 预期效果
+      description: 你希望最终达到的效果
+      placeholder: 例如：任务异常/完成时弹出系统通知并显示实例名
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充信息
+      description: 可选，补充截图、日志或其他参考信息
+      placeholder: 可填写参考实现、截图、日志片段等
+    validations:
+      required: false

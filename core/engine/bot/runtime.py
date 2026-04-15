@@ -32,7 +32,10 @@ class BotRuntimeMixin:
         self.config = config
         platform = getattr(config.planting, 'window_platform', 'qq')
         platform_value = platform.value if hasattr(platform, 'value') else str(platform)
-        Button.set_template_platform(normalize_template_platform(platform_value))
+        normalized_platform = normalize_template_platform(platform_value)
+        Button.set_template_platform(normalized_platform)
+        if self.cv_detector is not None:
+            self.cv_detector.set_template_platform(normalized_platform)
         effective_mode = self._get_effective_run_mode(emit_hint=True)
         if self.action_executor is not None:
             self.action_executor.update_run_mode(effective_mode)
@@ -126,7 +129,10 @@ class BotRuntimeMixin:
         self._task_error_type_names.clear()
         current_platform = getattr(self.config.planting, 'window_platform', 'qq')
         current_platform_value = current_platform.value if hasattr(current_platform, 'value') else str(current_platform)
-        Button.set_template_platform(normalize_template_platform(current_platform_value))
+        normalized_platform = normalize_template_platform(current_platform_value)
+        Button.set_template_platform(normalized_platform)
+        if self.cv_detector is not None:
+            self.cv_detector.set_template_platform(normalized_platform)
         asset_count = len(ASSET_NAME_TO_CONST)
         if asset_count == 0:
             self.log_message.emit('未找到 assets 按钮模板，请先运行 button_extract 工具')
@@ -136,7 +142,7 @@ class BotRuntimeMixin:
             self.config.window_title_keyword, self.config.window_select_rule, current_platform_value
         )
         if not window:
-            self.log_message.emit('未找到QQ农场窗口，请先打开微信小程序中的QQ农场')
+            self.log_message.emit('未找到QQ农场窗口，请先打开QQ农场小程序')
             return False
 
         display_metrics = self.window_manager.get_display_metrics(window.hwnd)

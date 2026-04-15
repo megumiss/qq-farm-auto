@@ -2,7 +2,7 @@
 
 from PyInstaller.utils.hooks import collect_data_files
 
-rapidocr_datas = collect_data_files('rapidocr_onnxruntime')
+rapidocr_datas = collect_data_files('rapidocr')
 core_gui_binary = [('gui/main_window_core.pyd', 'gui')]
 
 a = Analysis(

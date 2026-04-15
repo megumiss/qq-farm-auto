@@ -447,14 +447,22 @@ class WindowManager:
             return idx
         return 0
 
-    def _resolve_auto_index(self, windows: list[WindowInfo], platform: str | None) -> int:
-        """自动选择窗口：优先按平台命中，失败后回退第一个。"""
+    def _resolve_auto_index(self, windows: list[WindowInfo], platform: str | None) -> int | None:
+        """自动选择窗口：仅按平台命中；未命中则返回 `None`。"""
         if not windows:
-            return 0
+            return None
+
+        target = str(platform or '').strip().lower()
+        if not target:
+            logger.warning('自动选窗失败: 平台为空，无法按平台匹配窗口')
+            return None
+
         for idx, info in enumerate(windows):
-            if self._matches_platform(info.process_name, platform):
+            if self._matches_platform(info.process_name, target):
                 return idx
-        return 0
+
+        logger.warning(f'自动选窗失败: 未找到匹配平台窗口 平台={target}')
+        return None
 
     @classmethod
     def list_windows(cls, title_keyword: str = 'QQ经典农场') -> list[WindowInfo]:
@@ -524,13 +532,15 @@ class WindowManager:
             return None
         if str(select_rule or '').strip().lower() in {'', 'auto'}:
             target_index = self._resolve_auto_index(windows, platform)
+            if target_index is None:
+                return None
         else:
             target_index = self._resolve_select_index(select_rule, len(windows))
         info = windows[target_index]
         self._cached_window = info
         logger.debug(
             f'找到窗口[{target_index + 1}/{len(windows)}]: {info.title} ({info.width}x{info.height}), '
-            f'platform={platform}, process={info.process_name or "unknown"}'
+            f'平台={platform}, process={info.process_name or "unknown"}'
         )
         return info
 

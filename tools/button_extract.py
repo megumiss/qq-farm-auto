@@ -143,24 +143,18 @@ def parse_template_name(path: Path) -> tuple[str, str]:
     return stem, 'BASE'
 
 
-def _iter_files_in_root(root: Path, *, is_legacy_root: bool):
+def _iter_files_in_root(root: Path):
     """遍历指定根目录下模板文件。"""
 
     ignored = {'__pycache__'}
-    platform_dirs = set(VALID_TEMPLATE_PLATFORMS)
     root_str = str(root)
     for walk_root, dirs, files in os.walk(root_str):
         rel = os.path.relpath(walk_root, root_str)
         if rel == '.':
-            blocked = set(ignored)
-            if is_legacy_root:
-                blocked.update(platform_dirs)
-            dirs[:] = [d for d in dirs if d.lower() not in blocked]
+            dirs[:] = [d for d in dirs if d.lower() not in ignored]
         else:
             top = rel.split(os.sep, 1)[0].lower()
             if top in ignored:
-                continue
-            if is_legacy_root and top in platform_dirs:
                 continue
             dirs[:] = [d for d in dirs if d.lower() not in ignored]
 
@@ -175,11 +169,11 @@ def collect_sources_for_platform(platform: str) -> dict[str, SourceBundle]:
     selected = normalize_template_platform(platform)
     bundles: dict[str, SourceBundle] = {}
     roots = template_scan_roots(selected, str(TEMPLATES_DIR))
-    for priority, (root, is_legacy) in enumerate(roots, start=1):
+    for priority, root in enumerate(roots, start=1):
         root = Path(root)
         if not root.exists():
             continue
-        for path in _iter_files_in_root(root, is_legacy_root=is_legacy):
+        for path in _iter_files_in_root(root):
             rel = path.relative_to(TEMPLATES_DIR).as_posix()
             if rel.startswith('seed/'):
                 continue

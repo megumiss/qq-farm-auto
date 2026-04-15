@@ -1,0 +1,79 @@
+name: Bug Report
+description: 反馈运行异常、功能异常或行为不符合预期的问题
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: dropdown
+    id: run_mode
+    attributes:
+      label: 运行方式
+      description: 请选择当前使用的运行方式
+      options:
+        - exe
+        - 源码
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台
+      description: 请选择游戏平台
+      options:
+        - 微信
+        - QQ
+    validations:
+      required: true
+
+  - type: input
+    id: platform_selected_correctly
+    attributes:
+      label: 脚本内选择了正确的平台
+      description: 是/否
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本号
+      description: 请填写版本号（例如 v0.1.6）
+      placeholder: v0.1.6
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题现象
+      description: 请描述实际表现与预期表现
+      placeholder: 例如：启动后 30 秒内自动停止，未执行播种流程
+    validations:
+      required: false
+
+  - type: textarea
+    id: repro_steps
+    attributes:
+      label: 复现步骤
+      description: 请按步骤描述如何稳定复现
+      placeholder: |
+        1. 启动程序
+        2. 选择实例 A
+        3. 点击开始
+        4. 进入农场主界面后出现异常
+    validations:
+      required: false
+
+  - type: textarea
+    id: debug_log
+    attributes:
+      label: debug日志
+      description: 请粘贴相关日志片段（建议使用代码块）
+      placeholder: |
+        ```text
+        [2026-04-15 10:00:00] [DEBUG] ...
+        ```
+      render: text
+    validations:
+      required: false

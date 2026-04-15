@@ -32,12 +32,11 @@ def template_root(base_dir: str = 'templates') -> Path:
 def template_scan_roots(
     platform: str | None,
     base_dir: str = 'templates',
-) -> list[tuple[Path, bool]]:
+) -> list[Path]:
     """返回模板扫描目录列表（低优先级在前，高优先级在后）。"""
     root = template_root(base_dir)
-    roots: list[tuple[Path, bool]] = [(root, True)]  # legacy 根目录，需忽略平台子目录
+    roots: list[Path] = [root / DEFAULT_TEMPLATE_PLATFORM]
     selected = normalize_template_platform(platform)
-    roots.append((root / DEFAULT_TEMPLATE_PLATFORM, False))
     if selected != DEFAULT_TEMPLATE_PLATFORM:
-        roots.append((root / selected, False))
+        roots.append(root / selected)
     return roots
