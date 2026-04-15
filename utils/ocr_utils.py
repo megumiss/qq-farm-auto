@@ -9,6 +9,7 @@ from typing import Any
 import cv2
 import numpy as np
 from PIL import Image
+from rapidocr import EngineType, LangDet, LangRec, ModelType
 
 try:
     from rapidocr import OCRVersion, RapidOCR
@@ -38,8 +39,13 @@ class OCRTool:
         """初始化对象并准备运行所需状态。"""
         self._ocr = RapidOCR(
             params={
+                'Det.engine_type': EngineType.ONNXRUNTIME,
+                'Det.lang_type': LangDet.CH,
+                'Det.model_type': ModelType.MOBILE,
                 'Det.ocr_version': OCRVersion.PPOCRV5,
-                'Cls.ocr_version': OCRVersion.PPOCRV5,
+                'Rec.engine_type': EngineType.ONNXRUNTIME,
+                'Rec.lang_type': LangRec.CH,
+                'Rec.model_type': ModelType.MOBILE,
                 'Rec.ocr_version': OCRVersion.PPOCRV5,
             }
         )
@@ -139,7 +145,8 @@ class OCRTool:
         if alpha != 1.0 or beta != 0.0:
             bgr = cv2.convertScaleAbs(bgr, alpha=alpha, beta=beta)
 
-        raw_items = self._to_raw_items(self._ocr(bgr))
+        # 强制启用 det/cls/rec，避免其他调用（例如 rec-only）污染共享 OCR 实例状态。
+        raw_items = self._to_raw_items(self._ocr(bgr, use_det=True, use_cls=True, use_rec=True))
         if not raw_items:
             return []
 

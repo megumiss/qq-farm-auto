@@ -1,8 +1,12 @@
-"""Seed number-box detector (digit-template aggregation only)."""
+"""[DEPRECATED] Seed number-box detector (digit-template aggregation only).
+
+该模块已废弃，播种流程请改用 `utils.bg_patch_number_ocr.BgPatchNumberOCR`。
+"""
 
 from __future__ import annotations
 
 import re
+import warnings
 from dataclasses import dataclass
 
 import cv2
@@ -21,7 +25,7 @@ class NumberBox:
 
 
 class NumberBoxDetector:
-    """Detect seed number boxes from digit templates (`icon_num_0..9`)."""
+    """[DEPRECATED] Detect seed number boxes from digit templates (`icon_num_0..9`)."""
 
     def __init__(
         self,
@@ -44,6 +48,11 @@ class NumberBoxDetector:
         number_box_row_cluster_gap_px: int = 22,
         number_box_row_min_cluster_size: int = 2,
     ):
+        warnings.warn(
+            'NumberBoxDetector is deprecated; use BgPatchNumberOCR instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.ui = ui
         self.x_min_px = int(x_min_px)
         self.x_max_px = int(x_max_px)

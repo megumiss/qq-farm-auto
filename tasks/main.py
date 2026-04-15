@@ -15,8 +15,8 @@ from models.config import PlantMode
 from models.farm_state import ActionType
 from models.game_data import get_best_crop_for_level, get_latest_crop_for_level
 from tasks.base import TaskBase
+from utils.bg_patch_number_ocr import BgPatchNumberItem, BgPatchNumberOCR
 from utils.head_info_ocr import HeadInfoOCR
-from utils.number_box_detector import NumberBoxDetector
 from utils.ocr_utils import OCRTool
 from utils.shop_item_ocr import ShopItemOCR
 
@@ -47,16 +47,14 @@ BACKGROUND_TREE_STABLE_SECONDS = 0.3
 BACKGROUND_TREE_STABLE_CHECK_INTERVAL_SECONDS = 0.1
 # 背景树锚点稳定等待超时，超时后放弃本轮平移修正。
 BACKGROUND_TREE_STABLE_TIMEOUT_SECONDS = 3.0
-# 数字框横向约束区间（基于主界面截图绝对坐标）。
-SEED_POPUP_NUMBER_BOX_MIN_X = 45
-SEED_POPUP_NUMBER_BOX_MAX_X = 500
-# 数字框纵向约束区间（基于“点击地块 y”做相对偏移）。
-SEED_POPUP_NUMBER_BOX_Y_OFFSET_TOP = 40
-SEED_POPUP_NUMBER_BOX_Y_OFFSET_BOTTOM = 130
-# QQ 平台主界面等级 OCR 顶部带高度（像素）。
-LEVEL_OCR_TOP_BAND_HEIGHT_QQ = 140
-# 微信平台主界面等级 OCR ROI（x1, y1, x2, y2）。
-LEVEL_OCR_REGION_WECHAT = (67, 102, 97, 125)
+# 数字块识别区域横向范围（基于主界面截图绝对坐标）。
+SEED_POPUP_NUMBER_REGION_X_MIN = 50
+SEED_POPUP_NUMBER_REGION_X_MAX = 480
+# 数字块识别区域纵向范围（基于“点击地块 y”做相对偏移）。
+SEED_POPUP_NUMBER_REGION_Y_OFFSET_TOP = 40
+SEED_POPUP_NUMBER_REGION_Y_OFFSET_BOTTOM = 80
+# 主界面等级 OCR 顶部带高度（像素，平台无关）。
+LEVEL_OCR_TOP_BAND_HEIGHT = 140
 
 
 class TaskMain(TaskBase):
@@ -67,7 +65,7 @@ class TaskMain(TaskBase):
         super().__init__(engine, ui)
         self._expand_failed = False
         self.shop_ocr = ShopItemOCR(ocr_tool=ocr_tool)
-        self.number_box_detector = NumberBoxDetector(ui=self.ui)
+        self.seed_number_ocr = BgPatchNumberOCR(ocr_tool=ocr_tool)
         self.head_info_ocr = HeadInfoOCR(ocr_tool=ocr_tool)
 
     def run(self, rect: tuple[int, int, int, int]) -> TaskResult:
@@ -108,11 +106,7 @@ class TaskMain(TaskBase):
         return self.ok()
 
     def _get_level_ocr_region(self, frame_shape: tuple[int, ...]) -> tuple[int, int, int, int] | None:
-        """按平台读取等级 OCR 常量区域并裁剪到截图范围内。"""
-        planting = self.engine.config.planting
-        platform = getattr(planting, 'window_platform', 'qq')
-        platform_value = platform.value if hasattr(platform, 'value') else str(platform)
-
+        """读取统一等级 OCR 区域并裁剪到截图范围内（不区分平台）。"""
         try:
             frame_h = int(frame_shape[0]) if len(frame_shape) >= 1 else 0
             frame_w = int(frame_shape[1]) if len(frame_shape) >= 2 else 0
@@ -122,19 +116,10 @@ class TaskMain(TaskBase):
         if frame_w <= 1 or frame_h <= 1:
             return None
 
-        if platform_value == 'wechat':
-            raw_region = LEVEL_OCR_REGION_WECHAT
-            try:
-                x1, y1, x2, y2 = [int(v) for v in raw_region]
-            except Exception:
-                return None
-            if x2 <= x1 or y2 <= y1:
-                return None
-        else:
-            x1 = 0
-            y1 = 0
-            x2 = frame_w
-            y2 = min(frame_h, int(LEVEL_OCR_TOP_BAND_HEIGHT_QQ))
+        x1 = 0
+        y1 = 0
+        x2 = frame_w
+        y2 = min(frame_h, int(LEVEL_OCR_TOP_BAND_HEIGHT))
 
         x1 = max(0, min(x1, frame_w - 1))
         y1 = max(0, min(y1, frame_h - 1))
@@ -364,13 +349,6 @@ class TaskMain(TaskBase):
         return buttons
 
     @staticmethod
-    def _get_seed_btn_buttons() -> list[Button]:
-        """返回 assets 中所有 `seed_btn_` 按钮定义。"""
-        buttons = [btn for name, btn in ASSET_NAME_TO_CONST.items() if str(name).startswith('seed_btn_')]
-        buttons.sort(key=lambda btn: str(btn.name))
-        return buttons
-
-    @staticmethod
     def _bbox_iou(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> float:
         """计算两个框的 IoU。"""
         ax1, ay1, ax2, ay2 = a
@@ -520,70 +498,37 @@ class TaskMain(TaskBase):
         """按平移量修正地块坐标。"""
         return [(int(round(x + dx)), int(round(y + dy))) for x, y in coords]
 
-    def _collect_excluded_seed_box_orders(
-        self,
-        number_boxes: list,
-        *,
-        threshold: float = 0.80,
-        near_distance: float = 50.0,
-    ) -> set[int]:
-        """识别 seed_btn 模板并返回需排除的数字框序号集合。"""
-        if not number_boxes:
-            return set()
-
-        seed_buttons = self._get_seed_btn_buttons()
-        if not seed_buttons:
-            return set()
-
-        seed_points: list[tuple[int, int]] = []
-        for seed_btn in seed_buttons:
-            loc = self.ui.appear_location(seed_btn, offset=30, threshold=float(threshold), static=False)
-            if loc is None:
-                continue
-            if any(math.hypot(float(loc[0] - old[0]), float(loc[1] - old[1])) <= 6.0 for old in seed_points):
-                continue
-            seed_points.append((int(loc[0]), int(loc[1])))
-
-        excluded_orders: set[int] = set()
-        for box in number_boxes:
-            box_cx, box_cy = box.center
-            dynamic_near = max(float(near_distance), float(max(box.size)) * 0.75)
-            for sx, sy in seed_points:
-                if math.hypot(float(box_cx - sx), float(box_cy - sy)) <= dynamic_near:
-                    excluded_orders.add(int(box.order))
-                    break
-        return excluded_orders
-
-    def _filter_number_boxes_by_seed_popup_y(
-        self, number_boxes: list, land_click_point: tuple[int, int] | None
-    ) -> list:
-        """按点击地块坐标偏移范围过滤数字框，降低误检。"""
-        if not number_boxes or land_click_point is None:
-            return number_boxes
-
+    def _build_seed_popup_number_region(self, land_click_point: tuple[int, int]) -> tuple[int, int, int, int]:
+        """按地块点击坐标构建种子数字识别区域。"""
         click_y = int(land_click_point[1])
-        min_x = int(SEED_POPUP_NUMBER_BOX_MIN_X)
-        max_x = int(SEED_POPUP_NUMBER_BOX_MAX_X)
-        min_y = click_y + int(SEED_POPUP_NUMBER_BOX_Y_OFFSET_TOP)
-        max_y = click_y + int(SEED_POPUP_NUMBER_BOX_Y_OFFSET_BOTTOM)
-        if min_x > max_x:
-            min_x, max_x = max_x, min_x
-        if min_y > max_y:
-            min_y, max_y = max_y, min_y
-        filtered = [
-            box for box in number_boxes if min_x <= int(box.center[0]) <= max_x and min_y <= int(box.center[1]) <= max_y
-        ]
+        x1 = int(SEED_POPUP_NUMBER_REGION_X_MIN)
+        x2 = int(SEED_POPUP_NUMBER_REGION_X_MAX)
+        y1 = click_y + int(SEED_POPUP_NUMBER_REGION_Y_OFFSET_TOP)
+        y2 = click_y + int(SEED_POPUP_NUMBER_REGION_Y_OFFSET_BOTTOM)
+        if x1 > x2:
+            x1, x2 = x2, x1
+        if y1 > y2:
+            y1, y2 = y2, y1
+        return x1, y1, x2, y2
+
+    def _detect_seed_number_items(
+        self,
+        cv_img,
+        land_click_point: tuple[int, int],
+    ) -> list[BgPatchNumberItem]:
+        """在种子弹窗区域识别数字块。"""
+        if cv_img is None:
+            return []
+        region = self._build_seed_popup_number_region(land_click_point)
+        items = self.seed_number_ocr.detect_items(cv_img, region=region)
         logger.info(
-            '自动播种流程: 数字框按地块偏移过滤 | click_y={} keep_range=({}, {}, {}, {}) raw={} filtered={}',
-            click_y,
-            min_x,
-            min_y,
-            max_x,
-            max_y,
-            len(number_boxes),
-            len(filtered),
+            '自动播种流程: 种子数量 | click_y={} region={} count={} nums={}',
+            int(land_click_point[1]),
+            region,
+            len(items),
+            [it.text for it in items],
         )
-        return filtered
+        return items
 
     def _plant_all(self, crop_name: str) -> list[str]:
         """执行整块农田播种流程（识别空地、拉种子、补种购买）。"""
@@ -597,8 +542,7 @@ class TaskMain(TaskBase):
         before_labor_anchor = self._get_labor_anchor_location()
         seed_popup_land = self._select_center_land_coord(land_coords) or land_coords[0]
         use_warehouse_first = bool(getattr(self.engine.config.planting, 'warehouse_first', True))
-        seed_panel_boxes = []
-        excluded_seed_box_orders: set[int] = set()
+        seed_panel_items: list[BgPatchNumberItem] = []
         open_seed_clicks = 0
         while 1:
             land_x, land_y = seed_popup_land
@@ -607,20 +551,10 @@ class TaskMain(TaskBase):
             self.ui.device.sleep(0.5)
 
             cv_img = self.ui.device.screenshot()
-            number_boxes = self.number_box_detector.detect_boxes(cv_img)
-            number_boxes = self._filter_number_boxes_by_seed_popup_y(number_boxes, (int(land_x), int(land_y)))
-            # 检查种子选择框/数字框出现
-            if number_boxes:
-                seed_panel_boxes = number_boxes
-                if use_warehouse_first and number_boxes:
-                    excluded_seed_box_orders = self._collect_excluded_seed_box_orders(number_boxes)
-                    if len(excluded_seed_box_orders) >= len(number_boxes):
-                        logger.info('自动播种流程: 未识别到种子，购买种子')
-                        buy_result = self._buy_seeds(crop_name)
-                        if buy_result:
-                            return self._plant_all(crop_name)
-                        logger.warning('自动播种流程: 购买种子失败或未完成，结束本轮播种')
-                        return
+            number_items = self._detect_seed_number_items(cv_img, (int(land_x), int(land_y)))
+            # 检查种子数字块是否出现
+            if number_items:
+                seed_panel_items = number_items
                 break
             if open_seed_clicks >= 2:
                 logger.info('自动播种流程: 未识别到种子，购买种子')
@@ -645,24 +579,24 @@ class TaskMain(TaskBase):
         seed_det = None
         seed_drag_point: tuple[int, int] | None = None
         if use_warehouse_first:
-            number_boxes = seed_panel_boxes
-            active_excluded_orders = excluded_seed_box_orders
-            if not number_boxes:
+            number_items = seed_panel_items
+            if not number_items:
                 cv_img = self.ui.device.screenshot()
-                number_boxes = self.number_box_detector.detect_boxes(cv_img)
-                number_boxes = self._filter_number_boxes_by_seed_popup_y(number_boxes, seed_popup_land)
-                active_excluded_orders = self._collect_excluded_seed_box_orders(number_boxes)
-            available_boxes = [box for box in number_boxes if int(box.order) not in active_excluded_orders]
-            if available_boxes:
-                left_seed = min(available_boxes, key=lambda box: box.center[0])
-                seed_drag_point = (int(left_seed.center[0]), int(left_seed.center[1]))
+                number_items = self._detect_seed_number_items(cv_img, seed_popup_land)
+            if number_items:
+                left_seed = min(number_items, key=lambda item: float(item.box[0] + item.box[2] / 2.0))
+                left_center_x = int(left_seed.box[0] + left_seed.box[2] / 2.0)
+                left_center_y = int(left_seed.box[1] + left_seed.box[3] / 2.0)
+                seed_drag_point = (left_center_x, left_center_y)
                 logger.info(
-                    '自动播种流程: 仓库优先已启用，使用最左种子 | box={} drag_point={}',
-                    left_seed.bbox,
+                    '自动播种流程: 仓库优先已启用，使用最左数字块 | box={} text={} score={:.3f} drag_point={}',
+                    left_seed.box,
+                    left_seed.text,
+                    left_seed.score,
                     seed_drag_point,
                 )
             else:
-                logger.warning('自动播种流程: 仓库优先已启用，但未识别种子')
+                logger.warning('自动播种流程: 仓库优先已启用，但未识别到可用数字块')
 
         if seed_drag_point is None:
             while 1:
@@ -742,6 +676,7 @@ class TaskMain(TaskBase):
 
     def _locate_seed_in_shop(self, crop_name: str, swipe_list: bool = False):
         """按页识别并定位待购买种子；命中白萝卜仍未找到目标时抛异常。"""
+        self.ui.device.screenshot()
         ocr_match, has_white_radish = self._scan_shop_page_for_seed(crop_name)
         swipe_list = bool(swipe_list) or not bool(ocr_match.target)
         if not swipe_list:
@@ -794,7 +729,6 @@ class TaskMain(TaskBase):
     def _buy_seeds(self, crop_name: str) -> str | bool:
         """执行买种流程：开商店 -> OCR 定位 -> 选择并确认购买。"""
         logger.info('购买流程: 开始 | 商品={}', crop_name)
-
         self.ui.ui_ensure(page_shop, confirm_wait=0.5)
 
         swipe_list = not self._is_crop_aligned_with_strategy(crop_name)

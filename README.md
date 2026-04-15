@@ -122,7 +122,7 @@ python main.py
 - `window_title_keyword`：窗口标题关键词（默认 `QQ经典农场`）
 - `window_select_rule`：窗口选择规则（`auto` 或 `index:N`，`auto` 会按当前平台优先匹配）
 - `safety`：运行方式、随机延迟、点击抖动、单轮点击上限、`debug_log_enabled`
-- `planting`：种植策略、等级、平台、窗口位置、`warehouse_first`（仓库优先选种）、等级 OCR 开关
+- `planting`：种植策略、等级、平台、窗口位置、`warehouse_first`（仓库优先选种；按固定底色数字块识别最左种子）、等级 OCR 开关
 - `executor`：空队列策略、默认间隔、最大失败次数、`min_task_interval_seconds`（任务最小执行间隔）
 - `tasks`：动态任务字典
 - `tasks.<task>.next_run`：任务下次执行时间（持久化到配置，默认 `2026-01-01 00:00`）
@@ -131,7 +131,7 @@ python main.py
 等级 OCR 相关（`planting`）：
 
 - `level_ocr_enabled`：是否启用播种前等级 OCR（对应设置面板“等级”右侧“自动同步”开关）
-- 等级 OCR 的 QQ/微信识别区域由代码常量维护（见 `tasks/main.py`）
+- 等级 OCR 识别区域由统一代码常量维护（见 `tasks/main.py`，不区分平台）
 
 `tasks` 示例：
 
