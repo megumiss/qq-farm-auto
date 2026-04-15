@@ -90,11 +90,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-可选（国内源）：
-
-```bash
-pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
-```
+说明：`requirements.txt` 已默认配置清华源（`pypi.tuna.tsinghua.edu.cn`）。
 
 ### VSCode 调试使用独立实例目录
 

@@ -15,7 +15,7 @@ from models.config import PlantMode
 from models.farm_state import ActionType
 from models.game_data import get_best_crop_for_level, get_latest_crop_for_level
 from tasks.base import TaskBase
-from utils.level_ocr import LevelOCR
+from utils.head_info_ocr import HeadInfoOCR
 from utils.number_box_detector import NumberBoxDetector
 from utils.ocr_utils import OCRTool
 from utils.shop_item_ocr import ShopItemOCR
@@ -53,8 +53,8 @@ SEED_POPUP_NUMBER_BOX_MAX_X = 500
 # 数字框纵向约束区间（基于“点击地块 y”做相对偏移）。
 SEED_POPUP_NUMBER_BOX_Y_OFFSET_TOP = 40
 SEED_POPUP_NUMBER_BOX_Y_OFFSET_BOTTOM = 130
-# QQ 平台主界面等级 OCR ROI（x1, y1, x2, y2）。
-LEVEL_OCR_REGION_QQ = (130, 102, 160, 125)
+# QQ 平台主界面等级 OCR 顶部带高度（像素）。
+LEVEL_OCR_TOP_BAND_HEIGHT_QQ = 140
 # 微信平台主界面等级 OCR ROI（x1, y1, x2, y2）。
 LEVEL_OCR_REGION_WECHAT = (67, 102, 97, 125)
 
@@ -68,7 +68,7 @@ class TaskMain(TaskBase):
         self._expand_failed = False
         self.shop_ocr = ShopItemOCR(ocr_tool=ocr_tool)
         self.number_box_detector = NumberBoxDetector(ui=self.ui)
-        self.level_ocr = LevelOCR(ocr_tool=ocr_tool)
+        self.head_info_ocr = HeadInfoOCR(ocr_tool=ocr_tool)
 
     def run(self, rect: tuple[int, int, int, int]) -> TaskResult:
         """执行主流程：在 run 内按 feature 显式控制每个子方法。"""
@@ -112,22 +112,29 @@ class TaskMain(TaskBase):
         planting = self.engine.config.planting
         platform = getattr(planting, 'window_platform', 'qq')
         platform_value = platform.value if hasattr(platform, 'value') else str(platform)
-        if platform_value == 'wechat':
-            raw_region = LEVEL_OCR_REGION_WECHAT
-        else:
-            raw_region = LEVEL_OCR_REGION_QQ
 
         try:
-            x1, y1, x2, y2 = [int(v) for v in raw_region]
+            frame_h = int(frame_shape[0]) if len(frame_shape) >= 1 else 0
+            frame_w = int(frame_shape[1]) if len(frame_shape) >= 2 else 0
         except Exception:
             return None
-        if x2 <= x1 or y2 <= y1:
-            return None
 
-        frame_h = int(frame_shape[0]) if len(frame_shape) >= 1 else 0
-        frame_w = int(frame_shape[1]) if len(frame_shape) >= 2 else 0
         if frame_w <= 1 or frame_h <= 1:
             return None
+
+        if platform_value == 'wechat':
+            raw_region = LEVEL_OCR_REGION_WECHAT
+            try:
+                x1, y1, x2, y2 = [int(v) for v in raw_region]
+            except Exception:
+                return None
+            if x2 <= x1 or y2 <= y1:
+                return None
+        else:
+            x1 = 0
+            y1 = 0
+            x2 = frame_w
+            y2 = min(frame_h, int(LEVEL_OCR_TOP_BAND_HEIGHT_QQ))
 
         x1 = max(0, min(x1, frame_w - 1))
         y1 = max(0, min(y1, frame_h - 1))
@@ -152,10 +159,19 @@ class TaskMain(TaskBase):
             logger.warning('等级识别: ROI 无效，跳过本轮识别')
             return None
 
-        level, score, raw_text = self.level_ocr.detect_level(
+        level, score, raw_text, extra_info = self.head_info_ocr.detect_head_info(
             cv_img,
             region=roi,
         )
+        if extra_info:
+            logger.debug(
+                '等级识别: 头部信息 | roi={} tokens={} money={} id={} version={}',
+                roi,
+                extra_info.get('tokens', []),
+                extra_info.get('money_candidates', []),
+                extra_info.get('id_candidates', []),
+                extra_info.get('version_candidates', []),
+            )
         if level is None:
             logger.debug('等级识别: 未匹配等级 | roi={} raw={}', roi, raw_text)
             return None

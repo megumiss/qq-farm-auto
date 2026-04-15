@@ -1,4 +1,4 @@
-"""OCR utility based on rapidocr_onnxruntime."""
+"""OCR utility based on RapidOCR."""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ import numpy as np
 from PIL import Image
 
 try:
-    from rapidocr_onnxruntime import RapidOCR
+    from rapidocr import OCRVersion, RapidOCR
 except ImportError as exc:  # pragma: no cover
-    raise RuntimeError('Missing dependency `rapidocr_onnxruntime`. Please install requirements first.') from exc
+    raise RuntimeError('Missing dependency `rapidocr`. Please install requirements first.') from exc
 
 
 @dataclass
@@ -36,7 +36,28 @@ class OCRTool:
 
     def __init__(self):
         """初始化对象并准备运行所需状态。"""
-        self._ocr = RapidOCR()
+        self._ocr = RapidOCR(
+            params={
+                'Det.ocr_version': OCRVersion.PPOCRV5,
+                'Cls.ocr_version': OCRVersion.PPOCRV5,
+                'Rec.ocr_version': OCRVersion.PPOCRV5,
+            }
+        )
+
+    @staticmethod
+    def _to_raw_items(ocr_result: Any) -> list[tuple[list[list[float]], str, float]]:
+        """将 RapidOCR 结果转换为统一结构。"""
+        boxes = getattr(ocr_result, 'boxes', None)
+        txts = getattr(ocr_result, 'txts', None)
+        scores = getattr(ocr_result, 'scores', None)
+        if boxes is None or txts is None or scores is None:
+            return []
+
+        out: list[tuple[list[list[float]], str, float]] = []
+        for box, text, score in zip(boxes, txts, scores):
+            points = [[float(pt[0]), float(pt[1])] for pt in box]
+            out.append((points, str(text), float(score)))
+        return out
 
     @staticmethod
     def _to_bgr(image: str | Path | Image.Image | np.ndarray) -> np.ndarray:
@@ -118,13 +139,13 @@ class OCRTool:
         if alpha != 1.0 or beta != 0.0:
             bgr = cv2.convertScaleAbs(bgr, alpha=alpha, beta=beta)
 
-        raw, _ = self._ocr(bgr)
-        if not raw:
+        raw_items = self._to_raw_items(self._ocr(bgr))
+        if not raw_items:
             return []
 
         items: list[OCRItem] = []
         inv = 1.0 / scale if scale != 0 else 1.0
-        for box, text, score in raw:
+        for box, text, score in raw_items:
             mapped_box: list[list[float]] = []
             for pt in box:
                 px = float(pt[0]) * inv + offset_x
