@@ -263,8 +263,14 @@ class SettingsPanel(QWidget):
     def _apply_card_style(card: StableElevatedCardWidget, object_name: str) -> None:
         card.setObjectName(object_name)
         card.setStyleSheet(
-            f'ElevatedCardWidget#{object_name} {{ border-radius: 10px; }}'
-            f'ElevatedCardWidget#{object_name}:hover {{ background-color: rgba(37, 99, 235, 0.04); }}'
+            f'ElevatedCardWidget#{object_name} {{'
+            ' border-radius: 10px;'
+            ' border: 1px solid rgba(100, 116, 139, 0.22);'
+            ' }'
+            f'ElevatedCardWidget#{object_name}:hover {{'
+            ' background-color: rgba(37, 99, 235, 0.06);'
+            ' border: 1px solid rgba(59, 130, 246, 0.32);'
+            ' }'
         )
 
     @staticmethod
@@ -280,7 +286,7 @@ class SettingsPanel(QWidget):
         label = CaptionLabel(f'{text_value}:' if text_value else '', parent)
         if text_value:
             label.setFixedWidth(label.sizeHint().width() + label.fontMetrics().horizontalAdvance('字'))
-            label.setStyleSheet('color: #64748b;')
+            label.setStyleSheet('color: #475569; font-weight: 600;')
         return label
 
     def _build_group_card(
@@ -294,10 +300,17 @@ class SettingsPanel(QWidget):
         self._apply_card_style(card, object_name)
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(12, 10, 12, 10)
-        card_layout.setSpacing(8)
+        card_layout.setSpacing(9)
         title_label = BodyLabel(title)
-        title_label.setStyleSheet('font-weight: 600;')
+        title_label.setStyleSheet('font-weight: 700; font-size: 14px; color: #1e293b;')
         card_layout.addWidget(title_label)
+        divider = QFrame(card)
+        divider.setObjectName('settingsCardTitleDivider')
+        divider.setFixedHeight(1)
+        divider.setStyleSheet(
+            'QFrame#settingsCardTitleDivider { background-color: rgba(37, 99, 235, 0.10); border: none; }'
+        )
+        card_layout.addWidget(divider)
         form = QFormLayout()
         self._style_form(form)
         card_layout.addLayout(form)

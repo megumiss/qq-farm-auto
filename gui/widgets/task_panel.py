@@ -111,8 +111,14 @@ class TaskPanel(QWidget):
     def _apply_card_style(card: StableElevatedCardWidget, object_name: str) -> None:
         card.setObjectName(object_name)
         card.setStyleSheet(
-            f'ElevatedCardWidget#{object_name} {{ border-radius: 10px; }}'
-            f'ElevatedCardWidget#{object_name}:hover {{ background-color: rgba(37, 99, 235, 0.04); }}'
+            f'ElevatedCardWidget#{object_name} {{'
+            ' border-radius: 10px;'
+            ' border: 1px solid rgba(100, 116, 139, 0.22);'
+            ' }'
+            f'ElevatedCardWidget#{object_name}:hover {{'
+            ' background-color: rgba(37, 99, 235, 0.06);'
+            ' border: 1px solid rgba(59, 130, 246, 0.32);'
+            ' }'
         )
 
     @staticmethod
@@ -129,18 +135,29 @@ class TaskPanel(QWidget):
         if text_value:
             label.setFixedWidth(label.sizeHint().width() + label.fontMetrics().horizontalAdvance('字'))
         if text_value:
-            label.setStyleSheet('color: #64748b;')
+            label.setStyleSheet('color: #475569; font-weight: 600;')
         return label
+
+    @staticmethod
+    def _add_card_title(layout: QVBoxLayout, title_text: str) -> None:
+        title = BodyLabel(str(title_text))
+        title.setStyleSheet('font-weight: 700; font-size: 14px; color: #1e293b;')
+        layout.addWidget(title)
+        divider = QFrame()
+        divider.setObjectName('taskCardTitleDivider')
+        divider.setFixedHeight(1)
+        divider.setStyleSheet(
+            'QFrame#taskCardTitleDivider { background-color: rgba(37, 99, 235, 0.10); border: none; }'
+        )
+        layout.addWidget(divider)
 
     def _build_task_card(self, task_name: str, trigger: TaskTriggerType) -> StableElevatedCardWidget:
         card = StableElevatedCardWidget(self)
         self._apply_card_style(card, 'taskConfigCard')
         layout = QVBoxLayout(card)
         layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(8)
-        title = BodyLabel(str(self._task_title_map.get(task_name, task_name)))
-        title.setStyleSheet('font-weight: 600;')
-        layout.addWidget(title)
+        layout.setSpacing(9)
+        self._add_card_title(layout, str(self._task_title_map.get(task_name, task_name)))
 
         form = QFormLayout()
         self._style_form(form)
@@ -218,10 +235,8 @@ class TaskPanel(QWidget):
         self._apply_card_style(card, 'executorConfigCard')
         layout = QVBoxLayout(card)
         layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(8)
-        title = BodyLabel('执行器')
-        title.setStyleSheet('font-weight: 600;')
-        layout.addWidget(title)
+        layout.setSpacing(9)
+        self._add_card_title(layout, '执行器')
 
         form = QFormLayout()
         self._style_form(form)
