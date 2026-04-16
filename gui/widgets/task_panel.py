@@ -22,13 +22,12 @@ from qfluentwidgets import (
     ComboBox,
     CompactSpinBox,
     DateTimeEdit,
-    ElevatedCardWidget,
     ScrollArea,
     SpinBox,
     TimeEdit,
 )
 
-from gui.widgets.fluent_container import TransparentCardContainer
+from gui.widgets.fluent_container import StableElevatedCardWidget, TransparentCardContainer
 from models.config import (
     DEFAULT_TASK_ENABLED_TIME_RANGE,
     DEFAULT_TASK_NEXT_RUN,
@@ -109,15 +108,15 @@ class TaskPanel(QWidget):
         content_layout.addStretch()
 
     @staticmethod
-    def _apply_card_style(card: ElevatedCardWidget, object_name: str) -> None:
+    def _apply_card_style(card: StableElevatedCardWidget, object_name: str) -> None:
         card.setObjectName(object_name)
         card.setStyleSheet(
             f'ElevatedCardWidget#{object_name} {{ border-radius: 10px; }}'
             f'ElevatedCardWidget#{object_name}:hover {{ background-color: rgba(37, 99, 235, 0.04); }}'
         )
 
-    def _build_task_card(self, task_name: str, trigger: TaskTriggerType) -> ElevatedCardWidget:
-        card = ElevatedCardWidget(self)
+    def _build_task_card(self, task_name: str, trigger: TaskTriggerType) -> StableElevatedCardWidget:
+        card = StableElevatedCardWidget(self)
         self._apply_card_style(card, 'taskConfigCard')
         layout = QVBoxLayout(card)
         layout.setContentsMargins(12, 10, 12, 10)
@@ -196,8 +195,8 @@ class TaskPanel(QWidget):
         self._task_widgets[task_name] = widgets
         return card
 
-    def _build_executor_card(self) -> ElevatedCardWidget:
-        card = ElevatedCardWidget(self)
+    def _build_executor_card(self) -> StableElevatedCardWidget:
+        card = StableElevatedCardWidget(self)
         self._apply_card_style(card, 'executorConfigCard')
         layout = QVBoxLayout(card)
         layout.setContentsMargins(12, 10, 12, 10)

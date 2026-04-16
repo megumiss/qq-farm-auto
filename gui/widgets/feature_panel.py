@@ -10,7 +10,6 @@ from qfluentwidgets import (
     BodyLabel,
     CaptionLabel,
     CheckBox,
-    ElevatedCardWidget,
     LineEdit,
     ListWidget,
     PrimaryPushButton,
@@ -18,7 +17,7 @@ from qfluentwidgets import (
     ScrollArea,
 )
 
-from gui.widgets.fluent_container import TransparentCardContainer
+from gui.widgets.fluent_container import StableElevatedCardWidget, TransparentCardContainer
 from models.config import AppConfig
 from utils.app_paths import load_config_json_object
 from utils.feature_policy import is_feature_forced_off
@@ -160,15 +159,15 @@ class FeaturePanel(QWidget):
         content_layout.addStretch()
 
     @staticmethod
-    def _apply_card_style(card: ElevatedCardWidget, object_name: str) -> None:
+    def _apply_card_style(card: StableElevatedCardWidget, object_name: str) -> None:
         card.setObjectName(object_name)
         card.setStyleSheet(
             f'ElevatedCardWidget#{object_name} {{ border-radius: 10px; }}'
             f'ElevatedCardWidget#{object_name}:hover {{ background-color: rgba(37, 99, 235, 0.04); }}'
         )
 
-    def _build_task_card(self, task_name: str, feature_map: dict[str, Any]) -> ElevatedCardWidget:
-        card = ElevatedCardWidget(self)
+    def _build_task_card(self, task_name: str, feature_map: dict[str, Any]) -> StableElevatedCardWidget:
+        card = StableElevatedCardWidget(self)
         self._apply_card_style(card, 'featureConfigCard')
         layout = QVBoxLayout(card)
         layout.setContentsMargins(12, 10, 12, 10)
