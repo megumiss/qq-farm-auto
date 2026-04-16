@@ -8,9 +8,9 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QDialog, QFormLayout, QFrame, QHBoxLayout, QVBoxLayout, QWidget
 from qfluentwidgets import (
     BodyLabel,
-    CardWidget,
     CaptionLabel,
     CheckBox,
+    ElevatedCardWidget,
     LineEdit,
     ListWidget,
     PrimaryPushButton,
@@ -159,8 +159,17 @@ class FeaturePanel(QWidget):
             content_layout.addLayout(waterfall)
         content_layout.addStretch()
 
-    def _build_task_card(self, task_name: str, feature_map: dict[str, Any]) -> CardWidget:
-        card = CardWidget(self)
+    @staticmethod
+    def _apply_card_style(card: ElevatedCardWidget, object_name: str) -> None:
+        card.setObjectName(object_name)
+        card.setStyleSheet(
+            f'ElevatedCardWidget#{object_name} {{ border-radius: 10px; }}'
+            f'ElevatedCardWidget#{object_name}:hover {{ background-color: rgba(37, 99, 235, 0.04); }}'
+        )
+
+    def _build_task_card(self, task_name: str, feature_map: dict[str, Any]) -> ElevatedCardWidget:
+        card = ElevatedCardWidget(self)
+        self._apply_card_style(card, 'featureConfigCard')
         layout = QVBoxLayout(card)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(8)

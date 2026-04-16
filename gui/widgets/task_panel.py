@@ -6,15 +6,23 @@ from datetime import datetime
 from typing import Any
 
 from PyQt6.QtCore import QDateTime, QTime, pyqtSignal
-from PyQt6.QtWidgets import QDateTimeEdit, QFormLayout, QFrame, QHBoxLayout, QSizePolicy, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QDateTimeEdit,
+    QFormLayout,
+    QFrame,
+    QHBoxLayout,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 from qfluentwidgets import (
     BodyLabel,
-    CardWidget,
     CaptionLabel,
     CheckBox,
     ComboBox,
     CompactSpinBox,
     DateTimeEdit,
+    ElevatedCardWidget,
     ScrollArea,
     SpinBox,
     TimeEdit,
@@ -93,14 +101,24 @@ class TaskPanel(QWidget):
         exec_card = self._build_executor_card()
         target = 0 if col_heights[0] <= col_heights[1] else 1
         columns[target].addWidget(exec_card)
+        col_heights[target] += max(1, int(exec_card.sizeHint().height()))
+
         for col in columns:
             col.addStretch()
-
         content_layout.addLayout(waterfall)
         content_layout.addStretch()
 
-    def _build_task_card(self, task_name: str, trigger: TaskTriggerType) -> CardWidget:
-        card = CardWidget(self)
+    @staticmethod
+    def _apply_card_style(card: ElevatedCardWidget, object_name: str) -> None:
+        card.setObjectName(object_name)
+        card.setStyleSheet(
+            f'ElevatedCardWidget#{object_name} {{ border-radius: 10px; }}'
+            f'ElevatedCardWidget#{object_name}:hover {{ background-color: rgba(37, 99, 235, 0.04); }}'
+        )
+
+    def _build_task_card(self, task_name: str, trigger: TaskTriggerType) -> ElevatedCardWidget:
+        card = ElevatedCardWidget(self)
+        self._apply_card_style(card, 'taskConfigCard')
         layout = QVBoxLayout(card)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(8)
@@ -178,8 +196,9 @@ class TaskPanel(QWidget):
         self._task_widgets[task_name] = widgets
         return card
 
-    def _build_executor_card(self) -> CardWidget:
-        card = CardWidget(self)
+    def _build_executor_card(self) -> ElevatedCardWidget:
+        card = ElevatedCardWidget(self)
+        self._apply_card_style(card, 'executorConfigCard')
         layout = QVBoxLayout(card)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(8)

@@ -200,7 +200,6 @@
 
 ## 7. 修改边界与禁令
 
-- 不要恢复旧 `core/ops` 业务层。
 - 不要新增重复包装（例如多余 click/appear 兼容层）。
 - 不要把任务列表改回 `models/config.py` 固定字段模型。
 - 不要将 `appear_then_click` 的最小 `interval` 改成小于 `1`。
