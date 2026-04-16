@@ -6,7 +6,6 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QFormLayout, QFrame, QHBoxLayout, QVBoxLayout, QWidget
 from qfluentwidgets import (
     BodyLabel,
-    CardWidget,
     CaptionLabel,
     CheckBox,
     ComboBox,
@@ -19,7 +18,7 @@ from qfluentwidgets import (
 )
 
 from core.platform.window_manager import WindowManager
-from gui.widgets.fluent_container import TransparentCardContainer
+from gui.widgets.fluent_container import StableElevatedCardWidget, TransparentCardContainer
 from models.config import AppConfig, PlantMode, RunMode, WindowPlatform, WindowPosition
 from models.game_data import get_crop_names
 
@@ -56,60 +55,66 @@ class SettingsPanel(QWidget):
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(10)
 
-        card = CardWidget(content)
-        layout.addWidget(card)
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(12, 10, 12, 10)
-        card_layout.setSpacing(8)
-        card_layout.addWidget(BodyLabel('设置'))
-        card_layout.addWidget(CaptionLabel('窗口、平台、种植策略'))
-        form = QFormLayout()
-        form.setContentsMargins(0, 0, 0, 0)
-        form.setSpacing(8)
-        card_layout.addLayout(form)
+        plant_card, plant_form = self._build_group_card(
+            content,
+            title='种植',
+            object_name='settingsPlantCard',
+        )
+        layout.addWidget(plant_card)
 
-        self.level = CompactSpinBox(card)
+        self.level = CompactSpinBox(plant_card)
         self.level.setRange(1, 100)
-        self.level_ocr = CheckBox('自动同步', card)
-        level_row = QWidget(card)
+        self.level_ocr = CheckBox('自动同步', plant_card)
+        level_row = QWidget(plant_card)
         level_layout = QHBoxLayout(level_row)
         level_layout.setContentsMargins(0, 0, 0, 0)
         level_layout.setSpacing(8)
         level_layout.addWidget(self.level)
         level_layout.addWidget(self.level_ocr)
         level_layout.addStretch()
-        form.addRow(CaptionLabel('等级:', card), level_row)
+        plant_form.addRow(CaptionLabel('等级:', plant_card), level_row)
 
-        self.strategy = ComboBox(card)
+        self.strategy = ComboBox(plant_card)
         self.strategy.addItem('自动最新', userData=PlantMode.LATEST_LEVEL.value)
         self.strategy.addItem('自动最优', userData=PlantMode.BEST_EXP_RATE.value)
         self.strategy.addItem('手动选择', userData=PlantMode.PREFERRED.value)
-        form.addRow(CaptionLabel('策略:', card), self.strategy)
+        plant_form.addRow(CaptionLabel('策略:', plant_card), self.strategy)
 
-        self.crop = ComboBox(card)
+        self.crop = ComboBox(plant_card)
         for crop in self._crop_names:
             self.crop.addItem(str(crop), userData=str(crop))
-        form.addRow(CaptionLabel('作物:', card), self.crop)
+        plant_form.addRow(CaptionLabel('作物:', plant_card), self.crop)
 
-        self.warehouse_first = CheckBox('仓库优先', card)
-        form.addRow(CaptionLabel('播种:', card), self.warehouse_first)
+        self.warehouse_first = CheckBox('仓库优先', plant_card)
+        plant_form.addRow(CaptionLabel('播种:', plant_card), self.warehouse_first)
 
-        self.platform = ComboBox(card)
+        env_card, env_form = self._build_group_card(
+            content,
+            title='其他',
+            object_name='settingsEnvCard',
+        )
+        layout.addWidget(env_card)
+
+        self.platform = ComboBox(env_card)
         self.platform.addItem('QQ', userData=WindowPlatform.QQ.value)
         self.platform.addItem('微信', userData=WindowPlatform.WECHAT.value)
-        form.addRow(CaptionLabel('平台:', card), self.platform)
+        env_form.addRow(CaptionLabel('平台:', env_card), self.platform)
 
-        self.run_mode = ComboBox(card)
+        self.run_mode = ComboBox(env_card)
         self.run_mode.addItem('后台模式', userData=RunMode.BACKGROUND.value)
         self.run_mode.addItem('前台模式', userData=RunMode.FOREGROUND.value)
-        form.addRow(CaptionLabel('运行方式:', card), self.run_mode)
+        env_form.addRow(CaptionLabel('运行方式:', env_card), self.run_mode)
+        run_mode_tip = CaptionLabel('提示：仅 QQ 平台支持后台模式，微信平台会自动使用前台模式', env_card)
+        run_mode_tip.setWordWrap(True)
+        run_mode_tip.setStyleSheet('color: #d97706;')
+        env_form.addRow(CaptionLabel('', env_card), run_mode_tip)
 
-        self.keyword = LineEdit(card)
+        self.keyword = LineEdit(env_card)
         self.keyword.setPlaceholderText('窗口标题关键字')
-        form.addRow(CaptionLabel('窗口关键词:', card), self.keyword)
+        env_form.addRow(CaptionLabel('窗口关键词:', env_card), self.keyword)
 
-        self.window_select = ComboBox(card)
-        select_row = QWidget(card)
+        self.window_select = ComboBox(env_card)
+        select_row = QWidget(env_card)
         select_layout = QHBoxLayout(select_row)
         select_layout.setContentsMargins(0, 0, 0, 0)
         select_layout.setSpacing(8)
@@ -118,42 +123,61 @@ class SettingsPanel(QWidget):
         self.refresh_btn.setIcon(FluentIcon.SYNC)
         self.refresh_btn.setFixedWidth(64)
         select_layout.addWidget(self.refresh_btn)
-        form.addRow(CaptionLabel('选择窗口:', card), select_row)
+        env_form.addRow(CaptionLabel('选择窗口:', env_card), select_row)
 
-        self.window_position = ComboBox(card)
-        self.window_position.addItem('左侧居中', userData=WindowPosition.LEFT_CENTER.value)
+        self.window_position = ComboBox(env_card)
+        self.window_position.addItem('左中', userData=WindowPosition.LEFT_CENTER.value)
         self.window_position.addItem('居中', userData=WindowPosition.CENTER.value)
-        self.window_position.addItem('右侧居中', userData=WindowPosition.RIGHT_CENTER.value)
+        self.window_position.addItem('右中', userData=WindowPosition.RIGHT_CENTER.value)
         self.window_position.addItem('左上', userData=WindowPosition.TOP_LEFT.value)
         self.window_position.addItem('右上', userData=WindowPosition.TOP_RIGHT.value)
         self.window_position.addItem('左下', userData=WindowPosition.LEFT_BOTTOM.value)
         self.window_position.addItem('右下', userData=WindowPosition.RIGHT_BOTTOM.value)
-        form.addRow(CaptionLabel('窗口位置:', card), self.window_position)
+        env_form.addRow(CaptionLabel('窗口位置:', env_card), self.window_position)
 
-        delay_row = QWidget(card)
+        advanced_card, advanced_form = self._build_group_card(
+            content,
+            title='高级',
+            object_name='settingsAdvancedCard',
+        )
+        layout.addWidget(advanced_card)
+
+        delay_row = QWidget(advanced_card)
         delay_layout = QHBoxLayout(delay_row)
         delay_layout.setContentsMargins(0, 0, 0, 0)
         delay_layout.setSpacing(8)
+        delay_layout.addWidget(BodyLabel('最小', delay_row))
         self.delay_min = CompactDoubleSpinBox(delay_row)
         self.delay_min.setRange(0, 10)
         self.delay_min.setDecimals(2)
+        self.delay_min.setSingleStep(0.05)
+        self.delay_min.setSuffix(' 秒')
+        self.delay_min.setToolTip('每次操作后的最小随机停顿时间')
         self.delay_max = CompactDoubleSpinBox(delay_row)
         self.delay_max.setRange(0, 10)
         self.delay_max.setDecimals(2)
+        self.delay_max.setSingleStep(0.05)
+        self.delay_max.setSuffix(' 秒')
+        self.delay_max.setToolTip('每次操作后的最大随机停顿时间')
         delay_layout.addWidget(self.delay_min)
+        delay_layout.addSpacing(8)
+        delay_layout.addWidget(BodyLabel('最大', delay_row))
         delay_layout.addWidget(self.delay_max)
-        form.addRow(CaptionLabel('随机延迟:', card), delay_row)
+        delay_layout.addStretch()
+        advanced_form.addRow(CaptionLabel('随机延迟:', advanced_card), delay_row)
 
-        self.offset = CompactSpinBox(card)
+        self.offset = CompactSpinBox(advanced_card)
         self.offset.setRange(0, 50)
-        form.addRow(CaptionLabel('点击抖动:', card), self.offset)
+        advanced_form.addRow(CaptionLabel('点击抖动:', advanced_card), self.offset)
 
-        self.max_actions = CompactSpinBox(card)
+        self.max_actions = CompactSpinBox(advanced_card)
         self.max_actions.setRange(1, 500)
-        form.addRow(CaptionLabel('单轮点击上限:', card), self.max_actions)
+        advanced_form.addRow(CaptionLabel('单轮点击上限:', advanced_card), self.max_actions)
 
-        self.debug = CheckBox('启用 Debug 日志', card)
-        form.addRow(CaptionLabel('调试日志:', card), self.debug)
+        self.debug = CheckBox('启用 Debug 日志', advanced_card)
+        self.debug.setToolTip('开启后，控制台、日志文件和界面日志都会输出 DEBUG 级别日志')
+        advanced_form.addRow(CaptionLabel('调试日志:', advanced_card), self.debug)
+        layout.addStretch()
 
         for sig in (
             self.level.valueChanged,
@@ -174,6 +198,33 @@ class SettingsPanel(QWidget):
             sig.connect(self._save)
         self.keyword.editingFinished.connect(self._on_keyword_committed)
         self.refresh_btn.clicked.connect(self._refresh_windows)
+
+    @staticmethod
+    def _apply_card_style(card: StableElevatedCardWidget, object_name: str) -> None:
+        card.setObjectName(object_name)
+        card.setStyleSheet(
+            f'ElevatedCardWidget#{object_name} {{ border-radius: 10px; }}'
+            f'ElevatedCardWidget#{object_name}:hover {{ background-color: rgba(37, 99, 235, 0.04); }}'
+        )
+
+    def _build_group_card(
+        self,
+        parent: QWidget,
+        *,
+        title: str,
+        object_name: str,
+    ) -> tuple[StableElevatedCardWidget, QFormLayout]:
+        card = StableElevatedCardWidget(parent)
+        self._apply_card_style(card, object_name)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(12, 10, 12, 10)
+        card_layout.setSpacing(8)
+        card_layout.addWidget(BodyLabel(title))
+        form = QFormLayout()
+        form.setContentsMargins(0, 0, 0, 0)
+        form.setSpacing(8)
+        card_layout.addLayout(form)
+        return card, form
 
     @staticmethod
     def _set_combo_data(combo: ComboBox, value) -> None:
