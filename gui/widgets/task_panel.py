@@ -5,15 +5,15 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from PyQt6.QtCore import QTime, pyqtSignal
-from PyQt6.QtWidgets import QFormLayout, QFrame, QHBoxLayout, QVBoxLayout, QWidget
+from PyQt6.QtCore import QDateTime, QTime, pyqtSignal
+from PyQt6.QtWidgets import QDateTimeEdit, QFormLayout, QFrame, QHBoxLayout, QSizePolicy, QVBoxLayout, QWidget
 from qfluentwidgets import (
     BodyLabel,
     CardWidget,
     CheckBox,
     ComboBox,
     CompactSpinBox,
-    LineEdit,
+    DateTimeEdit,
     ScrollArea,
     SpinBox,
     TimeEdit,
@@ -138,12 +138,18 @@ class TaskPanel(QWidget):
             widgets['interval_value'] = interval_value
             widgets['interval_unit'] = interval_unit
 
-            start = LineEdit(card)
-            start.setInputMask('00:00:00;_')
-            start.editingFinished.connect(lambda n=task_name: self._on_time_range_edit_finished(n))
-            end = LineEdit(card)
-            end.setInputMask('00:00:00;_')
-            end.editingFinished.connect(lambda n=task_name: self._on_time_range_edit_finished(n))
+            start = TimeEdit(card)
+            start.setDisplayFormat('HH:mm:ss')
+            start.setSymbolVisible(False)
+            start.setMinimumWidth(0)
+            start.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            start.timeChanged.connect(self._auto_save)
+            end = TimeEdit(card)
+            end.setDisplayFormat('HH:mm:ss')
+            end.setSymbolVisible(False)
+            end.setMinimumWidth(0)
+            end.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            end.timeChanged.connect(self._auto_save)
             range_row = QWidget(card)
             range_layout = QHBoxLayout(range_row)
             range_layout.setContentsMargins(0, 0, 0, 0)
@@ -155,9 +161,12 @@ class TaskPanel(QWidget):
             widgets['enabled_time_start'] = start
             widgets['enabled_time_end'] = end
 
-        next_run = LineEdit(card)
-        next_run.setInputMask('0000-00-00 00:00:00;_')
-        next_run.editingFinished.connect(lambda n=task_name: self._on_next_run_edit_finished(n))
+        next_run = DateTimeEdit(card)
+        next_run.setSymbolVisible(False)
+        next_run.setMinimumWidth(0)
+        next_run.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        next_run.setDisplayFormat('yyyy-MM-dd HH:mm:ss')
+        next_run.dateTimeChanged.connect(self._auto_save)
         form.addRow('下次执行:', next_run)
         widgets['next_run'] = next_run
 
@@ -218,6 +227,16 @@ class TaskPanel(QWidget):
         except Exception:
             return '00:00:00', '23:59:59'
 
+    @classmethod
+    def _parse_next_run_datetime(cls, text: str) -> QDateTime:
+        normalized = cls._normalize_next_run(text)
+        if normalized is None:
+            normalized = cls._normalize_next_run(DEFAULT_TASK_NEXT_RUN) or '2026-01-01 00:00:00'
+        qdt = QDateTime.fromString(normalized, 'yyyy-MM-dd HH:mm:ss')
+        if not qdt.isValid():
+            qdt = QDateTime.fromString('2026-01-01 00:00:00', 'yyyy-MM-dd HH:mm:ss')
+        return qdt
+
     @staticmethod
     def _set_combo_data(combo: ComboBox, value) -> None:
         idx = combo.findData(value)
@@ -245,8 +264,17 @@ class TaskPanel(QWidget):
                     interval_value.setValue(value)
                     self._set_combo_data(interval_unit, unit)
                 start, end = self._parse_enabled_time_range(getattr(task_cfg, 'enabled_time_range', ''))
-                widgets['enabled_time_start'].setText(start)
-                widgets['enabled_time_end'].setText(end)
+                start_edit = widgets.get('enabled_time_start')
+                end_edit = widgets.get('enabled_time_end')
+                if isinstance(start_edit, TimeEdit) and isinstance(end_edit, TimeEdit):
+                    start_time = QTime.fromString(start, 'HH:mm:ss')
+                    end_time = QTime.fromString(end, 'HH:mm:ss')
+                    if not start_time.isValid():
+                        start_time = QTime(0, 0, 0)
+                    if not end_time.isValid():
+                        end_time = QTime(23, 59, 59)
+                    start_edit.setTime(start_time)
+                    end_edit.setTime(end_time)
             else:
                 time_edit = widgets.get('daily_time')
                 if isinstance(time_edit, TimeEdit):
@@ -257,11 +285,8 @@ class TaskPanel(QWidget):
                         time_edit.setTime(QTime(0, 1))
 
             next_run = widgets.get('next_run')
-            if isinstance(next_run, LineEdit):
-                normalized = self._normalize_next_run(str(getattr(task_cfg, 'next_run', '')))
-                next_run.setText(
-                    normalized or (self._normalize_next_run(DEFAULT_TASK_NEXT_RUN) or '2026-01-01 00:00:00')
-                )
+            if isinstance(next_run, QDateTimeEdit):
+                next_run.setDateTime(self._parse_next_run_datetime(str(getattr(task_cfg, 'next_run', ''))))
 
         self._set_combo_data(self._empty_policy, c.executor.empty_queue_policy)
         self._max_failures.setValue(max(1, int(c.executor.max_failures)))
@@ -287,8 +312,13 @@ class TaskPanel(QWidget):
                 factor = int(widgets['interval_unit'].currentData() or 1)
                 task_cfg.trigger = TaskTriggerType.INTERVAL
                 task_cfg.interval_seconds = max(self._task_min_interval_seconds(), value * max(1, factor))
-                start = str(widgets['enabled_time_start'].text() or '')
-                end = str(widgets['enabled_time_end'].text() or '')
+                start_edit = widgets.get('enabled_time_start')
+                end_edit = widgets.get('enabled_time_end')
+                start = '00:00:00'
+                end = '23:59:59'
+                if isinstance(start_edit, TimeEdit) and isinstance(end_edit, TimeEdit):
+                    start = start_edit.time().toString('HH:mm:ss')
+                    end = end_edit.time().toString('HH:mm:ss')
                 task_cfg.enabled_time_range = normalize_task_enabled_time_range(f'{start}-{end}')
             else:
                 daily_time = widgets.get('daily_time')
@@ -297,40 +327,13 @@ class TaskPanel(QWidget):
                     task_cfg.daily_time = daily_time.time().toString('HH:mm')
 
             next_run = widgets.get('next_run')
-            if isinstance(next_run, LineEdit):
-                normalized = self._normalize_next_run(next_run.text())
-                if normalized:
-                    next_run.setText(normalized)
-                    task_cfg.next_run = normalized
+            if isinstance(next_run, QDateTimeEdit):
+                qdt = next_run.dateTime()
+                if qdt.isValid():
+                    task_cfg.next_run = qdt.toString('yyyy-MM-dd HH:mm:ss')
 
         c.save()
         self.config_changed.emit(c)
-
-    def _on_next_run_edit_finished(self, task_name: str) -> None:
-        widgets = self._task_widgets.get(task_name, {})
-        next_run = widgets.get('next_run')
-        if not isinstance(next_run, LineEdit):
-            return
-        normalized = self._normalize_next_run(next_run.text())
-        if normalized is None:
-            cfg = self.config.tasks.get(task_name)
-            normalized = self._normalize_next_run(str(getattr(cfg, 'next_run', '')))
-            if normalized is None:
-                normalized = self._normalize_next_run(DEFAULT_TASK_NEXT_RUN) or '2026-01-01 00:00:00'
-        next_run.setText(normalized)
-        self._auto_save()
-
-    def _on_time_range_edit_finished(self, task_name: str) -> None:
-        widgets = self._task_widgets.get(task_name, {})
-        start_edit = widgets.get('enabled_time_start')
-        end_edit = widgets.get('enabled_time_end')
-        if not isinstance(start_edit, LineEdit) or not isinstance(end_edit, LineEdit):
-            return
-        normalized = normalize_task_enabled_time_range(f'{start_edit.text()}-{end_edit.text()}')
-        start, end = self._parse_enabled_time_range(normalized)
-        start_edit.setText(start)
-        end_edit.setText(end)
-        self._auto_save()
 
     def set_config(self, config: AppConfig) -> None:
         self.config = config
