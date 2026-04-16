@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QFormLayout, QFrame, QHBoxLayout, QVBoxLayout, QWidget
 from qfluentwidgets import (
@@ -9,18 +11,23 @@ from qfluentwidgets import (
     CaptionLabel,
     CheckBox,
     ComboBox,
-    CompactDoubleSpinBox,
-    CompactSpinBox,
+    DoubleSpinBox,
     FluentIcon,
+    HyperlinkButton,
     LineEdit,
     PushButton,
     ScrollArea,
+    SpinBox,
 )
 
 from core.platform.window_manager import WindowManager
 from gui.widgets.fluent_container import StableElevatedCardWidget, TransparentCardContainer
 from models.config import AppConfig, PlantMode, RunMode, WindowPlatform, WindowPosition
-from models.game_data import get_crop_names
+from models.game_data import get_best_crop_for_level, get_crop_names, get_latest_crop_for_level
+from utils.app_paths import user_app_dir
+
+PROJECT_URL = 'https://github.com/megumiss/qq-farm-copilot'
+FREE_NOTICE_TEXT = '本项目仅供学习测试使用，自动化操作可能违反游戏服务条款，由此产生的一切后果由使用者自行承担。'
 
 
 class SettingsPanel(QWidget):
@@ -62,7 +69,7 @@ class SettingsPanel(QWidget):
         )
         layout.addWidget(plant_card)
 
-        self.level = CompactSpinBox(plant_card)
+        self.level = SpinBox(plant_card)
         self.level.setRange(1, 100)
         self.level_ocr = CheckBox('自动同步', plant_card)
         level_row = QWidget(plant_card)
@@ -87,6 +94,18 @@ class SettingsPanel(QWidget):
 
         self.warehouse_first = CheckBox('仓库优先', plant_card)
         plant_form.addRow(CaptionLabel('播种:', plant_card), self.warehouse_first)
+        warehouse_tip = CaptionLabel('建议开启，关闭后可能会因种子模板识别出错导致重复购买。', plant_card)
+        warehouse_tip.setWordWrap(True)
+        warehouse_tip.setStyleSheet('color: #d97706;')
+        plant_form.addRow(CaptionLabel('', plant_card), warehouse_tip)
+        self.skip_event_crops = CheckBox('排除活动作物', plant_card)
+        plant_form.addRow(CaptionLabel('其他设置:', plant_card), self.skip_event_crops)
+        event_tip = CaptionLabel(
+            '提示：爱心果固定排除；此选项仅控制是否额外排除其他活动作物（当前仅艾草）。', plant_card
+        )
+        event_tip.setWordWrap(True)
+        event_tip.setStyleSheet('color: #d97706;')
+        plant_form.addRow(CaptionLabel('', plant_card), event_tip)
 
         env_card, env_form = self._build_group_card(
             content,
@@ -104,7 +123,7 @@ class SettingsPanel(QWidget):
         self.run_mode.addItem('后台模式', userData=RunMode.BACKGROUND.value)
         self.run_mode.addItem('前台模式', userData=RunMode.FOREGROUND.value)
         env_form.addRow(CaptionLabel('运行方式:', env_card), self.run_mode)
-        run_mode_tip = CaptionLabel('提示：仅 QQ 平台支持后台模式，微信平台会自动使用前台模式', env_card)
+        run_mode_tip = CaptionLabel('提示：微信后台运行有可能会把窗口拉到前台', env_card)
         run_mode_tip.setWordWrap(True)
         run_mode_tip.setStyleSheet('color: #d97706;')
         env_form.addRow(CaptionLabel('', env_card), run_mode_tip)
@@ -147,18 +166,16 @@ class SettingsPanel(QWidget):
         delay_layout.setContentsMargins(0, 0, 0, 0)
         delay_layout.setSpacing(8)
         delay_layout.addWidget(BodyLabel('最小', delay_row))
-        self.delay_min = CompactDoubleSpinBox(delay_row)
+        self.delay_min = DoubleSpinBox(delay_row)
         self.delay_min.setRange(0, 10)
         self.delay_min.setDecimals(2)
         self.delay_min.setSingleStep(0.05)
         self.delay_min.setSuffix(' 秒')
-        self.delay_min.setToolTip('每次操作后的最小随机停顿时间')
-        self.delay_max = CompactDoubleSpinBox(delay_row)
+        self.delay_max = DoubleSpinBox(delay_row)
         self.delay_max.setRange(0, 10)
         self.delay_max.setDecimals(2)
         self.delay_max.setSingleStep(0.05)
         self.delay_max.setSuffix(' 秒')
-        self.delay_max.setToolTip('每次操作后的最大随机停顿时间')
         delay_layout.addWidget(self.delay_min)
         delay_layout.addSpacing(8)
         delay_layout.addWidget(BodyLabel('最大', delay_row))
@@ -166,17 +183,35 @@ class SettingsPanel(QWidget):
         delay_layout.addStretch()
         advanced_form.addRow(CaptionLabel('随机延迟:', advanced_card), delay_row)
 
-        self.offset = CompactSpinBox(advanced_card)
+        self.offset = SpinBox(advanced_card)
         self.offset.setRange(0, 50)
         advanced_form.addRow(CaptionLabel('点击抖动:', advanced_card), self.offset)
 
-        self.max_actions = CompactSpinBox(advanced_card)
+        self.max_actions = SpinBox(advanced_card)
         self.max_actions.setRange(1, 500)
         advanced_form.addRow(CaptionLabel('单轮点击上限:', advanced_card), self.max_actions)
 
         self.debug = CheckBox('启用 Debug 日志', advanced_card)
-        self.debug.setToolTip('开启后，控制台、日志文件和界面日志都会输出 DEBUG 级别日志')
         advanced_form.addRow(CaptionLabel('调试日志:', advanced_card), self.debug)
+        self.logs_path_label = CaptionLabel('', advanced_card)
+        self.logs_path_label.setWordWrap(True)
+        self.logs_path_label.setStyleSheet('color: #64748b;')
+        advanced_form.addRow(CaptionLabel('日志路径:', advanced_card), self.logs_path_label)
+
+        declaration_card, declaration_form = self._build_group_card(
+            content,
+            title='声明',
+            object_name='settingsDeclarationCard',
+        )
+        layout.addWidget(declaration_card)
+        self.free_notice = CaptionLabel(FREE_NOTICE_TEXT, declaration_card)
+        self.free_notice.setWordWrap(True)
+        self.free_notice.setStyleSheet('color: #dc2626; font-weight: 700;')
+        declaration_form.addRow(CaptionLabel('免费声明:', declaration_card), self.free_notice)
+        self.project_link = HyperlinkButton(declaration_card)
+        self.project_link.setText(PROJECT_URL)
+        self.project_link.setUrl(PROJECT_URL)
+        declaration_form.addRow(CaptionLabel('项目地址:', declaration_card), self.project_link)
         layout.addStretch()
 
         for sig in (
@@ -185,6 +220,7 @@ class SettingsPanel(QWidget):
             self.strategy.currentIndexChanged,
             self.crop.currentIndexChanged,
             self.warehouse_first.toggled,
+            self.skip_event_crops.toggled,
             self.platform.currentIndexChanged,
             self.run_mode.currentIndexChanged,
             self.window_select.currentIndexChanged,
@@ -196,6 +232,8 @@ class SettingsPanel(QWidget):
             self.debug.toggled,
         ):
             sig.connect(self._save)
+        self.level.valueChanged.connect(self._on_level_changed)
+        self.strategy.currentIndexChanged.connect(self._on_strategy_changed)
         self.keyword.editingFinished.connect(self._on_keyword_committed)
         self.refresh_btn.clicked.connect(self._refresh_windows)
 
@@ -232,6 +270,43 @@ class SettingsPanel(QWidget):
         if idx >= 0:
             combo.setCurrentIndex(idx)
 
+    def _set_crop_by_name(self, crop_name: str) -> bool:
+        if not crop_name:
+            return False
+        idx = self.crop.findData(str(crop_name))
+        if idx < 0:
+            return False
+        if self.crop.currentIndex() == idx:
+            return False
+        was_loading = self._loading
+        self._loading = True
+        self.crop.setCurrentIndex(idx)
+        self._loading = was_loading
+        return True
+
+    def _sync_crop_from_strategy(self) -> bool:
+        strategy_value = str(self.strategy.currentData() or PlantMode.LATEST_LEVEL.value)
+        level = int(self.level.value())
+        crop = None
+        if strategy_value == PlantMode.BEST_EXP_RATE.value:
+            crop = get_best_crop_for_level(level)
+        elif strategy_value == PlantMode.LATEST_LEVEL.value:
+            crop = get_latest_crop_for_level(level)
+        if not crop:
+            return False
+        return self._set_crop_by_name(str(crop[0]))
+
+    def _on_strategy_changed(self, *_args) -> None:
+        manual = str(self.strategy.currentData() or '') == PlantMode.PREFERRED.value
+        self.crop.setEnabled(manual)
+        if not manual:
+            self._sync_crop_from_strategy()
+
+    def _on_level_changed(self, *_args) -> None:
+        strategy_value = str(self.strategy.currentData() or PlantMode.LATEST_LEVEL.value)
+        if strategy_value != PlantMode.PREFERRED.value:
+            self._sync_crop_from_strategy()
+
     def _refresh_windows(self) -> None:
         current = str(self.window_select.currentData() or self.config.window_select_rule or 'auto')
         self.window_select.blockSignals(True)
@@ -247,6 +322,18 @@ class SettingsPanel(QWidget):
         self._refresh_windows()
         self._save()
 
+    def _resolve_logs_path_text(self) -> str:
+        config_path = str(getattr(self.config, '_config_path', '') or '').strip()
+        if config_path:
+            try:
+                cfg_path = Path(config_path).resolve()
+                # 期望结构：.../instances/<instance_id>/configs/config.json
+                if cfg_path.name.lower() == 'config.json' and cfg_path.parent.name == 'configs':
+                    return str((cfg_path.parent.parent / 'logs').resolve())
+            except Exception:
+                pass
+        return str((user_app_dir() / 'logs').resolve())
+
     def _load(self) -> None:
         c = self.config
         self.level.setValue(int(c.planting.player_level))
@@ -254,6 +341,7 @@ class SettingsPanel(QWidget):
         self._set_combo_data(self.strategy, c.planting.strategy.value)
         self._set_combo_data(self.crop, c.planting.preferred_crop)
         self.warehouse_first.setChecked(bool(c.planting.warehouse_first))
+        self.skip_event_crops.setChecked(bool(c.planting.skip_event_crops))
         self._set_combo_data(self.platform, c.planting.window_platform.value)
         self._set_combo_data(self.run_mode, c.safety.run_mode.value)
         self.keyword.setText(str(c.window_title_keyword or ''))
@@ -263,8 +351,10 @@ class SettingsPanel(QWidget):
         self.offset.setValue(int(c.safety.click_offset_range))
         self.max_actions.setValue(int(c.safety.max_actions_per_round))
         self.debug.setChecked(bool(c.safety.debug_log_enabled))
+        self.logs_path_label.setText(self._resolve_logs_path_text())
         self._refresh_windows()
         self._set_combo_data(self.window_select, c.window_select_rule or 'auto')
+        self._on_strategy_changed()
 
     def _save(self) -> None:
         if self._loading:
@@ -275,8 +365,11 @@ class SettingsPanel(QWidget):
         c.planting.strategy = PlantMode(str(self.strategy.currentData() or PlantMode.LATEST_LEVEL.value))
         c.planting.preferred_crop = str(self.crop.currentData() or c.planting.preferred_crop)
         c.planting.warehouse_first = bool(self.warehouse_first.isChecked())
-        c.planting.window_platform = WindowPlatform(str(self.platform.currentData() or WindowPlatform.QQ.value))
-        c.safety.run_mode = RunMode(str(self.run_mode.currentData() or RunMode.BACKGROUND.value))
+        c.planting.skip_event_crops = bool(self.skip_event_crops.isChecked())
+        platform_value = str(self.platform.currentData() or WindowPlatform.QQ.value)
+        run_mode_value = str(self.run_mode.currentData() or RunMode.BACKGROUND.value)
+        c.planting.window_platform = WindowPlatform(platform_value)
+        c.safety.run_mode = RunMode(run_mode_value)
         c.window_title_keyword = str(self.keyword.text() or '').strip()
         c.window_select_rule = str(self.window_select.currentData() or 'auto')
         c.planting.window_position = WindowPosition(
