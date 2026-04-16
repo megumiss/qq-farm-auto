@@ -3,6 +3,7 @@
 本文件定义本仓库内自动化/编码代理的工作约定。以当前代码实现为准。
 - 一切修改以工作区最新内容为准。
 - 每次修改完后，使用项目 `.venv` 下的 `ruff format` 进行代码格式化。
+- 出现问题时优先定位并修复根因，不要只靠代码推断原因，不要以“兜底/兼容分支”替代真实修复；临时兜底仅可作为明确标注的短期措施。
 : 仅格式化 Python 文件，跳过 `json/md` 等非 Python 文件（避免改坏 JSON 语法与文档排版）。
 : 推荐命令：`.\.venv\Scripts\python.exe -m ruff format core gui models tasks utils main.py private\main_window_core.py`
 
@@ -205,7 +206,6 @@
 - 不要把任务列表改回 `models/config.py` 固定字段模型。
 - 不要将 `appear_then_click` 的最小 `interval` 改成小于 `1`。
 - 不要用会中断调度链路的业务状态去“跳过下次执行时间计算”。
-- 出现问题时优先定位并修复根因，不要以“兜底/兼容分支”替代真实修复；临时兜底仅可作为明确标注的短期措施。
 
 ## 8. 提交前检查（最低）
 

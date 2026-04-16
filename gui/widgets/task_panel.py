@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from PyQt6.QtCore import QDateTime, QTime, pyqtSignal
+from PyQt6.QtCore import QDateTime, QTime, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QDateTimeEdit,
     QFormLayout,
@@ -115,29 +115,47 @@ class TaskPanel(QWidget):
             f'ElevatedCardWidget#{object_name}:hover {{ background-color: rgba(37, 99, 235, 0.04); }}'
         )
 
+    @staticmethod
+    def _style_form(form: QFormLayout) -> None:
+        form.setContentsMargins(0, 0, 0, 0)
+        form.setSpacing(10)
+        form.setHorizontalSpacing(0)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+    @staticmethod
+    def _field_label(text: str, parent: QWidget) -> CaptionLabel:
+        text_value = str(text or '').strip()
+        label = CaptionLabel(f'{text_value}:' if text_value else '', parent)
+        if text_value:
+            label.setFixedWidth(label.sizeHint().width() + label.fontMetrics().horizontalAdvance('字'))
+        if text_value:
+            label.setStyleSheet('color: #64748b;')
+        return label
+
     def _build_task_card(self, task_name: str, trigger: TaskTriggerType) -> StableElevatedCardWidget:
         card = StableElevatedCardWidget(self)
         self._apply_card_style(card, 'taskConfigCard')
         layout = QVBoxLayout(card)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(8)
-        layout.addWidget(BodyLabel(str(self._task_title_map.get(task_name, task_name))))
+        title = BodyLabel(str(self._task_title_map.get(task_name, task_name)))
+        title.setStyleSheet('font-weight: 600;')
+        layout.addWidget(title)
 
         form = QFormLayout()
-        form.setContentsMargins(0, 0, 0, 0)
-        form.setSpacing(8)
+        self._style_form(form)
         widgets: dict[str, Any] = {}
 
         enabled = CheckBox('启用')
         enabled.toggled.connect(self._auto_save)
-        form.addRow(CaptionLabel('开关:', card), enabled)
+        form.addRow(self._field_label('开关', card), enabled)
         widgets['enabled'] = enabled
 
         if trigger == TaskTriggerType.DAILY:
             time_edit = TimeEdit(card)
             time_edit.setDisplayFormat('HH:mm')
             time_edit.timeChanged.connect(self._auto_save)
-            form.addRow(CaptionLabel('每日时间:', card), time_edit)
+            form.addRow(self._field_label('每日时间', card), time_edit)
             widgets['daily_time'] = time_edit
         else:
             interval_value = SpinBox(card)
@@ -155,7 +173,7 @@ class TaskPanel(QWidget):
             row_layout.setSpacing(8)
             row_layout.addWidget(interval_value, 1)
             row_layout.addWidget(interval_unit)
-            form.addRow(CaptionLabel('执行间隔:', card), row)
+            form.addRow(self._field_label('执行间隔', card), row)
             widgets['interval_value'] = interval_value
             widgets['interval_unit'] = interval_unit
 
@@ -178,7 +196,7 @@ class TaskPanel(QWidget):
             range_layout.addWidget(start, 1)
             range_layout.addWidget(BodyLabel('~'))
             range_layout.addWidget(end, 1)
-            form.addRow(CaptionLabel('启用时段:', card), range_row)
+            form.addRow(self._field_label('启用时段', card), range_row)
             widgets['enabled_time_start'] = start
             widgets['enabled_time_end'] = end
 
@@ -188,7 +206,7 @@ class TaskPanel(QWidget):
         next_run.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         next_run.setDisplayFormat('yyyy-MM-dd HH:mm:ss')
         next_run.dateTimeChanged.connect(self._auto_save)
-        form.addRow(CaptionLabel('下次执行:', card), next_run)
+        form.addRow(self._field_label('下次执行', card), next_run)
         widgets['next_run'] = next_run
 
         layout.addLayout(form)
@@ -201,11 +219,12 @@ class TaskPanel(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(8)
-        layout.addWidget(BodyLabel('执行器'))
+        title = BodyLabel('执行器')
+        title.setStyleSheet('font-weight: 600;')
+        layout.addWidget(title)
 
         form = QFormLayout()
-        form.setContentsMargins(0, 0, 0, 0)
-        form.setSpacing(8)
+        self._style_form(form)
         self._empty_policy = ComboBox(card)
         self._empty_policy.addItem('停留当前页', userData='stay')
         self._empty_policy.addItem('回到主页面', userData='goto_main')
@@ -213,8 +232,8 @@ class TaskPanel(QWidget):
         self._max_failures = CompactSpinBox(card)
         self._max_failures.setRange(1, 20)
         self._max_failures.valueChanged.connect(self._auto_save)
-        form.addRow(CaptionLabel('空队列策略:', card), self._empty_policy)
-        form.addRow(CaptionLabel('最大连续失败:', card), self._max_failures)
+        form.addRow(self._field_label('空队列策略', card), self._empty_policy)
+        form.addRow(self._field_label('最大连续失败', card), self._max_failures)
         layout.addLayout(form)
         return card
 

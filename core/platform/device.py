@@ -48,6 +48,8 @@ class Device:
         self, rect: tuple[int, int, int, int] | None = None, *, prefix: str = 'farm', save: bool = False
     ) -> np.ndarray | None:
         """执行一次截图并更新 `image/preview_image`。"""
+        if not self._wait_if_paused():
+            return None
         self.stuck_record_check()
         if rect is not None:
             self.rect = rect
@@ -160,6 +162,8 @@ class Device:
 
     def click_point(self, x: int, y: int, desc: str = 'point_click', action_type: str = ActionType.NAVIGATE):
         """点击逻辑坐标点（会映射到当前截图坐标系）。"""
+        if not self._wait_if_paused():
+            return False
         if not self.engine.action_executor:
             return False
         self._handle_control_check(desc)
@@ -216,6 +220,8 @@ class Device:
         delay: float = 0.0,
     ) -> bool:
         """执行鼠标滑动。"""
+        if not self._wait_if_paused():
+            return False
         if not self.engine.action_executor:
             return False
 
@@ -249,8 +255,20 @@ class Device:
 
     def sleep(self, seconds: float):
         """执行 `sleep` 相关处理。"""
+        if not self._wait_if_paused():
+            return False
         time.sleep(float(seconds))
         return True
+
+    def _wait_if_paused(self) -> bool:
+        """暂停时阻塞设备操作，恢复后继续；停止时中止当前动作。"""
+        executor = getattr(self.engine, '_task_executor', None)
+        if executor is None:
+            return True
+        wait_method = getattr(executor, 'wait_if_paused', None)
+        if callable(wait_method):
+            return bool(wait_method())
+        return not bool(executor.is_stop_requested())
 
     def _handle_control_check(self, marker: str | None):
         """点击命中时重置卡死计时，并检查点击风暴。"""

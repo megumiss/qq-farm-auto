@@ -283,3 +283,7 @@ tools/
 
 本项目仅供学习研究 OpenCV 视觉识别技术使用。自动化操作可能违反游戏服务条款，由此产生的一切后果由使用者自行承担。
 
+## 许可证
+
+本项目采用 `GNU General Public License v3.0 (GPLv3)`，详见根目录 [LICENSE](LICENSE)。
+

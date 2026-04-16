@@ -77,6 +77,19 @@ class TaskExecutor:
         """恢复调度循环。"""
         self._pause_event.clear()
 
+    def is_paused(self) -> bool:
+        """返回执行器是否处于暂停状态。"""
+        return self._pause_event.is_set()
+
+    def wait_if_paused(self, *, poll_interval: float = 0.05) -> bool:
+        """在暂停态等待恢复；若已停止则返回 False。"""
+        wait_seconds = max(0.01, float(poll_interval))
+        while self._pause_event.is_set():
+            if self._stop_event.is_set():
+                return False
+            time.sleep(wait_seconds)
+        return not self._stop_event.is_set()
+
     def is_running(self) -> bool:
         """返回执行线程是否仍然存活。"""
         return bool(self._thread and self._thread.is_alive())

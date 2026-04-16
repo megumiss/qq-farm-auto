@@ -4,17 +4,20 @@ from __future__ import annotations
 
 from typing import Any
 
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import QDialog, QFormLayout, QFrame, QHBoxLayout, QVBoxLayout, QWidget
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import QAbstractItemView, QFormLayout, QFrame, QHBoxLayout, QListWidgetItem, QVBoxLayout, QWidget
 from qfluentwidgets import (
     BodyLabel,
     CaptionLabel,
     CheckBox,
+    FluentIcon,
     LineEdit,
     ListWidget,
-    PrimaryPushButton,
+    MessageBoxBase,
     PushButton,
     ScrollArea,
+    SubtitleLabel,
+    TransparentToolButton,
 )
 
 from gui.widgets.fluent_container import StableElevatedCardWidget, TransparentCardContainer
@@ -23,66 +26,96 @@ from utils.app_paths import load_config_json_object
 from utils.feature_policy import is_feature_forced_off
 
 
-class _ListEditorDialog(QDialog):
+class _ListEditorDialog(MessageBoxBase):
     def __init__(self, title: str, values: list[str], parent=None):
         super().__init__(parent)
-        self.setWindowTitle(title)
-        self.resize(420, 420)
+        self.widget.setMinimumWidth(430)
+        self._title_label = SubtitleLabel(str(title or '列表编辑'), self)
+        self._title_label.setWordWrap(True)
+        self.viewLayout.addWidget(self._title_label)
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(14, 14, 14, 14)
-        root.setSpacing(8)
-
-        self._list = ListWidget(self)
+        self._list = ListWidget(self.widget)
+        self._list.setMinimumHeight(230)
+        self._list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._list.setContentsMargins(4, 4, 4, 4)
+        self._list.setStyleSheet(
+            'ListWidget { border: 1px solid rgba(15, 23, 42, 0.12); border-radius: 8px; background: transparent; }'
+            'ListWidget::item:selected { background: transparent; border: none; }'
+            'ListWidget::item:hover { background: transparent; }'
+        )
         for text in values:
-            self._list.addItem(str(text))
-        root.addWidget(self._list, 1)
+            self._append_value_item(str(text))
+        self.viewLayout.addWidget(self._list, 1)
 
-        row = QHBoxLayout()
-        self._input = LineEdit(self)
+        input_row = QWidget(self.widget)
+        input_layout = QHBoxLayout(input_row)
+        input_layout.setContentsMargins(0, 0, 0, 0)
+        input_layout.setSpacing(8)
+        self._input = LineEdit(input_row)
         self._input.setPlaceholderText('输入后回车或点击新增')
-        add_btn = PushButton('新增', self)
+        add_btn = PushButton('新增', input_row)
         add_btn.clicked.connect(self._on_add)
         self._input.returnPressed.connect(self._on_add)
-        row.addWidget(self._input, 1)
-        row.addWidget(add_btn)
-        root.addLayout(row)
+        input_layout.addWidget(self._input, 1)
+        input_layout.addWidget(add_btn)
+        self.viewLayout.addWidget(input_row)
 
-        action = QHBoxLayout()
-        action.addStretch()
-        remove_btn = PushButton('删除选中', self)
-        cancel_btn = PushButton('取消', self)
-        ok_btn = PrimaryPushButton('保存', self)
-        remove_btn.clicked.connect(self._on_remove_selected)
-        cancel_btn.clicked.connect(self.reject)
-        ok_btn.clicked.connect(self.accept)
-        action.addWidget(remove_btn)
-        action.addWidget(cancel_btn)
-        action.addWidget(ok_btn)
-        root.addLayout(action)
+        self.yesButton.setText('保存')
+        self.cancelButton.setText('取消')
+        self.yesButton.setEnabled(True)
 
     def _on_add(self) -> None:
         text = str(self._input.text() or '').strip()
         if not text:
             return
-        existed = {self._list.item(i).text().strip().lower() for i in range(self._list.count())}
+        existed = {value.lower() for value in self._iter_values()}
         if text.lower() in existed:
             self._input.clear()
             return
-        self._list.addItem(text)
+        self._append_value_item(text)
         self._input.clear()
 
-    def _on_remove_selected(self) -> None:
-        item = self._list.currentItem()
-        if item is None:
+    def _append_value_item(self, text: str) -> None:
+        item = QListWidgetItem(self._list)
+        item.setData(Qt.ItemDataRole.UserRole, str(text))
+        item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+
+        row = QWidget(self._list)
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(8, 2, 4, 2)
+        row_layout.setSpacing(8)
+        label = BodyLabel(str(text), row)
+        remove_btn = TransparentToolButton(FluentIcon.DELETE, row)
+        remove_btn.setFixedSize(22, 22)
+        remove_btn.setToolTip('删除')
+        remove_btn.clicked.connect(lambda _=False, x=item: self._remove_item(x))
+        row_layout.addWidget(label, 1)
+        row_layout.addWidget(remove_btn, 0)
+
+        item.setSizeHint(row.sizeHint())
+        self._list.addItem(item)
+        self._list.setItemWidget(item, row)
+
+    def _remove_item(self, item: QListWidgetItem) -> None:
+        row = self._list.row(item)
+        if row < 0:
             return
-        self._list.takeItem(self._list.row(item))
+        self._list.takeItem(row)
+
+    def _iter_values(self) -> list[str]:
+        values: list[str] = []
+        for i in range(self._list.count()):
+            item = self._list.item(i)
+            value = str(item.data(Qt.ItemDataRole.UserRole) or '').strip()
+            if value:
+                values.append(value)
+        return values
 
     def values(self) -> list[str]:
         out: list[str] = []
         seen: set[str] = set()
-        for i in range(self._list.count()):
-            text = str(self._list.item(i).text() or '').strip()
+        for text in self._iter_values():
             if not text or text in seen:
                 continue
             seen.add(text)
@@ -103,7 +136,7 @@ class FeaturePanel(QWidget):
         self._feature_label_map = labels.get('feature_labels', {})
         self._loading = True
         self._bool_widgets: dict[tuple[str, str], CheckBox] = {}
-        self._list_summary: dict[tuple[str, str], BodyLabel] = {}
+        self._list_summary: dict[tuple[str, str], CaptionLabel] = {}
         self._build_ui()
         self._load_config()
         self._loading = False
@@ -166,17 +199,34 @@ class FeaturePanel(QWidget):
             f'ElevatedCardWidget#{object_name}:hover {{ background-color: rgba(37, 99, 235, 0.04); }}'
         )
 
+    @staticmethod
+    def _style_form(form: QFormLayout) -> None:
+        form.setContentsMargins(0, 0, 0, 0)
+        form.setSpacing(10)
+        form.setHorizontalSpacing(0)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+    @staticmethod
+    def _field_label(text: str, parent: QWidget) -> CaptionLabel:
+        text_value = str(text or '').strip()
+        label = CaptionLabel(f'{text_value}:' if text_value else '', parent)
+        if text_value:
+            label.setFixedWidth(label.sizeHint().width() + label.fontMetrics().horizontalAdvance('字'))
+            label.setStyleSheet('color: #64748b;')
+        return label
+
     def _build_task_card(self, task_name: str, feature_map: dict[str, Any]) -> StableElevatedCardWidget:
         card = StableElevatedCardWidget(self)
         self._apply_card_style(card, 'featureConfigCard')
         layout = QVBoxLayout(card)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(8)
-        layout.addWidget(BodyLabel(str(self._task_title_map.get(task_name, task_name))))
+        title = BodyLabel(str(self._task_title_map.get(task_name, task_name)))
+        title.setStyleSheet('font-weight: 600;')
+        layout.addWidget(title)
 
         form = QFormLayout()
-        form.setContentsMargins(0, 0, 0, 0)
-        form.setSpacing(8)
+        self._style_form(form)
         for feature_name, value in feature_map.items():
             label = str(self._feature_label_map.get(feature_name, feature_name))
             if isinstance(value, list):
@@ -184,7 +234,8 @@ class FeaturePanel(QWidget):
                 row_layout = QHBoxLayout(row)
                 row_layout.setContentsMargins(0, 0, 0, 0)
                 row_layout.setSpacing(8)
-                summary = BodyLabel('未配置')
+                summary = CaptionLabel('未配置')
+                summary.setStyleSheet('color: #64748b;')
                 self._list_summary[(task_name, feature_name)] = summary
                 btn = PushButton('详情', row)
                 btn.clicked.connect(
@@ -192,13 +243,13 @@ class FeaturePanel(QWidget):
                 )
                 row_layout.addWidget(summary, 1)
                 row_layout.addWidget(btn)
-                form.addRow(CaptionLabel(f'{label}:', card), row)
+                form.addRow(self._field_label(label, card), row)
                 continue
 
             box = CheckBox('启用', card)
             box.toggled.connect(self._auto_save)
             self._bool_widgets[(task_name, feature_name)] = box
-            form.addRow(CaptionLabel(f'{label}:', card), box)
+            form.addRow(self._field_label(label, card), box)
 
         layout.addLayout(form)
         return card
@@ -245,9 +296,18 @@ class FeaturePanel(QWidget):
         label.setText('未配置' if count <= 0 else f'已配置 {count} 条')
 
     def _open_list_editor(self, task_name: str, feature_name: str) -> None:
-        title = f'{task_name}.{feature_name}'
-        dialog = _ListEditorDialog(title=title, values=self._read_list(task_name, feature_name), parent=self)
-        if dialog.exec() != int(QDialog.DialogCode.Accepted):
+        task_title = str(self._task_title_map.get(task_name, task_name))
+        feature_title = str(self._feature_label_map.get(feature_name, feature_name))
+        title = f'{task_title} - {feature_title}'
+        parent_window = self.window()
+        dialog_parent = parent_window if isinstance(parent_window, QWidget) else self
+        dialog = _ListEditorDialog(
+            title=title,
+            values=self._read_list(task_name, feature_name),
+            parent=dialog_parent,
+        )
+        dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        if not bool(dialog.exec()):
             return
         self._write_list(task_name, feature_name, dialog.values())
 

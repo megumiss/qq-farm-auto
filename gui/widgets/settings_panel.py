@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QFormLayout, QFrame, QHBoxLayout, QSizePolicy, QVBoxLayout, QWidget
 from qfluentwidgets import (
     BodyLabel,
@@ -79,33 +79,31 @@ class SettingsPanel(QWidget):
         level_layout.addWidget(self.level)
         level_layout.addWidget(self.level_ocr)
         level_layout.addStretch()
-        plant_form.addRow(CaptionLabel('等级:', plant_card), level_row)
+        plant_form.addRow(self._field_label('等级', plant_card), level_row)
 
         self.strategy = ComboBox(plant_card)
         self.strategy.addItem('自动最新', userData=PlantMode.LATEST_LEVEL.value)
         self.strategy.addItem('自动最优', userData=PlantMode.BEST_EXP_RATE.value)
         self.strategy.addItem('手动选择', userData=PlantMode.PREFERRED.value)
-        plant_form.addRow(CaptionLabel('策略:', plant_card), self.strategy)
+        plant_form.addRow(self._field_label('播种策略', plant_card), self.strategy)
 
         self.crop = ComboBox(plant_card)
         for crop in self._crop_names:
             self.crop.addItem(str(crop), userData=str(crop))
-        plant_form.addRow(CaptionLabel('作物:', plant_card), self.crop)
+        plant_form.addRow(self._field_label('选择作物', plant_card), self.crop)
 
         self.warehouse_first = CheckBox('仓库优先', plant_card)
-        plant_form.addRow(CaptionLabel('播种:', plant_card), self.warehouse_first)
+        plant_form.addRow(self._field_label('播种', plant_card), self.warehouse_first)
         warehouse_tip = CaptionLabel('建议开启，关闭后可能会因种子模板识别出错导致重复购买。', plant_card)
         warehouse_tip.setWordWrap(True)
         warehouse_tip.setStyleSheet('color: #d97706;')
-        plant_form.addRow(CaptionLabel('', plant_card), warehouse_tip)
+        plant_form.addRow(self._field_label('', plant_card), warehouse_tip)
         self.skip_event_crops = CheckBox('排除活动作物', plant_card)
-        plant_form.addRow(CaptionLabel('其他:', plant_card), self.skip_event_crops)
-        event_tip = CaptionLabel(
-            '提示：爱心果固定排除；此选项仅控制是否额外排除其他活动作物（当前仅艾草）。', plant_card
-        )
+        plant_form.addRow(self._field_label('其他设置', plant_card), self.skip_event_crops)
+        event_tip = CaptionLabel('爱心果固定排除；此选项仅控制是否额外排除其他活动作物（当前仅艾草）。', plant_card)
         event_tip.setWordWrap(True)
         event_tip.setStyleSheet('color: #d97706;')
-        plant_form.addRow(CaptionLabel('', plant_card), event_tip)
+        plant_form.addRow(self._field_label('', plant_card), event_tip)
 
         env_card, env_form = self._build_group_card(
             content,
@@ -117,20 +115,20 @@ class SettingsPanel(QWidget):
         self.platform = ComboBox(env_card)
         self.platform.addItem('QQ', userData=WindowPlatform.QQ.value)
         self.platform.addItem('微信', userData=WindowPlatform.WECHAT.value)
-        env_form.addRow(CaptionLabel('平台:', env_card), self.platform)
+        env_form.addRow(self._field_label('平台', env_card), self.platform)
 
         self.run_mode = ComboBox(env_card)
         self.run_mode.addItem('后台模式', userData=RunMode.BACKGROUND.value)
         self.run_mode.addItem('前台模式', userData=RunMode.FOREGROUND.value)
-        env_form.addRow(CaptionLabel('运行方式:', env_card), self.run_mode)
-        run_mode_tip = CaptionLabel('提示：微信后台运行有可能会把窗口拉到前台', env_card)
+        env_form.addRow(self._field_label('运行方式', env_card), self.run_mode)
+        run_mode_tip = CaptionLabel('微信后台运行有可能会把窗口拉到前台', env_card)
         run_mode_tip.setWordWrap(True)
         run_mode_tip.setStyleSheet('color: #d97706;')
-        env_form.addRow(CaptionLabel('', env_card), run_mode_tip)
+        env_form.addRow(self._field_label('', env_card), run_mode_tip)
 
         self.keyword = LineEdit(env_card)
         self.keyword.setPlaceholderText('窗口标题关键字')
-        env_form.addRow(CaptionLabel('窗口关键词:', env_card), self.keyword)
+        env_form.addRow(self._field_label('窗口关键词', env_card), self.keyword)
 
         self.window_select = ComboBox(env_card)
         select_row = QWidget(env_card)
@@ -143,7 +141,7 @@ class SettingsPanel(QWidget):
         refresh_btn_width = max(72, self.refresh_btn.sizeHint().width() + 8)
         self.refresh_btn.setFixedWidth(refresh_btn_width)
         select_layout.addWidget(self.refresh_btn)
-        env_form.addRow(CaptionLabel('选择窗口:', env_card), select_row)
+        env_form.addRow(self._field_label('选择窗口', env_card), select_row)
 
         self.window_position = ComboBox(env_card)
         self.window_position.addItem('左中', userData=WindowPosition.LEFT_CENTER.value)
@@ -153,7 +151,7 @@ class SettingsPanel(QWidget):
         self.window_position.addItem('右上', userData=WindowPosition.TOP_RIGHT.value)
         self.window_position.addItem('左下', userData=WindowPosition.LEFT_BOTTOM.value)
         self.window_position.addItem('右下', userData=WindowPosition.RIGHT_BOTTOM.value)
-        env_form.addRow(CaptionLabel('窗口位置:', env_card), self.window_position)
+        env_form.addRow(self._field_label('窗口位置', env_card), self.window_position)
 
         advanced_card, advanced_form = self._build_group_card(
             content,
@@ -199,22 +197,22 @@ class SettingsPanel(QWidget):
         delay_right_label.setFixedWidth(delay_label_width)
         delay_layout.addWidget(delay_left, 1)
         delay_layout.addWidget(delay_right, 1)
-        advanced_form.addRow(CaptionLabel('随机延迟:', advanced_card), delay_row)
+        advanced_form.addRow(self._field_label('随机延迟', advanced_card), delay_row)
 
         self.offset = SpinBox(advanced_card)
         self.offset.setRange(0, 50)
-        advanced_form.addRow(CaptionLabel('点击抖动:', advanced_card), self.offset)
+        advanced_form.addRow(self._field_label('点击抖动', advanced_card), self.offset)
 
         self.max_actions = SpinBox(advanced_card)
         self.max_actions.setRange(1, 500)
-        advanced_form.addRow(CaptionLabel('单轮点击上限:', advanced_card), self.max_actions)
+        advanced_form.addRow(self._field_label('单轮点击上限', advanced_card), self.max_actions)
 
         self.debug = CheckBox('启用 Debug 日志', advanced_card)
-        advanced_form.addRow(CaptionLabel('调试日志:', advanced_card), self.debug)
+        advanced_form.addRow(self._field_label('调试日志', advanced_card), self.debug)
         self.logs_path_label = CaptionLabel('', advanced_card)
         self.logs_path_label.setWordWrap(True)
         self.logs_path_label.setStyleSheet('color: #64748b;')
-        advanced_form.addRow(CaptionLabel('日志路径:', advanced_card), self.logs_path_label)
+        advanced_form.addRow(self._field_label('日志路径', advanced_card), self.logs_path_label)
 
         declaration_card, declaration_form = self._build_group_card(
             content,
@@ -224,12 +222,18 @@ class SettingsPanel(QWidget):
         layout.addWidget(declaration_card)
         self.free_notice = CaptionLabel(FREE_NOTICE_TEXT, declaration_card)
         self.free_notice.setWordWrap(True)
+        self.free_notice.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.free_notice.setStyleSheet('color: #dc2626; font-weight: 700;')
-        declaration_form.addRow(CaptionLabel('免费声明:', declaration_card), self.free_notice)
+        notice_row = QWidget(declaration_card)
+        notice_layout = QHBoxLayout(notice_row)
+        notice_layout.setContentsMargins(0, 0, 0, 0)
+        notice_layout.setSpacing(0)
+        notice_layout.addWidget(self.free_notice, 1)
+        declaration_form.addRow(self._field_label('免责声明', declaration_card), notice_row)
         self.project_link = HyperlinkButton(declaration_card)
         self.project_link.setText(PROJECT_URL)
         self.project_link.setUrl(PROJECT_URL)
-        declaration_form.addRow(CaptionLabel('项目地址:', declaration_card), self.project_link)
+        declaration_form.addRow(self._field_label('项目地址', declaration_card), self.project_link)
         layout.addStretch()
 
         for sig in (
@@ -263,6 +267,22 @@ class SettingsPanel(QWidget):
             f'ElevatedCardWidget#{object_name}:hover {{ background-color: rgba(37, 99, 235, 0.04); }}'
         )
 
+    @staticmethod
+    def _style_form(form: QFormLayout) -> None:
+        form.setContentsMargins(0, 0, 0, 0)
+        form.setSpacing(10)
+        form.setHorizontalSpacing(0)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+    @staticmethod
+    def _field_label(text: str, parent: QWidget) -> CaptionLabel:
+        text_value = str(text or '').strip()
+        label = CaptionLabel(f'{text_value}:' if text_value else '', parent)
+        if text_value:
+            label.setFixedWidth(label.sizeHint().width() + label.fontMetrics().horizontalAdvance('字'))
+            label.setStyleSheet('color: #64748b;')
+        return label
+
     def _build_group_card(
         self,
         parent: QWidget,
@@ -275,10 +295,11 @@ class SettingsPanel(QWidget):
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(12, 10, 12, 10)
         card_layout.setSpacing(8)
-        card_layout.addWidget(BodyLabel(title))
+        title_label = BodyLabel(title)
+        title_label.setStyleSheet('font-weight: 600;')
+        card_layout.addWidget(title_label)
         form = QFormLayout()
-        form.setContentsMargins(0, 0, 0, 0)
-        form.setSpacing(8)
+        self._style_form(form)
         card_layout.addLayout(form)
         return card, form
 
