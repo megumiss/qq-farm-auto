@@ -22,6 +22,7 @@
 - 调度模式：`TaskExecutor` 单线程串行执行
 - 任务配置：`%APPDATA%/QQFarmCopilot/instances/<instance_id>/configs/config.json -> tasks`（动态字典，包含持久化 `next_run`）
 - 好友黑名单配置：`config.tasks.friend.features.blacklist`（`list[str]`，在任务设置详情弹窗维护）
+- 偷取统计开关：`config.tasks.friend.features.steal_stats`（默认 `false`；开启后仅在偷取动作后执行 OCR 统计，偷取速度会变慢）
 - 高级配置：`config.safety.debug_log_enabled` 控制 Debug 日志输出
 - 播种选种：`config.planting.warehouse_first` 默认开启；开启时优先按 `BgPatchNumberOCR` 在区域 `x:[50,480], y:[地块点击y+40, 地块点击y+80]` 识别最左数字块
 - 活动作物跳过：`SEED_BTN_HEART_FRUIT`（爱心果）固定排除；`config.planting.skip_event_crops` 默认关闭，仅控制是否额外排除 `SEED_BTN_MUGWORT`（艾草）
@@ -170,7 +171,7 @@
 4. 浇水
 
 - `friend`
-: 独立好友任务，复用 `TaskFriend`；支持 `features.blacklist: list[str]` 配置。
+: 独立好友任务，复用 `TaskFriend`；支持 `features.blacklist: list[str]` 与 `features.steal_stats: bool` 配置。
 
 - `share`
 : 独立分享任务，仅执行分享领奖流程（仅支持微信平台；无 `features` 分项开关）。

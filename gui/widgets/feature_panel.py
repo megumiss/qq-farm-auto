@@ -25,6 +25,8 @@ from models.config import AppConfig
 from utils.app_paths import load_config_json_object
 from utils.feature_policy import is_feature_forced_off
 
+SETTINGS_HINT_COLOR = '#d97706'
+
 
 class _ListEditorDialog(MessageBoxBase):
     def __init__(self, title: str, values: list[str], parent=None):
@@ -134,6 +136,7 @@ class FeaturePanel(QWidget):
         labels = load_config_json_object('ui_labels.json', prefer_user=False).get('feature_panel', {})
         self._task_title_map = labels.get('task_titles', {})
         self._feature_label_map = labels.get('feature_labels', {})
+        self._feature_hint_map = labels.get('feature_hints', {})
         self._loading = True
         self._bool_widgets: dict[tuple[str, str], CheckBox] = {}
         self._list_summary: dict[tuple[str, str], CaptionLabel] = {}
@@ -246,6 +249,7 @@ class FeaturePanel(QWidget):
         self._style_form(form)
         for feature_name, value in feature_map.items():
             label = str(self._feature_label_map.get(feature_name, feature_name))
+            hint_text = self._resolve_feature_hint(task_name, feature_name)
             if isinstance(value, list):
                 row = QWidget(card)
                 row_layout = QHBoxLayout(row)
@@ -260,16 +264,41 @@ class FeaturePanel(QWidget):
                 )
                 row_layout.addWidget(summary, 1)
                 row_layout.addWidget(btn)
-                form.addRow(self._field_label(label, card), row)
+                field = QWidget(card)
+                field_layout = QVBoxLayout(field)
+                field_layout.setContentsMargins(0, 0, 0, 0)
+                field_layout.setSpacing(2)
+                field_layout.addWidget(row)
+                if hint_text:
+                    hint = CaptionLabel(hint_text, field)
+                    hint.setWordWrap(True)
+                    hint.setStyleSheet(f'color: {SETTINGS_HINT_COLOR};')
+                    field_layout.addWidget(hint)
+                form.addRow(self._field_label(label, card), field)
                 continue
 
             box = CheckBox('启用', card)
             box.toggled.connect(self._auto_save)
             self._bool_widgets[(task_name, feature_name)] = box
-            form.addRow(self._field_label(label, card), box)
+            field = QWidget(card)
+            field_layout = QVBoxLayout(field)
+            field_layout.setContentsMargins(0, 0, 0, 0)
+            field_layout.setSpacing(2)
+            field_layout.addWidget(box)
+            if hint_text:
+                hint = CaptionLabel(hint_text, field)
+                hint.setWordWrap(True)
+                hint.setStyleSheet(f'color: {SETTINGS_HINT_COLOR};')
+                field_layout.addWidget(hint)
+            form.addRow(self._field_label(label, card), field)
 
         layout.addLayout(form)
         return card
+
+    def _resolve_feature_hint(self, task_name: str, feature_name: str) -> str:
+        full_key = f'{task_name}.{feature_name}'
+        text = self._feature_hint_map.get(full_key, self._feature_hint_map.get(feature_name, ''))
+        return str(text or '').strip()
 
     @staticmethod
     def _normalize_list_value(value: Any) -> list[str]:

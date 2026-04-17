@@ -29,7 +29,7 @@
 - [x] 好友农场帮忙
 - [x] 自动同步等级
 - [x] 任务调度时间自定义
-- [ ] 偷取统计
+- [x] 偷取统计
 - [x] 支持QQ/微信平台后台运行
 - [x] 支持QQ/微信平台多开
 
@@ -44,7 +44,7 @@
 当前内置任务（通过 `_run_task_*` 自动发现）：
 
 - `main`：农场主流程（收获维护、播种、扩建、出售、好友求助入口）
-- `friend`：独立好友任务（支持 `features.blacklist` 列表配置，主界面仅显示条目数，详情弹窗可维护名单）
+- `friend`：独立好友任务（支持 `features.blacklist` 列表配置与 `features.steal_stats` 开关；主界面仅显示黑名单条目数，详情弹窗可维护名单）
 - `share`：独立分享任务（仅支持微信平台，通常配合每日触发）
 - `reward`：独立任务奖励领取（默认每 6 小时执行一次）
 - `gift`：物品领取任务（QQSVIP礼包、商城礼包、可选邮件领取；支持分项开关）
@@ -168,6 +168,7 @@ python main.py
     "failure_interval_seconds": 60,
     "features": {
       "auto_steal": false,
+      "steal_stats": false,
       "auto_help": true,
       "auto_accept_request": true,
       "blacklist": [

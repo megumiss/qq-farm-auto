@@ -17,6 +17,7 @@
       "auto_upgrade": "扩建",
       "auto_help": "帮忙",
       "auto_steal": "偷菜",
+      "steal_stats": "偷取统计",
       "auto_accept_request": "同意好友请求",
       "blacklist": "好友黑名单",
       "auto_fertilize": "施肥",
@@ -27,7 +28,8 @@
       "auto_mail": "邮件领取"
     },
     "feature_hints": {
-      "reward.claim_growth_task": "QQ平台会直接领取"
+      "reward.claim_growth_task": "QQ平台会直接领取",
+      "friend.steal_stats": "开启后偷取会变慢"
     },
     "enabled": "启用",
     "detail_text": "详情",

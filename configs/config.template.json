@@ -44,6 +44,7 @@
       "failure_interval_seconds": 60,
       "features": {
         "auto_steal": false,
+        "steal_stats": false,
         "auto_help": true,
         "auto_accept_request": true,
         "blacklist": []

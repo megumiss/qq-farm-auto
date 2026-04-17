@@ -18,6 +18,7 @@ from core.ui.assets import (
     BTN_FRIEND_RIGHT_FRAME,
     BTN_HOME,
     BTN_STEAL,
+    BTN_STEAL_TOTAL,
     BTN_VISIT_FIRST,
     BTN_WATER,
     BTN_WEED,
@@ -31,7 +32,8 @@ from core.ui.page import page_friend_list, page_main
 from models.farm_state import ActionType
 from tasks.base import TaskBase
 from utils.friend_name_ocr import FriendNameOCR
-from utils.ocr_utils import OCRTool
+from utils.ocr_utils import OCRItem, OCRTool
+from utils.steal_stats import record_steal
 
 # 好友列表中“可操作图标”筛选范围：x 轴有效区间（像素）。
 FRIEND_PAGE_ICON_X_RANGE = (105, 410)
@@ -65,6 +67,14 @@ FRIEND_VISIT_NAME_ABOVE_Y_WINDOW = 40
 FRIEND_VISIT_MATCH_MARGIN_X = 10
 # 好友列表“访问”按钮定向匹配时 ROI 在 y 方向扩展量（像素）。
 FRIEND_VISIT_MATCH_MARGIN_Y = 30
+# 偷取统计：等待“总计按钮”出现的超时时间（秒）。
+STEAL_TOTAL_WAIT_TIMEOUT_SECONDS = 5.0
+# 偷取统计：识别按钮出现后的稳定等待（秒）。
+STEAL_TOTAL_STABLE_WAIT_SECONDS = 1.0
+# 偷取统计 OCR 固定区域（x1, y1, x2, y2），按当前统一截图坐标系定义。
+STEAL_TOTAL_OCR_REGION = (420, 240, 530, 390)
+# 偷取统计金额 token 正则：支持纯数字/小数/万单位，允许前导负号。
+STEAL_AMOUNT_TOKEN_PATTERN = re.compile(r'-?\d+(?:\.\d+)?(?:万)?')
 
 
 class TaskFriend(TaskBase):
@@ -83,8 +93,15 @@ class TaskFriend(TaskBase):
         enable_steal = self.has_feature(features, 'auto_steal')
         enable_help = self.has_feature(features, 'auto_help')
         enable_accept_request = self.has_feature(features, 'auto_accept_request', default=True)
+        enable_steal_stats = self.has_feature(features, 'steal_stats', default=False)
         self._friend_blacklist = self._read_blacklist(features)
-        logger.info('好友巡查: 开始 | 偷菜={} 帮忙={} 同意请求={}', enable_steal, enable_help, enable_accept_request)
+        logger.info(
+            '好友巡查: 开始 | 偷菜={} 帮忙={} 同意请求={} 偷取统计={}',
+            enable_steal,
+            enable_help,
+            enable_accept_request,
+            enable_steal_stats,
+        )
         if self._friend_blacklist:
             logger.info('好友巡查: 黑名单已加载 | 数量={}', len(self._friend_blacklist))
         if not enable_steal and not enable_help:
@@ -99,21 +116,30 @@ class TaskFriend(TaskBase):
         # 等待列表加载
         self.wait_list_loading()
 
-        self._run_friend_progressive(enable_help=enable_help, enable_steal=enable_steal)
+        self._run_friend_progressive(
+            enable_help=enable_help,
+            enable_steal=enable_steal,
+            enable_steal_stats=enable_steal_stats,
+        )
         # 返回主页
         self.back_to_home()
         logger.info('好友巡查: 结束')
 
         return self.ok()
 
-    def _run_friend_progressive(self, *, enable_help: bool, enable_steal: bool):
+    def _run_friend_progressive(self, *, enable_help: bool, enable_steal: bool, enable_steal_stats: bool):
         """好友任务递进流程：进入详情后执行动作，再切到下一个可操作好友。"""
         if not self._enter_friend_detail():
             return
 
-        self._run_friend_recursive(enable_help=enable_help, enable_steal=enable_steal, no_action=0)
+        self._run_friend_recursive(
+            enable_help=enable_help,
+            enable_steal=enable_steal,
+            enable_steal_stats=enable_steal_stats,
+            no_action=0,
+        )
 
-    def _run_friend_recursive(self, *, enable_help: bool, enable_steal: bool, no_action: int):
+    def _run_friend_recursive(self, *, enable_help: bool, enable_steal: bool, enable_steal_stats: bool, no_action: int):
         """递归处理好友：连续命中无操作按钮达到阈值后退出。"""
         has_action = self._has_current_friend_actions(enable_help=enable_help, enable_steal=enable_steal)
         if not has_action:
@@ -125,7 +151,7 @@ class TaskFriend(TaskBase):
         else:
             no_action = 0
             if enable_steal:
-                self._run_feature_steal()
+                self._run_feature_steal(enable_steal_stats=enable_steal_stats)
             if enable_help:
                 self._run_feature_help()
 
@@ -133,7 +159,12 @@ class TaskFriend(TaskBase):
             logger.info('好友巡查: 切换下一位好友失败，结束好友任务')
             return
 
-        self._run_friend_recursive(enable_help=enable_help, enable_steal=enable_steal, no_action=no_action)
+        self._run_friend_recursive(
+            enable_help=enable_help,
+            enable_steal=enable_steal,
+            enable_steal_stats=enable_steal_stats,
+            no_action=no_action,
+        )
 
     def _has_current_friend_actions(self, *, enable_help: bool, enable_steal: bool) -> bool:
         """判断当前好友界面是否有可执行操作按钮（使用 BTN 模板）。"""
@@ -443,9 +474,201 @@ class TaskFriend(TaskBase):
         """好友帮忙。"""
         self._help_in_friend_farm()
 
-    def _run_feature_steal(self):
+    def _run_feature_steal(self, *, enable_steal_stats: bool):
         """好友偷菜。"""
-        self._run_help_single_action(BTN_STEAL, ActionType.STEAL, '偷好友果实')
+        if self._run_help_single_action(BTN_STEAL, ActionType.STEAL, '偷好友果实'):
+            if enable_steal_stats:
+                self._ocr_and_record_steal()
+
+    def _ocr_and_record_steal(self):
+        """偷取成功后等待总计按钮，基于 OCR 源数据解析并写入统计。"""
+        try:
+            if not self._wait_steal_total_button():
+                logger.info('好友偷取统计: 等待超时，跳过本次统计')
+                return
+
+            self.ui.device.sleep(STEAL_TOTAL_STABLE_WAIT_SECONDS)
+            self.ui.device.screenshot()
+            items = self.friend_name_ocr.ocr.detect(
+                self.ui.device.image, region=STEAL_TOTAL_OCR_REGION, scale=1.3, alpha=1.12, beta=0.0
+            )
+            total_amount, loss_amount, bean_amount, debug_info = self._parse_steal_total_and_loss_from_items(items)
+            score = float(sum(float(item.score) for item in items) / len(items)) if items else 0.0
+            coin_amount = max(0, total_amount - loss_amount)
+
+            if coin_amount > 0 or bean_amount > 0:
+                logger.info(
+                    '好友偷取统计: 总价值={} 被咬损失={} 金币={} 金豆={}',
+                    total_amount,
+                    loss_amount,
+                    coin_amount,
+                    bean_amount,
+                )
+                logger.debug('好友偷取统计 OCR 明细: score={:.2f} {}', score, debug_info)
+                record_steal(self._resolve_instance_id(), coin_amount, bean_amount)
+                return
+            logger.info('好友偷取统计: 未解析到有效偷取结果，跳过记录')
+            logger.debug('好友偷取统计 OCR 明细: score={:.2f} {}', score, debug_info)
+        except Exception as e:
+            logger.warning('好友偷取统计 OCR 失败: {}', e)
+
+    def _wait_steal_total_button(self) -> bool:
+        timer = Timer(STEAL_TOTAL_WAIT_TIMEOUT_SECONDS, count=0).start()
+        while 1:
+            self.ui.device.screenshot()
+            if self.ui.appear(BTN_STEAL_TOTAL, offset=30):
+                return True
+            if timer.reached():
+                return False
+            self.ui.device.sleep(0.2)
+
+    def _resolve_instance_id(self) -> str:
+        for name in ('_instance_id', 'instance_id'):
+            value = getattr(self.engine, name, None)
+            text = str(value or '').strip()
+            if text:
+                return text
+        return 'default'
+
+    @staticmethod
+    def _parse_amount_token(token: str) -> int:
+        text = str(token or '').strip()
+        if not text:
+            return 0
+        sign = -1 if text.startswith('-') else 1
+        unsigned = text.lstrip('+-')
+        multiplier = 10000 if unsigned.endswith('万') else 1
+        numeric = unsigned[:-1] if unsigned.endswith('万') else unsigned
+        try:
+            value = float(numeric)
+        except Exception:
+            return 0
+        return int(round(sign * value * multiplier))
+
+    @staticmethod
+    def _ocr_item_bounds(item: OCRItem) -> tuple[float, float, float, float]:
+        xs = [float(point[0]) for point in item.box]
+        ys = [float(point[1]) for point in item.box]
+        return min(xs), min(ys), max(xs), max(ys)
+
+    @classmethod
+    def _parse_steal_total_and_loss_from_items(
+        cls,
+        items: list[OCRItem],
+    ) -> tuple[int, int, int, str]:
+        normalized: list[dict[str, float | str]] = []
+        for item in items:
+            text = str(item.text or '').replace(' ', '').strip()
+            if not text:
+                continue
+            x1, y1, x2, y2 = cls._ocr_item_bounds(item)
+            normalized.append(
+                {
+                    'text': text,
+                    'x1': x1,
+                    'y1': y1,
+                    'x2': x2,
+                    'y2': y2,
+                    'score': float(item.score),
+                }
+            )
+
+        normalized.sort(key=lambda x: (float(x['y1']), float(x['x1'])))
+        total_label_x: float | None = None
+        total_label_y: float | None = None
+        loss_label_x: float | None = None
+        loss_label_y: float | None = None
+        for item in normalized:
+            text = str(item['text'])
+            if total_label_x is None and '总价值' in text:
+                total_label_x = float(item['x1'])
+                total_label_y = float(item['y1'])
+            if loss_label_x is None and '被咬损失' in text:
+                loss_label_x = float(item['x1'])
+                loss_label_y = float(item['y1'])
+
+        amount_tokens: list[dict[str, float | str]] = []
+        for item in normalized:
+            text = str(item['text'])
+            for match in STEAL_AMOUNT_TOKEN_PATTERN.finditer(text):
+                amount_tokens.append(
+                    {
+                        'token': str(match.group(0)),
+                        'x1': float(item['x1']),
+                        'y1': float(item['y1']),
+                    }
+                )
+        amount_tokens.sort(key=lambda x: (float(x['y1']), float(x['x1'])))
+
+        total_pick: dict[str, float | str] | None = None
+        loss_pick: dict[str, float | str] | None = None
+        bean_pick: dict[str, float | str] | None = None
+        if total_label_x is not None:
+            candidates = [t for t in amount_tokens if float(t['x1']) >= total_label_x]
+            if total_label_y is not None:
+                candidates = [t for t in candidates if float(t['y1']) >= total_label_y]
+            if loss_label_y is not None:
+                candidates = [t for t in candidates if float(t['y1']) < loss_label_y]
+            if loss_label_x is not None:
+                total_candidates = [t for t in candidates if float(t['x1']) < loss_label_x]
+                if total_candidates:
+                    total_pick = total_candidates[0]
+                elif candidates:
+                    total_pick = candidates[0]
+            elif candidates:
+                total_pick = candidates[0]
+
+        if loss_label_x is not None:
+            loss_candidates = [t for t in amount_tokens if float(t['x1']) >= loss_label_x]
+            if loss_label_y is not None:
+                loss_candidates = [t for t in loss_candidates if float(t['y1']) >= loss_label_y]
+            neg_in_loss = [t for t in loss_candidates if str(t['token']).startswith('-')]
+            if neg_in_loss:
+                loss_pick = neg_in_loss[0]
+
+        if total_pick is None and amount_tokens:
+            total_pick = amount_tokens[0]
+        if loss_pick is None:
+            neg_tokens = [t for t in amount_tokens if str(t['token']).startswith('-')]
+            if neg_tokens and (total_pick is None or neg_tokens[0] is not total_pick):
+                loss_pick = neg_tokens[0]
+
+        total_token = str(total_pick['token']) if total_pick is not None else ''
+        loss_token = str(loss_pick['token']) if loss_pick is not None else ''
+
+        remaining = [t for t in amount_tokens if t is not total_pick and t is not loss_pick]
+        if total_pick is not None:
+            y_lower = float(total_pick['y1'])
+            y_upper = float(loss_pick['y1']) if loss_pick is not None else float('inf')
+            below_total = [
+                t
+                for t in remaining
+                if float(t['y1']) > y_lower
+                and float(t['y1']) < y_upper
+                and not str(t['token']).startswith('-')
+                and '万' not in str(t['token'])
+            ]
+            below_total.sort(key=lambda x: (float(x['y1']), abs(float(x['x1']) - float(total_pick['x1']))))
+            if below_total:
+                bean_pick = below_total[0]
+
+        if bean_pick is None:
+            fallback = [t for t in remaining if not str(t['token']).startswith('-') and '万' not in str(t['token'])]
+            fallback.sort(key=lambda x: (float(x['y1']), float(x['x1'])))
+            if fallback:
+                bean_pick = fallback[0]
+
+        bean_token = str(bean_pick['token']) if bean_pick is not None else ''
+        total_amount = max(0, cls._parse_amount_token(total_token))
+        loss_amount = abs(cls._parse_amount_token(loss_token))
+        bean_amount = max(0, abs(cls._parse_amount_token(bean_token)))
+        item_texts = [str(item['text']) for item in normalized]
+        token_texts = [str(item['token']) for item in amount_tokens]
+        debug_info = (
+            f'items={item_texts} tokens={token_texts} '
+            f'pick_total={total_token} pick_loss={loss_token} pick_bean={bean_token}'
+        )
+        return total_amount, loss_amount, bean_amount, debug_info
 
     def _help_in_friend_farm(self):
         """在好友农场执行浇水/除草/除虫，完成后尝试回家。"""

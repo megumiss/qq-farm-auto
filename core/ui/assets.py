@@ -4,6 +4,7 @@ from core.base.button import Button
 # Do not modify it manually.
 
 BTN_SEED_SELECT_POPUP_RIGHT = Button(area={'qq': (511, 608, 524, 636), 'wechat': (511, 608, 524, 636)}, color={'qq': (226, 206, 123), 'wechat': (226, 206, 123)}, button={'qq': (511, 608, 524, 636), 'wechat': (511, 608, 524, 636)}, file={'qq': 'templates/qq/btn/BTN_SEED_SELECT_POPUP_RIGHT.png', 'wechat': 'templates/qq/btn/BTN_SEED_SELECT_POPUP_RIGHT.png'}, name='BTN_SEED_SELECT_POPUP_RIGHT')
+BTN_STEAL_TOTAL = Button(area={'qq': (434, 249, 484, 266), 'wechat': (434, 249, 484, 266)}, color={'qq': (119, 145, 149), 'wechat': (119, 145, 149)}, button={'qq': (434, 249, 484, 266), 'wechat': (434, 249, 484, 266)}, file={'qq': 'templates/qq/btn/BTN_STEAL_TOTAL.png', 'wechat': 'templates/qq/btn/BTN_STEAL_TOTAL.png'}, name='BTN_STEAL_TOTAL')
 BTN_BACKGROUND_TREE = Button(area={'qq': (178, 285, 198, 344), 'wechat': (178, 285, 198, 344)}, color={'qq': (97, 157, 105), 'wechat': (97, 157, 105)}, button={'qq': (178, 285, 198, 344), 'wechat': (178, 285, 198, 344)}, file={'qq': 'templates/qq/btn/btn_background_tree.png', 'wechat': 'templates/qq/btn/btn_background_tree.png'}, name='btn_background_tree')
 BTN_BATCH_SELL = Button(area={'qq': (325, 867, 430, 901), 'wechat': (325, 867, 430, 901)}, color={'qq': (178, 196, 72), 'wechat': (178, 196, 72)}, button={'qq': (325, 867, 430, 901), 'wechat': (325, 867, 430, 901)}, file={'qq': 'templates/qq/btn/btn_batch_sell.png', 'wechat': 'templates/qq/btn/btn_batch_sell.png'}, name='btn_batch_sell')  # 批量出售
 BTN_BUG = Button(area={'qq': (332, 683, 372, 717), 'wechat': (332, 683, 372, 717)}, color={'qq': (152, 125, 112), 'wechat': (152, 125, 112)}, button={'qq': (332, 683, 372, 717), 'wechat': (332, 683, 372, 717)}, file={'qq': 'templates/qq/btn/btn_bug.png', 'wechat': 'templates/qq/btn/btn_bug.png'}, name='btn_bug')  # 一键除虫
@@ -133,6 +134,7 @@ ASSET_NAME_TO_CONST = {
     'btn_shop_buy_check': BTN_SHOP_BUY_CHECK,
     'btn_shop_buy_confirm': BTN_SHOP_BUY_CONFIRM,
     'btn_steal': BTN_STEAL,
+    'BTN_STEAL_TOTAL': BTN_STEAL_TOTAL,
     'btn_visit_first': BTN_VISIT_FIRST,
     'btn_water': BTN_WATER,
     'btn_weed': BTN_WEED,
