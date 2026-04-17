@@ -41,8 +41,6 @@ BACKGROUND_TREE_SWIPE_H_P2 = (200, 190)
 BACKGROUND_TREE_SWIPE_V_P1 = (200, 250)
 # 画面纵向回正手势点位 P2。
 BACKGROUND_TREE_SWIPE_V_P2 = (200, 220)
-# 判定“背景树锚点已稳定”所需的连续静止时长。
-BACKGROUND_TREE_STABLE_SECONDS = 0.3
 # 轮询背景树锚点稳定性的采样间隔。
 BACKGROUND_TREE_STABLE_CHECK_INTERVAL_SECONDS = 0.1
 # 背景树锚点稳定等待超时，超时后放弃本轮平移修正。
@@ -482,7 +480,7 @@ class TaskMain(TaskBase):
 
     def _wait_labor_anchor_stable(self) -> tuple[int, int] | None:
         """等待背景树锚点连续稳定一段时间后返回坐标。"""
-        stable_timer = Timer(BACKGROUND_TREE_STABLE_SECONDS, count=3)
+        stable_timer = Timer(self.config.planting.planting_stable_seconds, count=3)
         timeout_timer = Timer(BACKGROUND_TREE_STABLE_TIMEOUT_SECONDS, count=1).start()
         last_anchor: tuple[int, int] | None = None
         while 1:

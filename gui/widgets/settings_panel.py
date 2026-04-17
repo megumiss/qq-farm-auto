@@ -207,6 +207,16 @@ class SettingsPanel(QWidget):
         self.max_actions.setRange(1, 500)
         advanced_form.addRow(self._field_label('单轮点击上限', advanced_card), self.max_actions)
 
+        self.planting_stable = DoubleSpinBox(advanced_card)
+        self.planting_stable.setRange(0.1, 5.0)
+        self.planting_stable.setDecimals(1)
+        self.planting_stable.setSingleStep(0.1)
+        self.planting_stable.setSuffix(' 秒')
+        advanced_form.addRow(self._field_label('播种稳定时间', advanced_card), self.planting_stable)
+        planting_stable_hint = CaptionLabel('如果在边缘地块无法正常播种，请适当增加这个值', advanced_card)
+        planting_stable_hint.setStyleSheet('color: #d97706;')
+        advanced_form.addRow('', planting_stable_hint)
+
         self.debug = CheckBox('启用 Debug 日志', advanced_card)
         advanced_form.addRow(self._field_label('调试日志', advanced_card), self.debug)
         self.logs_path_label = CaptionLabel('', advanced_card)
@@ -251,6 +261,7 @@ class SettingsPanel(QWidget):
             self.delay_max.valueChanged,
             self.offset.valueChanged,
             self.max_actions.valueChanged,
+            self.planting_stable.valueChanged,
             self.debug.toggled,
         ):
             sig.connect(self._save)
@@ -421,6 +432,7 @@ class SettingsPanel(QWidget):
         self.delay_max.setValue(float(c.safety.random_delay_max))
         self.offset.setValue(int(c.safety.click_offset_range))
         self.max_actions.setValue(int(c.safety.max_actions_per_round))
+        self.planting_stable.setValue(float(c.planting.planting_stable_seconds))
         self.debug.setChecked(bool(c.safety.debug_log_enabled))
         self.logs_path_label.setText(self._resolve_logs_path_text())
         self._refresh_windows()
@@ -451,6 +463,7 @@ class SettingsPanel(QWidget):
         c.safety.random_delay_max = max(d_min, d_max)
         c.safety.click_offset_range = int(self.offset.value())
         c.safety.max_actions_per_round = int(self.max_actions.value())
+        c.planting.planting_stable_seconds = float(self.planting_stable.value())
         c.safety.debug_log_enabled = bool(self.debug.isChecked())
         c.save()
         self.config_changed.emit(c)

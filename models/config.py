@@ -284,6 +284,7 @@ class PlantingConfig(BaseModel):
     level_ocr_enabled: bool = True
     window_platform: WindowPlatform = WindowPlatform.QQ
     window_position: WindowPosition = WindowPosition.LEFT_CENTER
+    planting_stable_seconds: float = 0.5
 
     @field_validator('player_level', mode='before')
     @classmethod
