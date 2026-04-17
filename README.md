@@ -1,15 +1,17 @@
 # QQ Farm Copilot
 
-> ⚠️ 重构中：当前版本部分功能暂不可用
-
 基于 OpenCV + PyQt6 的 QQ 农场自动化工具，支持 PC 端 QQ和微信平台多开和后台运行。
+
+## 预览
+
+<img src="images/preview.png" alt="QQ Farm Copilot 预览" width="600" />
 
 ## 使用提示
 
 - 本软件完全免费，若付费购买请立即退款。
 - 请认准项目主页获取版本与说明，谨防二次售卖、捆绑分发与虚假收费。
 - 项目地址：`https://github.com/megumiss/qq-farm-copilot`
-- 本项目基于 [qq-farm-auto](https://github.com/Z7ANN/qq-farm-auto)，重构了后端架构
+- 本项目基于 [qq-farm-auto](https://github.com/Z7ANN/qq-farm-auto) 重构而来
 
 ## 已实现功能
 
@@ -27,6 +29,7 @@
 - [x] 好友农场帮忙
 - [x] 自动同步等级
 - [x] 任务调度时间自定义
+- [ ] 偷取统计
 - [x] 支持QQ/微信平台后台运行
 - [x] 支持QQ/微信平台多开
 
@@ -91,6 +94,7 @@ python main.py
 ```
 
 说明：`requirements.txt` 已默认配置清华源（`pypi.tuna.tsinghua.edu.cn`）。
+
 
 ### VSCode 调试使用独立实例目录
 
@@ -279,3 +283,8 @@ tools/
 ## 免责声明
 
 本项目仅供学习研究 OpenCV 视觉识别技术使用。自动化操作可能违反游戏服务条款，由此产生的一切后果由使用者自行承担。
+
+## 许可证
+
+本项目采用 `GNU General Public License v3.0 (GPLv3)`，详见根目录 [LICENSE](LICENSE)。
+

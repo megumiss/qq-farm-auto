@@ -1,270 +1,121 @@
-"""任务设置面板（按 tasks.<task>.features 生成）。"""
+"""Fluent 任务功能面板。"""
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QSize, Qt, pyqtSignal
-from PyQt6.QtWidgets import (
-    QCheckBox,
-    QDialog,
-    QFormLayout,
-    QGridLayout,
-    QGroupBox,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QListWidget,
-    QListWidgetItem,
-    QPushButton,
-    QVBoxLayout,
-    QWidget,
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import QAbstractItemView, QFormLayout, QFrame, QHBoxLayout, QListWidgetItem, QVBoxLayout, QWidget
+from qfluentwidgets import (
+    BodyLabel,
+    CaptionLabel,
+    CheckBox,
+    FluentIcon,
+    LineEdit,
+    ListWidget,
+    MessageBoxBase,
+    PushButton,
+    ScrollArea,
+    SubtitleLabel,
+    TransparentToolButton,
 )
 
-from gui.dialog_styles import UNIFIED_DIALOG_STYLE
+from gui.widgets.fluent_container import StableElevatedCardWidget, TransparentCardContainer
 from models.config import AppConfig
 from utils.app_paths import load_config_json_object
 from utils.feature_policy import is_feature_forced_off
 
 
-class ListFeatureEditorDialog(QDialog):
-    """列表型任务功能编辑弹窗。"""
-
-    _EXTRA_STYLE = """
-    QLabel#dialogHint {
-        color: #64748b;
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        padding: 8px 10px;
-    }
-    QListWidget#valueList {
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 10px;
-        padding: 6px;
-        outline: 0;
-    }
-    QListWidget#valueList::item {
-        border: none;
-        margin: 2px 0;
-        padding: 0;
-    }
-    QLineEdit#valueInput {
-        background-color: #ffffff;
-        border: 1px solid #cbd5e1;
-        border-radius: 8px;
-        padding: 6px 10px;
-        color: #0f172a;
-        min-height: 20px;
-    }
-    QLineEdit#valueInput:focus {
-        border-color: #2563eb;
-    }
-    QWidget#valueRow {
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-    }
-    QLabel#valueLabel {
-        color: #1e293b;
-        padding-left: 8px;
-    }
-    QPushButton#addButton {
-        min-width: 0px;
-        min-height: 36px;
-        border-radius: 8px;
-        border: none;
-        background: #2563eb;
-        color: #ffffff;
-        font-weight: 700;
-        font-size: 13px;
-        padding: 0 20px;
-    }
-    QPushButton#addButton:hover {
-        background: #1d4ed8;
-    }
-    QPushButton#actionButton {
-        min-width: 0px;
-        min-height: 36px;
-        border-radius: 8px;
-        background: #f1f5f9;
-        color: #334155;
-        border: 1px solid #e2e8f0;
-        font-weight: 700;
-        font-size: 13px;
-        padding: 0 20px;
-    }
-    QPushButton#actionButton:hover {
-        background: #e2e8f0;
-        border-color: #cbd5e1;
-    }
-    QPushButton#saveButton {
-        min-width: 0px;
-        min-height: 36px;
-        border-radius: 8px;
-        border: none;
-        background: #16a34a;
-        color: #ffffff;
-        font-weight: 700;
-        font-size: 13px;
-        padding: 0 20px;
-    }
-    QPushButton#saveButton:hover {
-        background: #15803d;
-    }
-    QPushButton#deleteItemButton {
-        min-width: 0px;
-        min-height: 30px;
-        border-radius: 8px;
-        border: none;
-        background: #dc2626;
-        color: #ffffff;
-        font-weight: 700;
-        font-size: 13px;
-        padding: 0 12px;
-    }
-    QPushButton#deleteItemButton:hover {
-        background: #b91c1c;
-    }
-    QScrollBar:vertical {
-        background: #f5f5f7;
-        width: 6px;
-        border-radius: 3px;
-    }
-    QScrollBar::handle:vertical {
-        background: #cbd5e1;
-        border-radius: 3px;
-        min-height: 30px;
-    }
-    QScrollBar::handle:vertical:hover {
-        background: #94a3b8;
-    }
-    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-        height: 0;
-    }
-    """
-
-    def __init__(
-        self,
-        *,
-        title: str,
-        values: list[str],
-        add_text: str,
-        delete_text: str,
-        save_text: str,
-        cancel_text: str,
-        input_placeholder: str,
-        hint_text: str,
-        parent=None,
-    ):
+class _ListEditorDialog(MessageBoxBase):
+    def __init__(self, title: str, values: list[str], parent=None):
         super().__init__(parent)
-        self.setObjectName('listFeatureEditorDialog')
-        self.setWindowTitle(title)
-        self.resize(420, 460)
-        self._delete_text = str(delete_text or '删除')
-        self.setStyleSheet(f'{UNIFIED_DIALOG_STYLE}\n{self._EXTRA_STYLE}')
+        self.widget.setMinimumWidth(430)
+        self._title_label = SubtitleLabel(str(title or '列表编辑'), self)
+        self._title_label.setWordWrap(True)
+        self.viewLayout.addWidget(self._title_label)
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(14, 14, 14, 14)
-        root.setSpacing(12)
+        self._list = ListWidget(self.widget)
+        self._list.setMinimumHeight(230)
+        self._list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._list.setContentsMargins(4, 4, 4, 4)
+        self._list.setStyleSheet(
+            'ListWidget { border: 1px solid rgba(15, 23, 42, 0.12); border-radius: 8px; background: transparent; }'
+            'ListWidget::item:selected { background: transparent; border: none; }'
+            'ListWidget::item:hover { background: transparent; }'
+        )
+        for text in values:
+            self._append_value_item(str(text))
+        self.viewLayout.addWidget(self._list, 1)
 
-        hint = QLabel(hint_text)
-        hint.setObjectName('dialogHint')
-        hint.setWordWrap(True)
-        root.addWidget(hint)
+        input_row = QWidget(self.widget)
+        input_layout = QHBoxLayout(input_row)
+        input_layout.setContentsMargins(0, 0, 0, 0)
+        input_layout.setSpacing(8)
+        self._input = LineEdit(input_row)
+        self._input.setPlaceholderText('输入后回车或点击新增')
+        add_btn = PushButton('新增', input_row)
+        add_btn.clicked.connect(self._on_add)
+        self._input.returnPressed.connect(self._on_add)
+        input_layout.addWidget(self._input, 1)
+        input_layout.addWidget(add_btn)
+        self.viewLayout.addWidget(input_row)
 
-        self._list = QListWidget(self)
-        self._list.setObjectName('valueList')
-        root.addWidget(self._list, 1)
+        self.yesButton.setText('保存')
+        self.cancelButton.setText('取消')
+        self.yesButton.setEnabled(True)
 
-        add_row = QHBoxLayout()
-        add_row.setContentsMargins(0, 0, 0, 0)
-        add_row.setSpacing(8)
-        self._input = QLineEdit(self)
-        self._input.setObjectName('valueInput')
-        self._input.setPlaceholderText(input_placeholder)
-        add_btn = QPushButton(add_text, self)
-        add_btn.setObjectName('addButton')
-        add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        add_btn.clicked.connect(self._on_add_clicked)
-        self._input.returnPressed.connect(self._on_add_clicked)
-        add_row.addWidget(self._input, 1)
-        add_row.addWidget(add_btn)
-        root.addLayout(add_row)
-
-        action_row = QHBoxLayout()
-        action_row.setContentsMargins(0, 0, 0, 0)
-        action_row.setSpacing(8)
-        action_row.addStretch()
-        cancel_btn = QPushButton(cancel_text, self)
-        cancel_btn.setObjectName('actionButton')
-        save_btn = QPushButton(save_text, self)
-        save_btn.setObjectName('saveButton')
-        cancel_btn.clicked.connect(self.reject)
-        save_btn.clicked.connect(self.accept)
-        action_row.addWidget(cancel_btn)
-        action_row.addWidget(save_btn)
-        root.addLayout(action_row)
-
-        for value in values:
-            self._append_item(str(value))
-
-    def _on_add_clicked(self):
-        """新增列表项。"""
+    def _on_add(self) -> None:
         text = str(self._input.text() or '').strip()
         if not text:
             return
-        existing = {name.lower() for name in self.values()}
-        if text.lower() in existing:
+        existed = {value.lower() for value in self._iter_values()}
+        if text.lower() in existed:
             self._input.clear()
             return
-        self._append_item(text)
+        self._append_value_item(text)
         self._input.clear()
 
-    def _append_item(self, text: str):
-        """向列表追加一项（附带单行删除按钮）。"""
-        entry = str(text or '').strip()
-        if not entry:
-            return
-
+    def _append_value_item(self, text: str) -> None:
         item = QListWidgetItem(self._list)
-        item.setData(Qt.ItemDataRole.UserRole, entry)
+        item.setData(Qt.ItemDataRole.UserRole, str(text))
+        item.setFlags(Qt.ItemFlag.ItemIsEnabled)
 
-        row_widget = QWidget(self._list)
-        row_widget.setObjectName('valueRow')
-        row_widget.setMinimumHeight(38)
-        row_layout = QHBoxLayout(row_widget)
-        row_layout.setContentsMargins(6, 4, 6, 4)
+        row = QWidget(self._list)
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(8, 2, 4, 2)
         row_layout.setSpacing(8)
+        label = BodyLabel(str(text), row)
+        remove_btn = TransparentToolButton(FluentIcon.DELETE, row)
+        remove_btn.setFixedSize(22, 22)
+        remove_btn.setToolTip('删除')
+        remove_btn.clicked.connect(lambda _=False, x=item: self._remove_item(x))
+        row_layout.addWidget(label, 1)
+        row_layout.addWidget(remove_btn, 0)
 
-        label = QLabel(entry, row_widget)
-        label.setObjectName('valueLabel')
-        label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        delete_btn = QPushButton(self._delete_text, row_widget)
-        delete_btn.setObjectName('deleteItemButton')
-        delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        delete_btn.clicked.connect(lambda _checked=False, current=item: self._remove_item(current))
+        item.setSizeHint(row.sizeHint())
+        self._list.addItem(item)
+        self._list.setItemWidget(item, row)
 
-        row_layout.addWidget(label, 1, Qt.AlignmentFlag.AlignVCenter)
-        row_layout.addWidget(delete_btn, 0, Qt.AlignmentFlag.AlignVCenter)
-        item.setSizeHint(QSize(0, 38))
-        self._list.setItemWidget(item, row_widget)
-
-    def _remove_item(self, item: QListWidgetItem):
-        """删除一项。"""
+    def _remove_item(self, item: QListWidgetItem) -> None:
         row = self._list.row(item)
-        if row >= 0:
-            self._list.takeItem(row)
+        if row < 0:
+            return
+        self._list.takeItem(row)
+
+    def _iter_values(self) -> list[str]:
+        values: list[str] = []
+        for i in range(self._list.count()):
+            item = self._list.item(i)
+            value = str(item.data(Qt.ItemDataRole.UserRole) or '').strip()
+            if value:
+                values.append(value)
+        return values
 
     def values(self) -> list[str]:
-        """读取当前列表值。"""
         out: list[str] = []
         seen: set[str] = set()
-        for index in range(self._list.count()):
-            item = self._list.item(index)
-            text = str(item.data(Qt.ItemDataRole.UserRole) or '').strip()
+        for text in self._iter_values():
             if not text or text in seen:
                 continue
             seen.add(text)
@@ -273,211 +124,155 @@ class ListFeatureEditorDialog(QDialog):
 
 
 class FeaturePanel(QWidget):
-    """承载 `FeaturePanel` 相关界面控件与交互逻辑。"""
+    """任务 features 配置。"""
 
     config_changed = pyqtSignal(object)
-    _FORCED_OFF_ICON = (Path(__file__).resolve().parents[1] / 'icons' / 'disabled_x.svg').as_posix()
-    _FORCED_OFF_STYLE = (
-        'QCheckBox { color: #9ca3af; }'
-        'QCheckBox::indicator {'
-        '  width: 14px; height: 14px; border: 1.5px solid #d1d5db;'
-        '  border-radius: 3px; background: #f3f4f6;'
-        '}'
-        'QCheckBox::indicator:unchecked:disabled {'
-        f'  image: url({_FORCED_OFF_ICON});'
-        '}'
-        'QCheckBox::indicator:checked:disabled {'
-        f'  image: url({_FORCED_OFF_ICON});'
-        '}'
-    )
 
     def __init__(self, config: AppConfig, parent=None):
-        """初始化对象并准备运行所需状态。"""
         super().__init__(parent)
         self.config = config
-        panel_labels = load_config_json_object('ui_labels.json', prefer_user=False).get('feature_panel', {})
-        self._task_title_map = panel_labels.get('task_titles', {})
-        self._feature_label_map = panel_labels.get('feature_labels', {})
-        feature_hints = panel_labels.get('feature_hints', {})
-        self._feature_hint_map = feature_hints if isinstance(feature_hints, dict) else {}
-        self._enabled_text = str(panel_labels.get('enabled', 'Enable'))
-        self._empty_text = str(panel_labels.get('empty_text', 'No configurable feature items'))
-        self._task_title_suffix = str(panel_labels.get('task_title_suffix', ' task'))
-        self._detail_text = str(panel_labels.get('detail_text', '详情'))
-        self._list_empty_text = str(panel_labels.get('list_empty_text', '未配置'))
-        self._list_count_text = str(panel_labels.get('list_count_text', '已配置 {count} 条'))
-        self._list_dialog_title_suffix = str(panel_labels.get('list_dialog_title_suffix', '详情'))
-        self._list_dialog_hint = str(panel_labels.get('list_dialog_hint', '在弹窗中维护列表项。'))
-        self._list_add_text = str(panel_labels.get('list_add_text', '新增'))
-        self._list_delete_text = str(panel_labels.get('list_delete_text', '删除'))
-        self._list_save_text = str(panel_labels.get('list_save_text', '保存'))
-        self._list_cancel_text = str(panel_labels.get('list_cancel_text', '取消'))
-        self._list_input_placeholder = str(panel_labels.get('list_input_placeholder', '输入内容'))
-        list_texts = panel_labels.get('list_texts', {})
-        self._list_text_map = list_texts if isinstance(list_texts, dict) else {}
+        labels = load_config_json_object('ui_labels.json', prefer_user=False).get('feature_panel', {})
+        self._task_title_map = labels.get('task_titles', {})
+        self._feature_label_map = labels.get('feature_labels', {})
         self._loading = True
-        self._feature_boxes: dict[tuple[str, str], QCheckBox] = {}
-        self._list_feature_labels: dict[tuple[str, str], QLabel] = {}
-        self._init_ui()
+        self._bool_widgets: dict[tuple[str, str], CheckBox] = {}
+        self._list_summary: dict[tuple[str, str], CaptionLabel] = {}
+        self._build_ui()
         self._load_config()
-        self._connect_auto_save()
         self._loading = False
 
-    def _init_ui(self):
-        """初始化 `ui` 相关状态或界面。"""
+    def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(10, 8, 10, 8)
-        root.setSpacing(10)
+        root.setContentsMargins(0, 0, 0, 0)
 
-        grid = QGridLayout()
-        grid.setSpacing(10)
-        idx = 0
-        task_names = [str(name) for name in getattr(self.config, 'tasks', {}).keys()]
-        for task_name in task_names:
-            task_cfg = self.config.tasks.get(task_name)
-            if task_cfg is None:
-                continue
+        scroll = ScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        root.addWidget(scroll)
+
+        content = TransparentCardContainer(self)
+        scroll.setWidget(content)
+        scroll.setStyleSheet('QScrollArea { border: none; background: transparent; }')
+        scroll.viewport().setStyleSheet('background: transparent;')
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(10, 8, 10, 8)
+        content_layout.setSpacing(10)
+
+        waterfall = QHBoxLayout()
+        waterfall.setContentsMargins(0, 0, 0, 0)
+        waterfall.setSpacing(10)
+        left_col = QVBoxLayout()
+        right_col = QVBoxLayout()
+        left_col.setContentsMargins(0, 0, 0, 0)
+        right_col.setContentsMargins(0, 0, 0, 0)
+        left_col.setSpacing(10)
+        right_col.setSpacing(10)
+        waterfall.addLayout(left_col, 1)
+        waterfall.addLayout(right_col, 1)
+        columns = [left_col, right_col]
+        col_heights = [0, 0]
+
+        index = 0
+        for task_name, task_cfg in self.config.tasks.items():
             feature_map = getattr(task_cfg, 'features', {}) or {}
             if not isinstance(feature_map, dict) or not feature_map:
                 continue
-            group = self._build_task_group(task_name, feature_map)
-            grid.addWidget(group, idx // 2, idx % 2)
-            idx += 1
+            card = self._build_task_card(task_name, feature_map)
+            target = 0 if col_heights[0] <= col_heights[1] else 1
+            columns[target].addWidget(card)
+            col_heights[target] += max(1, int(card.sizeHint().height()))
+            index += 1
 
-        if idx == 0:
-            empty = QLabel(self._empty_text)
-            empty.setStyleSheet('color: #94a3b8;')
-            root.addWidget(empty)
+        if index == 0:
+            content_layout.addWidget(BodyLabel('当前无可配置的功能项'))
         else:
-            grid.setColumnStretch(0, 1)
-            grid.setColumnStretch(1, 1)
-            root.addLayout(grid)
-        root.addStretch()
-
-    def _build_task_group(self, task_name: str, feature_map: dict[str, Any]) -> QGroupBox:
-        """构建 `task_group` 对应的结构或组件。"""
-        title = self._task_title_map.get(task_name, f'{task_name}{self._task_title_suffix}')
-        group = QGroupBox(title)
-        form = QFormLayout()
-        form.setContentsMargins(0, 0, 0, 4)
-        form.setSpacing(10)
-        for feature_name, feature_value in feature_map.items():
-            label = self._feature_label_map.get(feature_name, feature_name)
-            if isinstance(feature_value, list):
-                form.addRow(f'{label}:', self._build_list_feature_row(task_name, feature_name))
-                continue
-
-            cb = QCheckBox(self._enabled_text)
-            self._feature_boxes[(task_name, feature_name)] = cb
-            hint_text = self._feature_hint_text(task_name, feature_name)
-            if hint_text:
-                row_widget = QWidget()
-                row_layout = QHBoxLayout(row_widget)
-                row_layout.setContentsMargins(0, 0, 0, 0)
-                row_layout.setSpacing(8)
-                row_layout.addWidget(cb)
-                hint_label = QLabel(hint_text)
-                hint_label.setWordWrap(True)
-                hint_label.setStyleSheet('color: #dc2626; font-size: 12px;')
-                row_layout.addWidget(hint_label, 1)
-                form.addRow(f'{label}:', row_widget)
-            else:
-                form.addRow(f'{label}:', cb)
-        group.setLayout(form)
-        return group
-
-    def _build_list_feature_row(self, task_name: str, feature_name: str) -> QWidget:
-        """构建列表型功能项行（主界面仅显示摘要，不显示具体昵称）。"""
-        row_widget = QWidget(self)
-        row = QHBoxLayout(row_widget)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(8)
-
-        summary = QLabel(
-            self._resolve_list_text(task_name, feature_name, 'list_empty_text', self._list_empty_text), row_widget
-        )
-        summary.setStyleSheet('color: #64748b;')
-        self._list_feature_labels[(task_name, feature_name)] = summary
-
-        detail_btn = QPushButton(self._detail_text, row_widget)
-        detail_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        detail_btn.setMinimumHeight(26)
-        detail_btn.setStyleSheet(
-            """
-            QPushButton {
-                min-width: 0px;
-                min-height: 26px;
-                border-radius: 6px;
-                background: #f1f5f9;
-                color: #334155;
-                border: 1px solid #e2e8f0;
-                font-weight: 600;
-                font-size: 11px;
-                padding: 0 8px;
-            }
-            QPushButton:hover {
-                background: #e2e8f0;
-                border-color: #cbd5e1;
-            }
-            """
-        )
-        detail_btn.clicked.connect(
-            lambda _checked=False, name=task_name, feature=feature_name: self._open_list_feature_editor(name, feature)
-        )
-
-        row.addWidget(summary, 1)
-        row.addWidget(detail_btn)
-        return row_widget
-
-    def _resolve_list_text(self, task_name: str, feature_name: str, key: str, default: str) -> str:
-        """读取列表型文案，优先 task.feature 级别，其次 feature 级别，最后全局默认。"""
-        full_key = f'{task_name}.{feature_name}'
-        full_cfg = self._list_text_map.get(full_key, {})
-        if isinstance(full_cfg, dict) and key in full_cfg:
-            text = str(full_cfg.get(key) or '').strip()
-            if text:
-                return text
-
-        feature_cfg = self._list_text_map.get(feature_name, {})
-        if isinstance(feature_cfg, dict) and key in feature_cfg:
-            text = str(feature_cfg.get(key) or '').strip()
-            if text:
-                return text
-
-        return str(default or '').strip()
-
-    def _feature_hint_text(self, task_name: str, feature_name: str) -> str:
-        """读取功能项提示文本，优先 task.feature 级别。"""
-        full_key = f'{task_name}.{feature_name}'
-        text = self._feature_hint_map.get(full_key, self._feature_hint_map.get(feature_name, ''))
-        return str(text or '').strip()
-
-    def _connect_auto_save(self):
-        """绑定 `auto_save` 相关信号或回调。"""
-        for cb in self._feature_boxes.values():
-            cb.toggled.connect(self._auto_save)
-
-    def _auto_save(self):
-        """执行 `auto save` 相关处理。"""
-        if self._loading:
-            return
-        c = self.config
-        for (task_name, feature_name), cb in self._feature_boxes.items():
-            task_cfg = c.tasks.get(task_name)
-            if task_cfg is None:
-                continue
-            feature_map = dict(getattr(task_cfg, 'features', {}) or {})
-            if is_feature_forced_off(task_name, feature_name):
-                feature_map[str(feature_name)] = False
-            else:
-                feature_map[str(feature_name)] = bool(cb.isChecked())
-            task_cfg.features = feature_map
-        c.save()
-        self.config_changed.emit(c)
+            for col in columns:
+                col.addStretch()
+            content_layout.addLayout(waterfall)
+        content_layout.addStretch()
 
     @staticmethod
-    def _normalize_feature_list(value: Any) -> list[str]:
-        """规范化列表型功能项配置。"""
+    def _apply_card_style(card: StableElevatedCardWidget, object_name: str) -> None:
+        card.setObjectName(object_name)
+        card.setStyleSheet(
+            f'ElevatedCardWidget#{object_name} {{'
+            ' border-radius: 10px;'
+            ' border: 1px solid rgba(100, 116, 139, 0.22);'
+            ' }'
+            f'ElevatedCardWidget#{object_name}:hover {{'
+            ' background-color: rgba(37, 99, 235, 0.06);'
+            ' border: 1px solid rgba(59, 130, 246, 0.32);'
+            ' }'
+        )
+
+    @staticmethod
+    def _style_form(form: QFormLayout) -> None:
+        form.setContentsMargins(0, 0, 0, 0)
+        form.setSpacing(10)
+        form.setHorizontalSpacing(0)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+    @staticmethod
+    def _field_label(text: str, parent: QWidget) -> CaptionLabel:
+        text_value = str(text or '').strip()
+        label = CaptionLabel(f'{text_value}:' if text_value else '', parent)
+        if text_value:
+            label.setFixedWidth(label.sizeHint().width() + label.fontMetrics().horizontalAdvance('字'))
+            label.setStyleSheet('color: #475569; font-weight: 600;')
+        return label
+
+    @staticmethod
+    def _add_card_title(layout: QVBoxLayout, title_text: str) -> None:
+        title = BodyLabel(str(title_text))
+        title.setStyleSheet('font-weight: 700; font-size: 14px; color: #1e293b;')
+        layout.addWidget(title)
+        divider = QFrame()
+        divider.setObjectName('featureCardTitleDivider')
+        divider.setFixedHeight(1)
+        divider.setStyleSheet(
+            'QFrame#featureCardTitleDivider { background-color: rgba(37, 99, 235, 0.10); border: none; }'
+        )
+        layout.addWidget(divider)
+
+    def _build_task_card(self, task_name: str, feature_map: dict[str, Any]) -> StableElevatedCardWidget:
+        card = StableElevatedCardWidget(self)
+        self._apply_card_style(card, 'featureConfigCard')
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(9)
+        self._add_card_title(layout, str(self._task_title_map.get(task_name, task_name)))
+
+        form = QFormLayout()
+        self._style_form(form)
+        for feature_name, value in feature_map.items():
+            label = str(self._feature_label_map.get(feature_name, feature_name))
+            if isinstance(value, list):
+                row = QWidget(card)
+                row_layout = QHBoxLayout(row)
+                row_layout.setContentsMargins(0, 0, 0, 0)
+                row_layout.setSpacing(8)
+                summary = CaptionLabel('未配置')
+                summary.setStyleSheet('color: #64748b;')
+                self._list_summary[(task_name, feature_name)] = summary
+                btn = PushButton('详情', row)
+                btn.clicked.connect(
+                    lambda _=False, t=task_name, f=feature_name: self._open_list_editor(t, f),
+                )
+                row_layout.addWidget(summary, 1)
+                row_layout.addWidget(btn)
+                form.addRow(self._field_label(label, card), row)
+                continue
+
+            box = CheckBox('启用', card)
+            box.toggled.connect(self._auto_save)
+            self._bool_widgets[(task_name, feature_name)] = box
+            form.addRow(self._field_label(label, card), box)
+
+        layout.addLayout(form)
+        return card
+
+    @staticmethod
+    def _normalize_list_value(value: Any) -> list[str]:
         if not isinstance(value, list):
             return []
         out: list[str] = []
@@ -490,88 +285,82 @@ class FeaturePanel(QWidget):
             out.append(text)
         return out
 
-    def _read_list_feature(self, task_name: str, feature_name: str) -> list[str]:
-        """读取并规范化列表型配置值。"""
+    def _read_list(self, task_name: str, feature_name: str) -> list[str]:
         task_cfg = self.config.tasks.get(task_name)
         if task_cfg is None:
             return []
         feature_map = getattr(task_cfg, 'features', {}) or {}
         if not isinstance(feature_map, dict):
             return []
-        return self._normalize_feature_list(feature_map.get(feature_name, []))
+        return self._normalize_list_value(feature_map.get(feature_name, []))
 
-    def _set_list_feature(self, task_name: str, feature_name: str, values: list[str]) -> bool:
-        """写入列表型配置并持久化。"""
+    def _write_list(self, task_name: str, feature_name: str, values: list[str]) -> None:
         task_cfg = self.config.tasks.get(task_name)
         if task_cfg is None:
-            return False
+            return
         feature_map = dict(getattr(task_cfg, 'features', {}) or {})
-        feature_map[str(feature_name)] = self._normalize_feature_list(values)
+        feature_map[feature_name] = self._normalize_list_value(values)
         task_cfg.features = feature_map
         self.config.save()
         self.config_changed.emit(self.config)
-        self._refresh_list_feature_summary(task_name, feature_name)
-        return True
+        self._refresh_list_summary(task_name, feature_name)
 
-    def _refresh_list_feature_summary(self, task_name: str, feature_name: str):
-        """刷新列表型功能项摘要文案。"""
-        label = self._list_feature_labels.get((task_name, feature_name))
+    def _refresh_list_summary(self, task_name: str, feature_name: str) -> None:
+        label = self._list_summary.get((task_name, feature_name))
         if label is None:
             return
-        empty_text = self._resolve_list_text(task_name, feature_name, 'list_empty_text', self._list_empty_text)
-        count_text = self._resolve_list_text(task_name, feature_name, 'list_count_text', self._list_count_text)
-        count = len(self._read_list_feature(task_name, feature_name))
-        if count <= 0:
-            label.setText(empty_text)
-            return
-        label.setText(count_text.format(count=count))
+        count = len(self._read_list(task_name, feature_name))
+        label.setText('未配置' if count <= 0 else f'已配置 {count} 条')
 
-    def _open_list_feature_editor(self, task_name: str, feature_name: str):
-        """打开列表型功能项编辑弹窗。"""
-        feature_label = self._feature_label_map.get(feature_name, feature_name)
-        task_title = self._task_title_map.get(task_name, f'{task_name}{self._task_title_suffix}')
-        dialog = ListFeatureEditorDialog(
-            title=f'{task_title} - {feature_label}{self._list_dialog_title_suffix}',
-            values=self._read_list_feature(task_name, feature_name),
-            add_text=self._list_add_text,
-            delete_text=self._list_delete_text,
-            save_text=self._list_save_text,
-            cancel_text=self._list_cancel_text,
-            input_placeholder=self._resolve_list_text(
-                task_name, feature_name, 'list_input_placeholder', self._list_input_placeholder
-            ),
-            hint_text=self._resolve_list_text(task_name, feature_name, 'list_dialog_hint', self._list_dialog_hint),
-            parent=self,
+    def _open_list_editor(self, task_name: str, feature_name: str) -> None:
+        task_title = str(self._task_title_map.get(task_name, task_name))
+        feature_title = str(self._feature_label_map.get(feature_name, feature_name))
+        title = f'{task_title} - {feature_title}'
+        parent_window = self.window()
+        dialog_parent = parent_window if isinstance(parent_window, QWidget) else self
+        dialog = _ListEditorDialog(
+            title=title,
+            values=self._read_list(task_name, feature_name),
+            parent=dialog_parent,
         )
-        if dialog.exec() != int(QDialog.DialogCode.Accepted):
+        dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        if not bool(dialog.exec()):
             return
-        self._set_list_feature(task_name, feature_name, dialog.values())
+        self._write_list(task_name, feature_name, dialog.values())
 
-    def _load_config(self):
-        """加载 `config` 相关数据。"""
-        c = self.config
-        for (task_name, feature_name), cb in self._feature_boxes.items():
-            task_cfg = c.tasks.get(task_name)
+    def _auto_save(self) -> None:
+        if self._loading:
+            return
+        for (task_name, feature_name), box in self._bool_widgets.items():
+            task_cfg = self.config.tasks.get(task_name)
+            if task_cfg is None:
+                continue
+            feature_map = dict(getattr(task_cfg, 'features', {}) or {})
+            if is_feature_forced_off(task_name, feature_name):
+                feature_map[feature_name] = False
+                box.setChecked(False)
+                box.setEnabled(False)
+            else:
+                feature_map[feature_name] = bool(box.isChecked())
+            task_cfg.features = feature_map
+        self.config.save()
+        self.config_changed.emit(self.config)
+
+    def _load_config(self) -> None:
+        for (task_name, feature_name), box in self._bool_widgets.items():
+            task_cfg = self.config.tasks.get(task_name)
             if task_cfg is None:
                 continue
             feature_map = getattr(task_cfg, 'features', {}) or {}
             forced = is_feature_forced_off(task_name, feature_name)
+            box.setEnabled(not forced)
+            box.setChecked(False if forced else bool(feature_map.get(feature_name, False)))
             if forced:
-                cb.setChecked(False)
-                cb.setEnabled(False)
-                cb.setToolTip('该功能为固定禁用项')
-                cb.setStyleSheet(self._FORCED_OFF_STYLE)
-            else:
-                cb.setEnabled(True)
-                cb.setToolTip('')
-                cb.setStyleSheet('')
-                cb.setChecked(bool(feature_map.get(feature_name, False)))
+                box.setToolTip('该功能固定禁用')
+        for task_name, feature_name in self._list_summary.keys():
+            self._refresh_list_summary(task_name, feature_name)
 
-        for task_name, feature_name in self._list_feature_labels.keys():
-            self._refresh_list_feature_summary(task_name, feature_name)
-
-    def set_config(self, config: AppConfig):
-        """替换配置对象并刷新界面。"""
+    def set_config(self, config: AppConfig) -> None:
         self.config = config
         self._loading = True
         self._load_config()

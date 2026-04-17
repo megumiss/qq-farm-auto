@@ -132,6 +132,22 @@ class InstanceManager:
                 return candidate
         raise RuntimeError('failed to allocate unique instance id')
 
+    def _ensure_unique_name(self, preferred: str, *, exclude_instance_id: str | None = None) -> str:
+        base = str(preferred or '').strip() or 'default'
+        exclude_cf = sanitize_instance_name(exclude_instance_id or '').casefold() if exclude_instance_id else ''
+        existing = {
+            str(session.name or '').strip().casefold()
+            for session in self._sessions
+            if not exclude_cf or session.instance_id.casefold() != exclude_cf
+        }
+        if base.casefold() not in existing:
+            return base
+        for idx in range(2, 10_000):
+            candidate = f'{base}{idx}'
+            if candidate.casefold() not in existing:
+                return candidate
+        raise RuntimeError('failed to allocate unique instance name')
+
     def iter_sessions(self) -> list[InstanceSession]:
         return list(self._sessions)
 
@@ -157,7 +173,8 @@ class InstanceManager:
 
     def create_instance(self, name: str) -> InstanceSession:
         target_id = self._ensure_unique_id(name)
-        meta = create_instance(target_id, name=name)
+        target_name = self._ensure_unique_name(name)
+        meta = create_instance(target_id, name=target_name)
         session = self._build_session(meta['id'], str(meta['name']), meta)
         self._sessions.append(session)
         self._active_instance_id = session.instance_id
@@ -170,7 +187,8 @@ class InstanceManager:
         if source is None:
             raise KeyError(f'instance not found: {source_instance_id}')
         target_id = self._ensure_unique_id(target_name)
-        meta = clone_instance(source.instance_id, target_id, target_name=target_name)
+        resolved_name = self._ensure_unique_name(target_name)
+        meta = clone_instance(source.instance_id, target_id, target_name=resolved_name)
         session = self._build_session(meta['id'], str(meta['name']), meta)
         self._sessions.append(session)
         self._active_instance_id = session.instance_id
@@ -183,9 +201,11 @@ class InstanceManager:
         if session is None:
             raise KeyError(f'instance not found: {instance_id}')
 
+        resolved_name = self._ensure_unique_name(new_name, exclude_instance_id=session.instance_id)
+
         candidate = sanitize_instance_name(new_name)
         if candidate.casefold() == session.instance_id.casefold():
-            session.name = str(new_name or session.instance_id)
+            session.name = resolved_name
             session.touch()
             self._mark_meta_dirty()
             self.save()
@@ -205,7 +225,7 @@ class InstanceManager:
                     break
             else:
                 raise RuntimeError('failed to allocate unique instance id')
-        meta = rename_instance(session.instance_id, new_id, new_name=new_name)
+        meta = rename_instance(session.instance_id, new_id, new_name=resolved_name)
         session.instance_id = str(meta['id'])
         session.name = str(meta['name'])
         session.paths = InstancePaths.from_instance_id(session.instance_id)
@@ -216,6 +236,41 @@ class InstanceManager:
         self._mark_meta_dirty()
         self.save()
         return session
+
+    def reorder_instances(self, ordered_instance_ids: list[str]) -> None:
+        """按给定实例 ID 顺序重排会话并持久化。"""
+        if not ordered_instance_ids:
+            return
+
+        by_id = {session.instance_id.casefold(): session for session in self._sessions}
+        used: set[str] = set()
+        reordered: list[InstanceSession] = []
+
+        for raw in ordered_instance_ids:
+            iid = sanitize_instance_name(raw)
+            key = iid.casefold()
+            if key in used:
+                continue
+            session = by_id.get(key)
+            if session is None:
+                continue
+            reordered.append(session)
+            used.add(key)
+
+        for session in self._sessions:
+            key = session.instance_id.casefold()
+            if key in used:
+                continue
+            reordered.append(session)
+
+        current_order = [s.instance_id for s in self._sessions]
+        target_order = [s.instance_id for s in reordered]
+        if current_order == target_order:
+            return
+
+        self._sessions = reordered
+        self._mark_meta_dirty()
+        self.save()
 
     def delete_instance(self, instance_id: str) -> None:
         session = self.get_session(instance_id)

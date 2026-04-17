@@ -1,7 +1,8 @@
 -i https://pypi.tuna.tsinghua.edu.cn/simple
 --trusted-host pypi.tuna.tsinghua.edu.cn
 
-PyQt6>=6.6.0
+PyQt6==6.10.2
+PyQt6-Fluent-Widgets==1.11.1
 mss>=9.0.0
 pyautogui>=0.9.54
 pygetwindow>=0.0.9
