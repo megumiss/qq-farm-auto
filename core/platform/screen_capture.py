@@ -11,7 +11,8 @@ from PIL import Image
 
 from models.config import RunMode
 from utils.image_utils import save_screenshot
-from utils.run_mode_decorator import Config as DecoratorConfig, UNSET
+from utils.run_mode_decorator import UNSET
+from utils.run_mode_decorator import Config as DecoratorConfig
 
 
 class ScreenCapture:
@@ -24,6 +25,7 @@ class ScreenCapture:
     def __init__(self, save_dir: str = 'screenshots', run_mode: RunMode = RunMode.BACKGROUND):
         self._save_dir = save_dir
         self._run_mode = run_mode
+        self._mss_instance: mss.mss | None = None
         os.makedirs(save_dir, exist_ok=True)
 
     def update_run_mode(self, run_mode: RunMode):
@@ -35,6 +37,27 @@ class ScreenCapture:
         if key == 'RUN_MODE':
             return self._run_mode
         return UNSET
+
+    def _get_mss_instance(self) -> mss.mss:
+        """获取并复用当前实例的 mss 句柄。"""
+        if self._mss_instance is None:
+            self._mss_instance = mss.mss()
+        return self._mss_instance
+
+    def close(self) -> None:
+        """释放实例级 mss 句柄。"""
+        if self._mss_instance is None:
+            return
+        try:
+            self._mss_instance.close()
+        except Exception:
+            pass
+        finally:
+            self._mss_instance = None
+
+    def __del__(self):
+        """析构时兜底释放 mss 句柄。"""
+        self.close()
 
     @staticmethod
     def _make_screenshot_path(save_dir: str, prefix: str = 'farm') -> str:
@@ -54,9 +77,9 @@ class ScreenCapture:
             'height': height,
         }
         try:
-            with mss.mss() as sct:
-                screenshot = sct.grab(monitor)
-                image = Image.frombytes('RGB', screenshot.size, screenshot.bgra, 'raw', 'BGRX')
+            sct = self._get_mss_instance()
+            screenshot = sct.grab(monitor)
+            image = Image.frombytes('RGB', screenshot.size, screenshot.bgra, 'raw', 'BGRX')
             return image
         except Exception as e:
             logger.error(f'截屏失败: {e}')
