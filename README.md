@@ -45,11 +45,12 @@
 
 当前内置任务（通过 `_run_task_*` 自动发现）：
 
-- `main`：农场主流程（收获维护、播种、扩建、出售、好友求助入口）
+- `main`：农场主流程（收获维护、播种、扩建、升级）
 - `friend`：独立好友任务（支持 `features.blacklist` 列表配置与 `features.steal_stats` 开关；主界面仅显示黑名单条目数，详情弹窗可维护名单）
 - `share`：独立分享任务（仅支持微信平台，通常配合每日触发）
 - `reward`：独立任务奖励领取（默认每 6 小时执行一次）
 - `gift`：物品领取任务（QQSVIP礼包、商城礼包、可选邮件领取；支持分项开关）
+- `sell`：独立出售任务（仓库批量出售）
 
 ## 后台/多开说明
 
@@ -271,10 +272,10 @@ core/
   engine/
     bot/        # Bot 入口、运行态、执行器桥接、视觉桥接
     task/       # 通用任务执行器、任务模型、统计调度器
-  tasks/        # 业务任务实现
   platform/     # 窗口/截图/点击执行适配
   ui/           # 页面图、assets 按钮、UI 导航
   vision/       # CV 检测器
+tasks/          # 业务任务实现
 configs/
   config.template.json
   config.json

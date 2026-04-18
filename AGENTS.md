@@ -52,7 +52,7 @@
 - `core/engine/task/executor.py`
 : 通用任务执行器（pending/waiting 队列、优先级排序、结果回写 next_run）。
 
-- `core/tasks/*.py`
+- `tasks/*.py`
 : 业务任务实现（`main/friend/share/reward` 及子任务）。
 
 - `core/ui/ui.py` + `core/base/module_base.py`
@@ -156,23 +156,19 @@
 ## 4. 业务任务逻辑（当前实现）
 
 - `main`
-: 主流程任务，内部先巡查维护，再按页面分发子任务。
+: 主流程任务，按功能开关顺序执行收获维护、扩建、播种、升级等动作。
 
 - `main` 在自动播种前会先尝试等级 OCR（可由 `config.planting.level_ocr_enabled` 关闭）。
 
-- `main` 在主页面的子任务顺序（命中即短路）：
-1. `plant`
-2. `expand`
-3. `upgrade`
-4. `sell`
-5. `reward`
-6. `friend`
-
-- `harvest` 内部顺序（命中即返回）：
-1. 收获
-2. 除草
-3. 除虫
-4. 浇水
+- `main` 内部动作顺序（按 feature 开关）：
+1. `harvest`
+2. `weed`
+3. `bug`
+4. `water`
+5. `expand`
+6. `plant`（前置等级 OCR）
+7. `fertilize`（当前由策略强制关闭）
+8. `upgrade`
 
 - `friend`
 : 独立好友任务，复用 `TaskFriend`；支持 `features.blacklist: list[str]` 与 `features.steal_stats: bool` 配置。
@@ -184,13 +180,13 @@
 : 独立任务奖励领取任务，支持分项开关：`features.claim_growth_task`（默认 false）、`features.claim_daily_task`（默认 true）。
 
 - `gift`
-: 物品领取任务，支持分项开关：`features.auto_svip_gift`（默认 true）、`features.auto_mall_gift`（默认 true）、`features.auto_mail`（默认 true，依赖 `menu_goto_mail` 模板，缺失时自动跳过）。
+: 物品领取任务，支持分项开关：`features.auto_svip_gift`（默认 true）、`features.auto_mall_gift`（默认 true）、`features.auto_mail`（默认 true，依赖 `menu_goto_mail` 导航链路进入邮箱页）。
 
 ## 5. 新增任务标准流程
 
 1. 在 `core/engine/bot/executor.py` 增加 `_run_task_<name>(ctx)`。
 2. 在 `configs/config.template.json` 与用户配置中增加 `tasks.<name>`。
-3. 任务业务代码放入 `core/tasks/<name>.py`（或复用已有子任务）。
+3. 任务业务代码放入 `tasks/<name>.py`（或复用已有子任务）。
 4. 在任务中通过 `engine.get_task_features('<name>')` 读取开关。
 5. 必要时补充 `configs/ui_labels.json` 文案映射。
 
