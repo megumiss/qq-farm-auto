@@ -87,6 +87,7 @@ class BotEngine(QObject):
         self._command_queue = None
         self._event_queue = None
         self._responses: dict[str, dict[str, Any]] = {}
+        self._pending_response_ids: set[str] = set()
 
         self._poller = QTimer(self)
         self._poller.setInterval(80)
@@ -208,7 +209,7 @@ class BotEngine(QObject):
 
         if etype == 'command_result':
             req_id = str(event.get('id') or '')
-            if req_id:
+            if req_id and req_id in self._pending_response_ids:
                 self._responses[req_id] = event
             return
 
@@ -262,30 +263,38 @@ class BotEngine(QObject):
             return False
 
         req_id = uuid.uuid4().hex
+        if wait:
+            self._pending_response_ids.add(req_id)
         try:
             self._command_queue.put({'id': req_id, 'cmd': str(cmd), 'data': data or {}})
         except Exception as exc:
+            if wait:
+                self._pending_response_ids.discard(req_id)
             self.log_message.emit(f'发送命令失败 `{cmd}`: {exc}')
             return False
 
         if not wait:
             return True
 
-        deadline = time.time() + max(0.1, float(timeout))
-        app = QCoreApplication.instance()
-        while time.time() < deadline:
-            self._drain_events()
-            result = self._responses.pop(req_id, None)
-            if result is not None:
-                ok = bool(result.get('ok'))
-                if not ok:
-                    err = str(result.get('error') or '').strip()
-                    if err:
-                        self.log_message.emit(f'命令失败 `{cmd}`: {err}')
-                return ok
-            if app is not None:
-                app.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 5)
-            time.sleep(0.005)
+        try:
+            deadline = time.time() + max(0.1, float(timeout))
+            app = QCoreApplication.instance()
+            while time.time() < deadline:
+                self._drain_events()
+                result = self._responses.pop(req_id, None)
+                if result is not None:
+                    ok = bool(result.get('ok'))
+                    if not ok:
+                        err = str(result.get('error') or '').strip()
+                        if err:
+                            self.log_message.emit(f'命令失败 `{cmd}`: {err}')
+                    return ok
+                if app is not None:
+                    app.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 5)
+                time.sleep(0.005)
+        finally:
+            self._pending_response_ids.discard(req_id)
+            self._responses.pop(req_id, None)
 
         self.log_message.emit(f'命令超时 `{cmd}`')
         return False
@@ -320,6 +329,7 @@ class BotEngine(QObject):
         self._command_queue = None
         self._event_queue = None
         self._responses.clear()
+        self._pending_response_ids.clear()
 
         self.scheduler.patch_state('idle')
         self.state_changed.emit('idle')
