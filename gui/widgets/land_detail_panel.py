@@ -580,14 +580,6 @@ class LandDetailPanel(QWidget):
         self.config_changed.emit(self.config)
         return True
 
-    def _save_countdown_to_config(self) -> None:
-        """倒计时自动刷新时回写配置。"""
-        try:
-            self.config.land.plots = self.get_land_data()
-            self.config.save()
-        except Exception:
-            return
-
     def _load_from_config(self) -> None:
         profile_cfg = getattr(getattr(self.config, 'land', None), 'profile', None)
         if profile_cfg is None:
@@ -665,7 +657,6 @@ class LandDetailPanel(QWidget):
                 changed = True
         if not changed:
             return
-        self._save_countdown_to_config()
 
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
