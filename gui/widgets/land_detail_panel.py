@@ -80,8 +80,17 @@ class LandCell(QWidget):
         super().__init__(parent)
         self.plot_id = str(plot_id)
         self._countdown_seconds = 0
+        self._need_upgrade = False
+        self._need_planting = False
         self._init_ui()
-        self.set_data({'level': 'unbuilt', 'maturity_countdown': ''})
+        self.set_data(
+            {
+                'level': 'unbuilt',
+                'maturity_countdown': '',
+                'need_upgrade': False,
+                'need_planting': False,
+            }
+        )
         self.set_editable(False)
 
     def _init_ui(self) -> None:
@@ -96,7 +105,29 @@ class LandCell(QWidget):
 
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
-        header.setSpacing(0)
+        header.setSpacing(4)
+        self._need_planting_badge = CaptionLabel('待播种', self)
+        self._need_planting_badge.setObjectName('needPlantingBadge')
+        self._need_planting_badge.setStyleSheet(
+            'background: rgba(22, 163, 74, 0.92);'
+            'border: 1px solid rgba(21, 128, 61, 0.95);'
+            'border-radius: 6px;'
+            'color: #f0fdf4; font-size: 10px; font-weight: 700;'
+            'padding: 1px 4px;'
+        )
+        self._need_planting_badge.setVisible(False)
+        header.addWidget(self._need_planting_badge, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        self._need_upgrade_badge = CaptionLabel('待升级', self)
+        self._need_upgrade_badge.setObjectName('needUpgradeBadge')
+        self._need_upgrade_badge.setStyleSheet(
+            'background: rgba(220, 38, 38, 0.92);'
+            'border: 1px solid rgba(153, 27, 27, 0.95);'
+            'border-radius: 6px;'
+            'color: #fff7ed; font-size: 10px; font-weight: 700;'
+            'padding: 1px 4px;'
+        )
+        self._need_upgrade_badge.setVisible(False)
+        header.addWidget(self._need_upgrade_badge, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         header.addStretch()
         self._plot_label = CaptionLabel(self.plot_id, self)
         self._plot_label.setObjectName('plotLabel')
@@ -143,6 +174,28 @@ class LandCell(QWidget):
         if key in LAND_STATE_META:
             return key
         return LAND_STATE_ALIASES.get(value, 'unbuilt')
+
+    @staticmethod
+    def _normalize_need_upgrade(raw: object) -> bool:
+        if isinstance(raw, bool):
+            return raw
+        if raw is None:
+            return False
+        text = str(raw).strip().lower()
+        if not text:
+            return False
+        return text in {'1', 'true', 'yes', 'y', 'on', '是'}
+
+    @staticmethod
+    def _normalize_need_planting(raw: object) -> bool:
+        if isinstance(raw, bool):
+            return raw
+        if raw is None:
+            return False
+        text = str(raw).strip().lower()
+        if not text:
+            return False
+        return text in {'1', 'true', 'yes', 'y', 'on', '是'}
 
     def _current_state(self) -> str:
         return self._normalize_state(self._state_combo.currentData())
@@ -218,6 +271,10 @@ class LandCell(QWidget):
         state = self._normalize_state(data.get('level', 'unbuilt'))
         countdown_raw = data.get('maturity_countdown', self._current_countdown_text())
         countdown = self._normalize_countdown_text(countdown_raw)
+        need_upgrade_raw = data.get('need_upgrade', self._need_upgrade)
+        self._need_upgrade = self._normalize_need_upgrade(need_upgrade_raw)
+        need_planting_raw = data.get('need_planting', self._need_planting)
+        self._need_planting = self._normalize_need_planting(need_planting_raw)
         self._countdown_seconds = self._countdown_to_seconds(countdown)
         state_index = self._state_combo.findData(state)
         if state_index < 0:
@@ -226,6 +283,8 @@ class LandCell(QWidget):
             self._state_combo.setCurrentIndex(state_index)
         self._state_view.setText(LAND_STATE_META.get(state, LAND_STATE_META['unbuilt']).label)
         self._countdown_view.setText(countdown or '--:--:--')
+        self._need_upgrade_badge.setVisible(self._need_upgrade)
+        self._need_planting_badge.setVisible(self._need_planting)
         self._apply_state_style(state)
 
     def get_data(self) -> dict[str, object]:
@@ -233,6 +292,8 @@ class LandCell(QWidget):
             'plot_id': self.plot_id,
             'level': self._current_state(),
             'maturity_countdown': self._current_countdown_text(),
+            'need_upgrade': bool(self._need_upgrade),
+            'need_planting': bool(self._need_planting),
         }
 
     def tick_countdown(self) -> bool:

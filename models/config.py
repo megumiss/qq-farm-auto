@@ -330,10 +330,17 @@ def build_default_land_plot_ids() -> list[str]:
     return ids
 
 
-def build_default_land_plots() -> list[dict[str, str]]:
+def build_default_land_plots() -> list[dict[str, Any]]:
     """生成默认地块状态列表。"""
     return [
-        {'plot_id': plot_id, 'level': 'unbuilt', 'maturity_countdown': ''} for plot_id in build_default_land_plot_ids()
+        {
+            'plot_id': plot_id,
+            'level': 'unbuilt',
+            'maturity_countdown': '',
+            'need_upgrade': False,
+            'need_planting': False,
+        }
+        for plot_id in build_default_land_plot_ids()
     ]
 
 
@@ -377,6 +384,28 @@ def normalize_land_maturity_countdown(value: Any) -> str:
     return f'{hour:02d}:{minute:02d}:{second:02d}'
 
 
+def normalize_land_bool_flag(value: Any) -> bool:
+    """规范化地块布尔标记。"""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    text = str(value).strip().lower()
+    if not text:
+        return False
+    return text in {'1', 'true', 'yes', 'y', 'on', '是'}
+
+
+def normalize_land_need_upgrade(value: Any) -> bool:
+    """规范化地块是否需要升级。"""
+    return normalize_land_bool_flag(value)
+
+
+def normalize_land_need_planting(value: Any) -> bool:
+    """规范化地块是否需要播种。"""
+    return normalize_land_bool_flag(value)
+
+
 class LandDetailConfig(BaseModel):
     """定义农场地块详情配置结构。"""
 
@@ -404,7 +433,7 @@ class LandDetailConfig(BaseModel):
             """规范化文本字段。"""
             return str(value or '').strip()
 
-    plots: list[dict[str, str]] = Field(default_factory=build_default_land_plots)
+    plots: list[dict[str, Any]] = Field(default_factory=build_default_land_plots)
     profile: ProfileConfig = Field(default_factory=ProfileConfig)
 
     @field_validator('plots', mode='before')
@@ -412,34 +441,67 @@ class LandDetailConfig(BaseModel):
     def _normalize_plots(cls, value):
         """规范化地块详情列表，确保固定 24 格。"""
         ordered_ids = build_default_land_plot_ids()
-        plot_map: dict[str, dict[str, str]] = {
-            plot_id: {'plot_id': plot_id, 'level': 'unbuilt', 'maturity_countdown': ''} for plot_id in ordered_ids
+        plot_map: dict[str, dict[str, Any]] = {
+            plot_id: {
+                'plot_id': plot_id,
+                'level': 'unbuilt',
+                'maturity_countdown': '',
+                'need_upgrade': False,
+                'need_planting': False,
+            }
+            for plot_id in ordered_ids
         }
 
-        def _apply_item(plot_id_raw: Any, level_raw: Any, maturity_countdown_raw: Any = '') -> None:
+        def _apply_item(
+            plot_id_raw: Any,
+            level_raw: Any,
+            maturity_countdown_raw: Any = '',
+            need_upgrade_raw: Any = False,
+            need_planting_raw: Any = False,
+        ) -> None:
             normalized_id = normalize_land_plot_id(plot_id_raw)
             if not normalized_id or normalized_id not in plot_map:
                 return
             plot_map[normalized_id]['level'] = normalize_land_level(level_raw)
             plot_map[normalized_id]['maturity_countdown'] = normalize_land_maturity_countdown(maturity_countdown_raw)
+            plot_map[normalized_id]['need_upgrade'] = normalize_land_need_upgrade(need_upgrade_raw)
+            plot_map[normalized_id]['need_planting'] = normalize_land_need_planting(need_planting_raw)
 
         if isinstance(value, dict):
             for plot_id, item in value.items():
                 if isinstance(item, dict):
-                    _apply_item(plot_id, item.get('level'), item.get('maturity_countdown'))
+                    _apply_item(
+                        plot_id,
+                        item.get('level'),
+                        item.get('maturity_countdown'),
+                        item.get('need_upgrade'),
+                        item.get('need_planting'),
+                    )
                 else:
-                    _apply_item(plot_id, item, '')
+                    _apply_item(plot_id, item, '', False, False)
         elif isinstance(value, list):
             for item in value:
                 if isinstance(item, dict):
-                    _apply_item(item.get('plot_id'), item.get('level'), item.get('maturity_countdown'))
+                    _apply_item(
+                        item.get('plot_id'),
+                        item.get('level'),
+                        item.get('maturity_countdown'),
+                        item.get('need_upgrade'),
+                        item.get('need_planting'),
+                    )
                     continue
                 try:
                     dumped = item.model_dump()
                 except Exception:
                     dumped = {}
                 if isinstance(dumped, dict):
-                    _apply_item(dumped.get('plot_id'), dumped.get('level'), dumped.get('maturity_countdown'))
+                    _apply_item(
+                        dumped.get('plot_id'),
+                        dumped.get('level'),
+                        dumped.get('maturity_countdown'),
+                        dumped.get('need_upgrade'),
+                        dumped.get('need_planting'),
+                    )
 
         return [plot_map[plot_id] for plot_id in ordered_ids]
 
