@@ -13,9 +13,8 @@ from core.ui.assets import (
     BTN_EXPAND_BRAND,
     BTN_LAND_LEFT,
     BTN_LAND_POP_EMPTY,
-    BTN_LAND_POP_EMPTY_UPGRADE,
-    BTN_LAND_POP_UPGRADE,
     BTN_LAND_RIGHT,
+    ICON_LAND_UPGRADE,
 )
 from core.ui.page import GOTO_MAIN, page_main
 from tasks.base import TaskBase
@@ -55,6 +54,10 @@ LAND_SCAN_MATURITY_TIME_PATTERN = re.compile(r'(\d{2}:\d{2}:\d{2})')
 LAND_SCAN_LEVEL_PATTERN = re.compile(r'(未扩建|普通|红|黑|金)')
 # 空地弹窗地块等级 OCR 区域：相对 BTN_LAND_POP_EMPTY 中心 (dx1, dy1, dx2, dy2)。
 LAND_SCAN_LEVEL_REGION_OFFSET = (-60, -50, 40, 50)
+# 空地弹窗升级图标 ROI：相对 BTN_LAND_POP_EMPTY 中心 (dx1, dy1, dx2, dy2)。
+LAND_SCAN_UPGRADE_EMPTY_REGION_OFFSET = (-100, -50, 0, -0)
+# 非空地弹窗升级图标 ROI：相对 BTN_CROP_MATURITY_TIME_SUFFIX 中心 (dx1, dy1, dx2, dy2)。
+LAND_SCAN_UPGRADE_NON_EMPTY_REGION_OFFSET = (0, -50, 130, 50)
 
 
 class TaskLandScan(TaskBase):
@@ -85,17 +88,17 @@ class TaskLandScan(TaskBase):
         # self.ui.device.click_button(GOTO_MAIN)
 
         try:
-            # for _ in range(2):
-            #     self.ui.device.swipe(LAND_SCAN_SWIPE_H_P1, LAND_SCAN_SWIPE_H_P2, speed=30)
-            #     self.ui.device.sleep(0.5)
-            # cells_after_left = self._collect_land_cells()
-            # if not cells_after_left:
-            #     logger.warning('地块巡查: 未识别到地块网格，跳过任务')
-            #     return self.fail('未识别到地块网格')
-            # cells_after_left = self._exclude_expand_brand_related_cells(cells_after_left)
-            # self._scan_cells_by_physical_columns(
-            #     cells_after_left, from_side='right', column_count=LAND_SCAN_LEFT_STAGE_COL_COUNT
-            # )
+            for _ in range(2):
+                self.ui.device.swipe(LAND_SCAN_SWIPE_H_P1, LAND_SCAN_SWIPE_H_P2, speed=30)
+                self.ui.device.sleep(0.5)
+            cells_after_left = self._collect_land_cells()
+            if not cells_after_left:
+                logger.warning('地块巡查: 未识别到地块网格，跳过任务')
+                return self.fail('未识别到地块网格')
+            cells_after_left = self._exclude_expand_brand_related_cells(cells_after_left)
+            self._scan_cells_by_physical_columns(
+                cells_after_left, from_side='right', column_count=LAND_SCAN_LEFT_STAGE_COL_COUNT
+            )
 
             for _ in range(2):
                 self.ui.device.swipe(LAND_SCAN_SWIPE_H_P2, LAND_SCAN_SWIPE_H_P1, speed=30)
@@ -104,9 +107,17 @@ class TaskLandScan(TaskBase):
             if not cells_after_right:
                 logger.warning('地块巡查: 未识别到地块网格，跳过任务')
                 return self.fail('未识别到地块网格')
+            right_scan_cols = self._resolve_scan_columns(
+                cells_after_right,
+                from_side='left',
+                column_count=LAND_SCAN_RIGHT_STAGE_COL_COUNT,
+            )
             cells_after_right = self._exclude_expand_brand_related_cells(cells_after_right)
             self._scan_cells_by_physical_columns(
-                cells_after_right, from_side='left', column_count=LAND_SCAN_RIGHT_STAGE_COL_COUNT
+                cells_after_right,
+                from_side='left',
+                column_count=LAND_SCAN_RIGHT_STAGE_COL_COUNT,
+                fixed_cols=right_scan_cols,
             )
         finally:
             # TODO 画面回正
@@ -115,18 +126,24 @@ class TaskLandScan(TaskBase):
         logger.info('地块巡查: 结束')
         return self.ok()
 
-    def _scan_cells_by_physical_columns(self, cells: list[LandCell], *, from_side: str, column_count: int):
+    def _scan_cells_by_physical_columns(
+        self,
+        cells: list[LandCell],
+        *,
+        from_side: str,
+        column_count: int,
+        fixed_cols: list[int] | None = None,
+    ):
         """按画面物理列扫描地块（列内顺序：从上到下）。"""
         col_map: dict[int, list[LandCell]] = {}
         for cell in cells:
             physical_col = self._physical_col_rtl(cell)
             col_map.setdefault(physical_col, []).append(cell)
 
-        rtl_cols = sorted(col_map.keys())
-        if str(from_side).strip().lower() == 'left':
-            scan_cols = list(reversed(rtl_cols))[: max(0, int(column_count))]
+        if fixed_cols is not None:
+            scan_cols = [int(col) for col in fixed_cols]
         else:
-            scan_cols = rtl_cols[: max(0, int(column_count))]
+            scan_cols = self._resolve_scan_columns(cells, from_side=from_side, column_count=column_count)
 
         logger.info('地块巡查: 物理列={}', scan_cols)
         for physical_col in scan_cols:
@@ -138,6 +155,17 @@ class TaskLandScan(TaskBase):
                 self.ui.device.sleep(0.2)
 
         return
+
+    def _resolve_scan_columns(self, cells: list[LandCell], *, from_side: str, column_count: int) -> list[int]:
+        """根据当前网格确定本轮应扫描的物理列（排除前确定，避免补列）。"""
+        col_map: dict[int, list[LandCell]] = {}
+        for cell in cells:
+            physical_col = self._physical_col_rtl(cell)
+            col_map.setdefault(physical_col, []).append(cell)
+        rtl_cols = sorted(col_map.keys())
+        if str(from_side).strip().lower() == 'left':
+            return list(reversed(rtl_cols))[: max(0, int(column_count))]
+        return rtl_cols[: max(0, int(column_count))]
 
     def _click_and_ocr_cell(self, *, cell: LandCell):
         """点击单个地块并采集 OCR 文本。"""
@@ -154,93 +182,111 @@ class TaskLandScan(TaskBase):
             # 空土地弹窗
             if self.ui.appear(BTN_LAND_POP_EMPTY, offset=30, threshold=0.65, static=False):
                 removal_location = self.ui.appear_location(BTN_LAND_POP_EMPTY, offset=30, threshold=0.65, static=False)
-                need_upgrade = self._detect_need_upgrade(empty_plot=True)
+                need_upgrade = self._detect_need_upgrade(anchor=removal_location, empty_plot=True)
                 need_planting = True
                 roi = self._build_land_level_region(removal_location)
                 level_items = self.ocr_tool.detect(self.ui.device.image, region=roi, scale=1.2, alpha=1.1, beta=0.0)
                 level_text = self._merge_ocr_items_text(level_items)
                 level = self._extract_land_level(level_text)
                 logger.info(
-                    '地块巡查: 空地等级OCR | 序号={} text={} level={}',
+                    '地块巡查: 空地等级OCR | 序号={} text={} 等级={}',
                     cell.label,
                     self._short_text(level_text),
                     level or '<empty>',
                 )
+                update_level = level or None
                 if not level:
-                    flags_updated = self._update_plot_flags(
-                        plot_id=cell.label, need_upgrade=need_upgrade, need_planting=need_planting
-                    )
-                    if flags_updated:
-                        self._save_land_flags_update(
-                            plot_id=cell.label, need_upgrade=need_upgrade, need_planting=need_planting
-                        )
                     logger.warning(
-                        '地块巡查: 未解析到地块等级，仅更新标记 | 序号={} 等级={} 需要升级={} 需要播种={}',
+                        '地块巡查: 未识别到等级，更新其他字段 | 序号={} 等级={} 需要升级={} 需要播种={}',
                         cell.label,
                         level_text,
                         need_upgrade,
                         need_planting,
                     )
-                    return
-                updated = self._update_plot(
-                    plot_id=cell.label, level=level, need_upgrade=need_upgrade, need_planting=need_planting
+                updated = self._update_plot_fields(
+                    plot_id=cell.label,
+                    level=update_level,
+                    countdown='',
+                    need_upgrade=need_upgrade,
+                    need_planting=need_planting,
                 )
                 if updated:
-                    self._save_land_update(
-                        plot_id=cell.label, level=level, need_upgrade=need_upgrade, need_planting=need_planting
-                    )
-                    logger.debug(
-                        '地块巡查: 地块等级更新 | 序号={} 等级={} 需要升级={} 需要播种={}',
-                        cell.label,
-                        level,
-                        need_upgrade,
-                        need_planting,
+                    self._save_plot_update(
+                        plot_id=cell.label,
+                        level=update_level,
+                        countdown='',
+                        need_upgrade=need_upgrade,
+                        need_planting=need_planting,
                     )
                 return
             self.ui.device.sleep(0.2)
 
-        need_upgrade = self._detect_need_upgrade(empty_plot=False)
+        removal_location = self.ui.appear_location(BTN_CROP_MATURITY_TIME_SUFFIX, offset=30, static=False)
+        need_upgrade = self._detect_need_upgrade(anchor=removal_location, empty_plot=False)
         need_planting = False
-        flags_updated = self._update_plot_flags(
-            plot_id=cell.label,
-            need_upgrade=need_upgrade,
-            need_planting=need_planting,
-        )
-        if flags_updated:
-            self._save_land_flags_update(plot_id=cell.label, need_upgrade=need_upgrade, need_planting=need_planting)
+        countdown: str | None = None
 
         # TODO 识别地块等级
-        removal_location = self.ui.appear_location(BTN_CROP_MATURITY_TIME_SUFFIX, offset=30, static=False)
         if removal_location is None:
             logger.warning('地块巡查: 未识别到成熟时间锚点，跳过 OCR | 序号={}', cell.label)
-            return
-        roi = self._build_ocr_region(removal_location)
-        items = self.ocr_tool.detect(self.ui.device.image, region=roi, scale=1.2, alpha=1.1, beta=0.0)
-        text, score, tokens = self._pick_time_tokens_near_suffix(items=items, anchor=removal_location)
-        countdown = self._extract_maturity_time(text)
-        display_text = countdown or text
-        logger.debug(
-            '地块巡查: OCR筛选 | region={} pick_offset=({}, {}, {}, {}) tokens={} text={}',
-            roi,
-            LAND_SCAN_TIME_PICK_X1,
-            LAND_SCAN_TIME_PICK_Y1,
-            LAND_SCAN_TIME_PICK_X2,
-            LAND_SCAN_TIME_PICK_Y2,
-            tokens,
-            display_text or '<empty>',
+        else:
+            roi = self._build_ocr_region(removal_location)
+            items = self.ocr_tool.detect(self.ui.device.image, region=roi, scale=1.2, alpha=1.1, beta=0.0)
+            text, score, tokens = self._pick_time_tokens_near_suffix(items=items, anchor=removal_location)
+            countdown = self._extract_maturity_time(text)
+            display_text = countdown or text
+            logger.debug(
+                '地块巡查: OCR筛选 | region={} pick_offset=({}, {}, {}, {}) tokens={} text={}',
+                roi,
+                LAND_SCAN_TIME_PICK_X1,
+                LAND_SCAN_TIME_PICK_Y1,
+                LAND_SCAN_TIME_PICK_X2,
+                LAND_SCAN_TIME_PICK_Y2,
+                tokens,
+                display_text or '<empty>',
+            )
+            logger.info(
+                '地块巡查: OCR | 序号={} text={} score={:.3f}', cell.label, self._short_text(display_text), score
+            )
+
+        updated = self._update_plot_fields(
+            plot_id=cell.label, countdown=countdown, need_upgrade=need_upgrade, need_planting=need_planting
         )
-        logger.info('地块巡查: OCR | 序号={} text={} score={:.3f}', cell.label, self._short_text(display_text), score)
-        if countdown:
-            updated = self._update_plot_maturity_countdown(plot_id=cell.label, countdown=countdown)
-            if updated:
-                logger.debug('地块巡查: 成熟时间更新 | 序号={} countdown={}', cell.label, countdown)
-                self._save_land_countdown_update(plot_id=cell.label)
+        if updated:
+            self._save_plot_update(
+                plot_id=cell.label, countdown=countdown, need_upgrade=need_upgrade, need_planting=need_planting
+            )
         return
 
-    def _detect_need_upgrade(self, *, empty_plot: bool) -> bool:
-        """识别当前地块弹窗是否出现升级按钮。"""
-        upgrade_btn = BTN_LAND_POP_EMPTY_UPGRADE if empty_plot else BTN_LAND_POP_UPGRADE
-        return bool(self.ui.appear(upgrade_btn, offset=30, threshold=0.74, static=False))
+    def _detect_need_upgrade(self, *, anchor: tuple[int, int] | None, empty_plot: bool) -> bool:
+        """识别当前地块弹窗是否出现升级图标（GIF 多帧匹配）。"""
+        if anchor is None:
+            return False
+        roi = self._build_upgrade_icon_region(anchor, empty_plot=empty_plot)
+        matched = self.ui.match_gif_multi(ICON_LAND_UPGRADE, roi=roi)
+        return bool(matched)
+
+    @staticmethod
+    def _build_upgrade_icon_region(center: tuple[int, int], *, empty_plot: bool) -> tuple[int, int, int, int]:
+        """按锚点与偏移构造升级图标检测 ROI。"""
+        dx1, dy1, dx2, dy2 = (
+            LAND_SCAN_UPGRADE_EMPTY_REGION_OFFSET if empty_plot else LAND_SCAN_UPGRADE_NON_EMPTY_REGION_OFFSET
+        )
+        cx = int(center[0])
+        cy = int(center[1])
+        x1 = int(cx + dx1)
+        y1 = int(cy + dy1)
+        x2 = int(cx + dx2)
+        y2 = int(cy + dy2)
+        if x1 > x2:
+            x1, x2 = x2, x1
+        if y1 > y2:
+            y1, y2 = y2, y1
+        x1 = max(0, min(x1, LAND_SCAN_FRAME_WIDTH - 1))
+        y1 = max(0, min(y1, LAND_SCAN_FRAME_HEIGHT - 1))
+        x2 = max(x1 + 1, min(x2, LAND_SCAN_FRAME_WIDTH))
+        y2 = max(y1 + 1, min(y2, LAND_SCAN_FRAME_HEIGHT))
+        return x1, y1, x2, y2
 
     def _collect_land_cells(self) -> list[LandCell]:
         """识别左右锚点并推算地块网格。"""
@@ -437,8 +483,16 @@ class TaskLandScan(TaskBase):
             return ''
         return str(match.group(1))
 
-    def _update_plot_maturity_countdown(self, *, plot_id: str, countdown: str) -> bool:
-        """回写单个地块成熟倒计时到配置。"""
+    def _update_plot_fields(
+        self,
+        *,
+        plot_id: str,
+        level: str | None = None,
+        countdown: str | None = None,
+        need_upgrade: bool | None = None,
+        need_planting: bool | None = None,
+    ) -> bool:
+        """回写单个地块字段（同地块统一更新）。"""
         target = str(plot_id or '').strip()
         if not target:
             return False
@@ -447,47 +501,29 @@ class TaskLandScan(TaskBase):
         if not isinstance(plots, list):
             return False
 
-        for item in plots:
-            if not isinstance(item, dict):
-                continue
-            if str(item.get('plot_id', '')).strip() != target:
-                continue
-            old = str(item.get('maturity_countdown', '') or '').strip()
-            if old == countdown:
-                return False
-            item['maturity_countdown'] = countdown
-            return True
-        return False
-
-    def _update_plot(
-        self,
-        *,
-        plot_id: str,
-        level: str,
-        need_upgrade: bool | None = None,
-        need_planting: bool | None = None,
-    ) -> bool:
-        """回写单个地块等级与状态标记到配置。"""
-        target = str(plot_id or '').strip()
-        normalized_level = str(level or '').strip().lower()
-        if not target or not normalized_level:
-            return False
-        land_cfg = getattr(self.engine.config, 'land', None)
-        plots = getattr(land_cfg, 'plots', None)
-        if not isinstance(plots, list):
-            return False
+        normalized_level: str | None = None
+        if level is not None:
+            raw_level = str(level or '').strip().lower()
+            normalized_level = raw_level or None
+        normalized_countdown: str | None = None
+        if countdown is not None:
+            normalized_countdown = str(countdown or '').strip()
 
         for item in plots:
             if not isinstance(item, dict):
                 continue
             if str(item.get('plot_id', '')).strip() != target:
                 continue
-            old = str(item.get('level', '') or '').strip().lower()
+            old_level = str(item.get('level', '') or '').strip().lower()
+            old_countdown = str(item.get('maturity_countdown', '') or '').strip()
             old_need_upgrade = bool(item.get('need_upgrade', False))
             old_need_planting = bool(item.get('need_planting', False))
             changed = False
-            if old != normalized_level:
+            if normalized_level is not None and old_level != normalized_level:
                 item['level'] = normalized_level
+                changed = True
+            if normalized_countdown is not None and old_countdown != normalized_countdown:
+                item['maturity_countdown'] = normalized_countdown
                 changed = True
             if need_upgrade is not None and old_need_upgrade != bool(need_upgrade):
                 item['need_upgrade'] = bool(need_upgrade)
@@ -498,99 +534,37 @@ class TaskLandScan(TaskBase):
             return changed
         return False
 
-    def _update_plot_flags(
+    def _save_plot_update(
         self,
         *,
         plot_id: str,
+        level: str | None = None,
+        countdown: str | None = None,
         need_upgrade: bool | None = None,
         need_planting: bool | None = None,
-    ) -> bool:
-        """回写单个地块状态标记到配置。"""
-        target = str(plot_id or '').strip()
-        if not target:
-            return False
-        land_cfg = getattr(self.engine.config, 'land', None)
-        plots = getattr(land_cfg, 'plots', None)
-        if not isinstance(plots, list):
-            return False
-
-        for item in plots:
-            if not isinstance(item, dict):
-                continue
-            if str(item.get('plot_id', '')).strip() != target:
-                continue
-            changed = False
-            if need_upgrade is not None:
-                old_need_upgrade = bool(item.get('need_upgrade', False))
-                if old_need_upgrade != bool(need_upgrade):
-                    item['need_upgrade'] = bool(need_upgrade)
-                    changed = True
-            if need_planting is not None:
-                old_need_planting = bool(item.get('need_planting', False))
-                if old_need_planting != bool(need_planting):
-                    item['need_planting'] = bool(need_planting)
-                    changed = True
-            return changed
-        return False
-
-    def _save_land_countdown_update(self, *, plot_id: str) -> None:
-        """单地块更新后立即落盘。"""
-        try:
-            self.engine.config.save()
-        except Exception as exc:
-            logger.warning('地块巡查: 成熟时间写入配置失败 | 序号={} error={}', plot_id, exc)
-            return
-        self._emit_config_snapshot()
-        logger.debug(
-            '地块巡查: 成熟时间已写入配置 | 序号={} path={}',
-            plot_id,
-            self._get_config_path_for_log(),
-        )
-
-    def _save_land_flags_update(self, *, plot_id: str, need_upgrade: bool, need_planting: bool) -> None:
-        """单地块状态标记更新后立即落盘。"""
+    ) -> None:
+        """单地块统一字段更新后立即落盘。"""
         try:
             self.engine.config.save()
         except Exception as exc:
             logger.warning(
-                '地块巡查: 地块标记写入配置失败 | 序号={} need_upgrade={} need_planting={} error={}',
-                plot_id,
-                need_upgrade,
-                need_planting,
-                exc,
-            )
-            return
-        self._emit_config_snapshot()
-        logger.debug(
-            '地块巡查: 地块标记已写入配置 | 序号={} need_upgrade={} need_planting={} path={}',
-            plot_id,
-            need_upgrade,
-            need_planting,
-            self._get_config_path_for_log(),
-        )
-
-    def _save_land_update(self, *, plot_id: str, level: str, need_upgrade: bool, need_planting: bool) -> None:
-        """单地块等级更新后立即落盘。"""
-        try:
-            self.engine.config.save()
-        except Exception as exc:
-            logger.warning(
-                '地块巡查: 地块等级写入配置失败 | 序号={} level={} need_upgrade={} need_planting={} error={}',
+                '地块巡查: 地块信息写入配置失败 | 序号={} 等级={} 成熟倒计时={} 需要升级={} 需要播种={} error={}',
                 plot_id,
                 level,
+                countdown,
                 need_upgrade,
                 need_planting,
                 exc,
             )
             return
         self._emit_config_snapshot()
-        logger.debug(
-            '地块巡查: 地块等级已写入配置 | 序号={} level={} need_upgrade={} need_planting={} path={}',
+        logger.info(
+            '地块巡查: 地块信息已更新 | 序号={} 等级={} 成熟倒计时={} 需要升级={} 需要播种={}',
             plot_id,
             level,
+            countdown,
             need_upgrade,
             need_planting,
-            self._get_config_path_for_log(),
         )
 
     def _emit_config_snapshot(self) -> None:

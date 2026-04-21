@@ -106,6 +106,10 @@ class LandCell(QWidget):
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(4)
+
+        badge_col = QVBoxLayout()
+        badge_col.setContentsMargins(0, 0, 0, 0)
+        badge_col.setSpacing(3)
         self._need_planting_badge = CaptionLabel('待播种', self)
         self._need_planting_badge.setObjectName('needPlantingBadge')
         self._need_planting_badge.setStyleSheet(
@@ -116,7 +120,7 @@ class LandCell(QWidget):
             'padding: 1px 4px;'
         )
         self._need_planting_badge.setVisible(False)
-        header.addWidget(self._need_planting_badge, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        badge_col.addWidget(self._need_planting_badge, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self._need_upgrade_badge = CaptionLabel('待升级', self)
         self._need_upgrade_badge.setObjectName('needUpgradeBadge')
         self._need_upgrade_badge.setStyleSheet(
@@ -127,7 +131,9 @@ class LandCell(QWidget):
             'padding: 1px 4px;'
         )
         self._need_upgrade_badge.setVisible(False)
-        header.addWidget(self._need_upgrade_badge, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        badge_col.addWidget(self._need_upgrade_badge, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+
+        header.addLayout(badge_col)
         header.addStretch()
         self._plot_label = CaptionLabel(self.plot_id, self)
         self._plot_label.setObjectName('plotLabel')

@@ -30,8 +30,6 @@ BTN_HARVEST = Button(area={'qq': (246, 688, 287, 720), 'wechat': (246, 688, 287,
 BTN_HOME = Button(area={'qq': (465, 697, 510, 729), 'wechat': (465, 697, 510, 729)}, color={'qq': (181, 126, 76), 'wechat': (181, 126, 76)}, button={'qq': (465, 697, 510, 729), 'wechat': (465, 697, 510, 729)}, file={'qq': 'templates/qq/btn/btn_home.png', 'wechat': 'templates/qq/btn/btn_home.png'}, name='btn_home')  # 回家
 BTN_LAND_LEFT = Button(area={'qq': (43, 590, 59, 614), 'wechat': (43, 590, 59, 614)}, color={'qq': (192, 200, 87), 'wechat': (192, 200, 87)}, button={'qq': (43, 590, 59, 614), 'wechat': (43, 590, 59, 614)}, file={'qq': 'templates/qq/btn/btn_land_left.png', 'wechat': 'templates/qq/btn/btn_land_left.png'}, name='btn_land_left')
 BTN_LAND_POP_EMPTY = Button(area={'qq': (194, 507, 222, 521), 'wechat': (194, 507, 222, 521)}, color={'qq': (208, 173, 147), 'wechat': (208, 173, 147)}, button={'qq': (194, 507, 222, 521), 'wechat': (194, 507, 222, 521)}, file={'qq': 'templates/qq/btn/btn_land_pop_empty.png', 'wechat': 'templates/qq/btn/btn_land_pop_empty.png'}, name='btn_land_pop_empty')
-BTN_LAND_POP_EMPTY_UPGRADE = Button(area={'qq': (263, 431, 280, 448), 'wechat': (263, 431, 280, 448)}, color={'qq': (164, 222, 83), 'wechat': (164, 222, 83)}, button={'qq': (263, 431, 280, 448), 'wechat': (263, 431, 280, 448)}, file={'qq': 'templates/qq/btn/btn_land_pop_empty_upgrade.png', 'wechat': 'templates/qq/btn/btn_land_pop_empty_upgrade.png'}, name='btn_land_pop_empty_upgrade')
-BTN_LAND_POP_UPGRADE = Button(area={'qq': (437, 457, 453, 473), 'wechat': (437, 457, 453, 473)}, color={'qq': (163, 214, 85), 'wechat': (163, 214, 85)}, button={'qq': (437, 457, 453, 473), 'wechat': (437, 457, 453, 473)}, file={'qq': 'templates/qq/btn/btn_land_pop_upgrade.png', 'wechat': 'templates/qq/btn/btn_land_pop_upgrade.png'}, name='btn_land_pop_upgrade')
 BTN_LAND_RIGHT = Button(area={'qq': (482, 547, 498, 571), 'wechat': (482, 547, 498, 571)}, color={'qq': (171, 197, 84), 'wechat': (171, 197, 84)}, button={'qq': (482, 547, 498, 571), 'wechat': (482, 547, 498, 571)}, file={'qq': 'templates/qq/btn/btn_land_right.png', 'wechat': 'templates/qq/btn/btn_land_right.png'}, name='btn_land_right')
 BTN_LOGIN_AGAIN = Button(area={'qq': (325, 572, 423, 598), 'wechat': (325, 572, 423, 598)}, color={'qq': (195, 203, 121), 'wechat': (195, 203, 121)}, button={'qq': (325, 572, 423, 598), 'wechat': (325, 572, 423, 598)}, file={'qq': 'templates/qq/btn/btn_login_again.png', 'wechat': 'templates/qq/btn/btn_login_again.png'}, name='btn_login_again')
 BTN_MALL_FREE = Button(area={'qq': (122, 539, 183, 569), 'wechat': (123, 536, 183, 568)}, color={'qq': (146, 167, 48), 'wechat': (140, 170, 45)}, button={'qq': (122, 539, 183, 569), 'wechat': (123, 536, 183, 568)}, file={'qq': 'templates/qq/btn/btn_mall_free.png', 'wechat': 'templates/wechat/btn/btn_mall_free.png'}, name='btn_mall_free')
@@ -60,6 +58,7 @@ ICON_LAND_GOLD = Button(area={'qq': (0, 0, 19, 17), 'wechat': (0, 0, 19, 17)}, c
 ICON_LAND_GOLD_2 = Button(area={'qq': (0, 0, 19, 17), 'wechat': (0, 0, 19, 17)}, color={'qq': (249, 204, 51), 'wechat': (249, 204, 51)}, button={'qq': (0, 0, 19, 17), 'wechat': (0, 0, 19, 17)}, file={'qq': 'templates/qq/land/icon_land_gold_2.png', 'wechat': 'templates/qq/land/icon_land_gold_2.png'}, name='icon_land_gold_2')
 ICON_LAND_RED = Button(area={'qq': (0, 0, 23, 15), 'wechat': (0, 0, 23, 15)}, color={'qq': (223, 87, 55), 'wechat': (223, 87, 55)}, button={'qq': (0, 0, 23, 15), 'wechat': (0, 0, 23, 15)}, file={'qq': 'templates/qq/land/icon_land_red.png', 'wechat': 'templates/qq/land/icon_land_red.png'}, name='icon_land_red')
 ICON_LAND_STAND = Button(area={'qq': (0, 0, 19, 16), 'wechat': (0, 0, 19, 16)}, color={'qq': (178, 131, 74), 'wechat': (178, 131, 74)}, button={'qq': (0, 0, 19, 16), 'wechat': (0, 0, 19, 16)}, file={'qq': 'templates/qq/land/icon_land_stand.png', 'wechat': 'templates/qq/land/icon_land_stand.png'}, name='icon_land_stand')
+ICON_LAND_UPGRADE = Button(area={'qq': (0, 0, 14, 18), 'wechat': (0, 0, 14, 18)}, color={'qq': (193, 235, 96), 'wechat': (193, 235, 96)}, button={'qq': (0, 0, 14, 18), 'wechat': (0, 0, 14, 18)}, file={'qq': 'templates/qq/icon/icon_land_upgrade.gif', 'wechat': 'templates/qq/icon/icon_land_upgrade.gif'}, name='icon_land_upgrade')
 ICON_NUM_0 = Button(area={'qq': (0, 0, 8, 11), 'wechat': (0, 0, 8, 11)}, color={'qq': (147, 136, 119), 'wechat': (147, 136, 119)}, button={'qq': (0, 0, 8, 11), 'wechat': (0, 0, 8, 11)}, file={'qq': 'templates/qq/icon/icon_num_0.png', 'wechat': 'templates/qq/icon/icon_num_0.png'}, name='icon_num_0')
 ICON_NUM_1 = Button(area={'qq': (0, 0, 5, 12), 'wechat': (0, 0, 5, 12)}, color={'qq': (161, 150, 131), 'wechat': (161, 150, 131)}, button={'qq': (0, 0, 5, 12), 'wechat': (0, 0, 5, 12)}, file={'qq': 'templates/qq/icon/icon_num_1.png', 'wechat': 'templates/qq/icon/icon_num_1.png'}, name='icon_num_1')
 ICON_NUM_2 = Button(area={'qq': (0, 0, 7, 17), 'wechat': (0, 0, 7, 17)}, color={'qq': (175, 164, 143), 'wechat': (175, 164, 143)}, button={'qq': (0, 0, 7, 17), 'wechat': (0, 0, 7, 17)}, file={'qq': 'templates/qq/icon/icon_num_2.png', 'wechat': 'templates/qq/icon/icon_num_2.png'}, name='icon_num_2')
@@ -128,8 +127,6 @@ ASSET_NAME_TO_CONST = {
     'btn_home': BTN_HOME,
     'btn_land_left': BTN_LAND_LEFT,
     'btn_land_pop_empty': BTN_LAND_POP_EMPTY,
-    'btn_land_pop_empty_upgrade': BTN_LAND_POP_EMPTY_UPGRADE,
-    'btn_land_pop_upgrade': BTN_LAND_POP_UPGRADE,
     'btn_land_right': BTN_LAND_RIGHT,
     'btn_login_again': BTN_LOGIN_AGAIN,
     'btn_mall_free': BTN_MALL_FREE,
@@ -160,6 +157,7 @@ ASSET_NAME_TO_CONST = {
     'icon_land_gold_2': ICON_LAND_GOLD_2,
     'icon_land_red': ICON_LAND_RED,
     'icon_land_stand': ICON_LAND_STAND,
+    'icon_land_upgrade': ICON_LAND_UPGRADE,
     'icon_num_0': ICON_NUM_0,
     'icon_num_1': ICON_NUM_1,
     'icon_num_2': ICON_NUM_2,
