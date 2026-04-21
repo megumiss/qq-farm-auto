@@ -15,6 +15,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from PIL import Image, ImageSequence
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.app_paths import load_config_json_object
@@ -32,6 +33,7 @@ OVERRIDE_SUFFIXES = {'AREA', 'COLOR', 'BUTTON'}
 SUPPORTED_PLATFORMS = [DEFAULT_TEMPLATE_PLATFORM] + sorted(
     p for p in VALID_TEMPLATE_PLATFORMS if p != DEFAULT_TEMPLATE_PLATFORM
 )
+SUPPORTED_IMAGE_EXTS = {'.png', '.gif'}
 
 
 HEADER = """from core.base.button import Button
@@ -77,15 +79,46 @@ def load_aliases() -> dict[str, str]:
 def extract_bbox_and_color(image_path: Path) -> tuple[tuple[int, int, int, int], tuple[int, int, int]]:
     """提取非黑像素 bbox 与均值颜色（RGB）。"""
 
-    img = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
-    if img is None:
+    if image_path.suffix.lower() == '.gif':
+        return _extract_gif_bbox_and_color(image_path)
+    bgr = _load_image_as_bgr(image_path)
+    if bgr is None:
         return (0, 0, 1, 1), (128, 128, 128)
+    return _extract_bbox_and_color_from_bgr(bgr)
 
-    if img.ndim == 2:
-        bgr = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-    else:
-        # 与 NIKKE 一致：忽略 alpha，仅按 RGB 非黑像素求 bbox
-        bgr = img[:, :, :3]
+
+def _extract_gif_bbox_and_color(image_path: Path) -> tuple[tuple[int, int, int, int], tuple[int, int, int]]:
+    """提取 GIF 的 bbox 与颜色（按首帧，帧间 bbox 不一致时告警）。"""
+
+    first_bbox: tuple[int, int, int, int] | None = None
+    first_color: tuple[int, int, int] | None = None
+    try:
+        with Image.open(image_path) as gif:
+            for frame in ImageSequence.Iterator(gif):
+                rgb = frame.convert('RGB')
+                arr = np.array(rgb)
+                bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+                bbox, color = _extract_bbox_and_color_from_bgr(bgr)
+                if first_bbox is None:
+                    first_bbox = bbox
+                    first_color = color
+                    continue
+                if bbox != first_bbox:
+                    print(f'[button_extract] warning: gif bbox differs across frames: {image_path}')
+    except Exception as exc:
+        print(f'[button_extract] warning: failed to read gif {image_path}: {exc}')
+    if first_bbox is None or first_color is None:
+        return (0, 0, 1, 1), (128, 128, 128)
+    return first_bbox, first_color
+
+
+def _extract_bbox_and_color_from_bgr(bgr: np.ndarray) -> tuple[tuple[int, int, int, int], tuple[int, int, int]]:
+    """从 BGR 图像提取非黑像素 bbox 与均值颜色（RGB）。"""
+
+    if bgr.ndim == 2:
+        bgr = cv2.cvtColor(bgr, cv2.COLOR_GRAY2BGR)
+    elif bgr.ndim == 3 and bgr.shape[2] > 3:
+        bgr = bgr[:, :, :3]
 
     mask = np.any(bgr > 0, axis=2)
     ys, xs = np.where(mask)
@@ -110,11 +143,31 @@ def extract_bbox_and_color(image_path: Path) -> tuple[tuple[int, int, int, int],
 def image_wh(image_path: Path) -> tuple[int, int] | None:
     """读取图片宽高。"""
 
-    img = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
+    if image_path.suffix.lower() == '.gif':
+        try:
+            with Image.open(image_path) as gif:
+                width, height = gif.size
+                return int(width), int(height)
+        except Exception:
+            return None
+    img = _load_image_as_bgr(image_path)
     if img is None:
         return None
     h, w = img.shape[:2]
     return int(w), int(h)
+
+
+def _load_image_as_bgr(image_path: Path) -> np.ndarray | None:
+    """读取图片并归一化为 3 通道 BGR（非 GIF）。"""
+
+    img = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
+    if img is None:
+        return None
+    if img.ndim == 2:
+        return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    if img.ndim == 3 and img.shape[2] > 3:
+        return img[:, :, :3]
+    return img
 
 
 def to_const_name(template_name: str) -> str:
@@ -158,8 +211,8 @@ def _iter_files_in_root(root: Path):
                 continue
             dirs[:] = [d for d in dirs if d.lower() not in ignored]
 
-        for filename in files:
-            if filename.lower().endswith('.png'):
+        for filename in sorted(files):
+            if Path(filename).suffix.lower() in SUPPORTED_IMAGE_EXTS:
                 yield Path(walk_root) / filename
 
 
@@ -183,7 +236,14 @@ def collect_sources_for_platform(platform: str) -> dict[str, SourceBundle]:
             name, kind = parse_template_name(path)
             bundle = bundles.setdefault(name, SourceBundle())
             if kind == 'BASE':
-                if bundle.base is None or priority > bundle.base_priority:
+                if (
+                    bundle.base is None
+                    or priority > bundle.base_priority
+                    or (
+                        priority == bundle.base_priority
+                        and _image_ext_priority(path) > _image_ext_priority(bundle.base)
+                    )
+                ):
                     bundle.base = path
                     bundle.base_rel = f'templates/{rel}'
                     bundle.base_priority = int(priority)
@@ -193,10 +253,27 @@ def collect_sources_for_platform(platform: str) -> dict[str, SourceBundle]:
             priority_key = f'{key}_priority'
             current = getattr(bundle, key)
             current_priority = int(getattr(bundle, priority_key))
-            if current is None or priority > current_priority:
+            if (
+                current is None
+                or priority > current_priority
+                or (priority == current_priority and _image_ext_priority(path) > _image_ext_priority(current))
+            ):
                 setattr(bundle, key, path)
                 setattr(bundle, priority_key, int(priority))
     return bundles
+
+
+def _image_ext_priority(path: Path | None) -> int:
+    """同优先级下图片扩展名选择策略：png 优先于 gif。"""
+
+    if path is None:
+        return -1
+    ext = path.suffix.lower()
+    if ext == '.png':
+        return 2
+    if ext == '.gif':
+        return 1
+    return 0
 
 
 def _extract_bundle_values(

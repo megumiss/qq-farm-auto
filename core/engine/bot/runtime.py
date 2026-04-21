@@ -241,7 +241,9 @@ class BotRuntimeMixin:
     def stop(self):
         """停止当前模块并释放运行状态。"""
         self._fatal_error_stop_requested = False
-        self._stop_executor()
+        if not self._stop_executor():
+            self.log_message.emit('执行器仍在停止中，请稍候重试')
+            return
         self.ui = None
         self.device = None
         self.scheduler.force_state('idle')

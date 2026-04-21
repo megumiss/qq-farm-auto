@@ -61,13 +61,24 @@ class TaskExecutor:
             self._thread = threading.Thread(target=self._loop, name='TaskExecutorLoop', daemon=True)
             self._thread.start()
 
-    def stop(self, wait_timeout: float = 1.0):
+    def stop(self, wait_timeout: float = 1.0) -> bool:
         """请求停止执行线程，并在超时时间内等待线程退出。"""
         self._stop_event.set()
         self._pause_event.clear()
         th = self._thread
-        if th and th.is_alive():
+        if th is None:
+            return True
+        if th is threading.current_thread():
+            return False
+        if th.is_alive():
             th.join(timeout=max(0.1, float(wait_timeout)))
+        stopped = not th.is_alive()
+        if stopped:
+            with self._lock:
+                if self._thread is th:
+                    self._thread = None
+                self._running_task = None
+        return stopped
 
     def pause(self):
         """暂停调度循环（线程仍存活，仅停止取任务）。"""
@@ -259,101 +270,113 @@ class TaskExecutor:
     def _loop(self):
         """执行器主循环：挑选任务、执行任务、回写结果并推送快照。"""
         self._emit_snapshot()
-        while not self._stop_event.is_set():
-            # 暂停态只保活线程，不调度任务。
-            if self._pause_event.is_set():
-                time.sleep(0.08)
-                continue
+        try:
+            while not self._stop_event.is_set():
+                # 暂停态只保活线程，不调度任务。
+                if self._pause_event.is_set():
+                    time.sleep(0.08)
+                    continue
 
-            now = datetime.now()
-            with self._lock:
-                # 每轮重新计算 pending/waiting，并选出一个可执行任务。
-                snap = self._snapshot_locked(now)
-                task = snap.pending_tasks[0] if snap.pending_tasks else None
-                if task:
-                    self._running_task = task.name
-                else:
-                    self._running_task = None
+                now = datetime.now()
+                with self._lock:
+                    # 每轮重新计算 pending/waiting，并选出一个可执行任务。
+                    snap = self._snapshot_locked(now)
+                    task = snap.pending_tasks[0] if snap.pending_tasks else None
+                    if task:
+                        self._running_task = task.name
+                    else:
+                        self._running_task = None
 
-            self._emit_snapshot()
+                self._emit_snapshot()
 
-            if task and not self._is_task_time_enabled(task, now):
+                if task and not self._is_task_time_enabled(task, now):
+                    with self._lock:
+                        item = self._tasks.get(task.name)
+                        if item:
+                            next_start = self._next_enabled_time_start(item, now)
+                            item.next_run = max(now + timedelta(seconds=1), next_start)
+                            logger.debug(
+                                f'task `{item.name}` skipped by enabled_time_range({item.enabled_time_range}), '
+                                f'next_run={item.next_run.strftime("%Y-%m-%d %H:%M:%S")}'
+                            )
+                        self._running_task = None
+                    self._emit_snapshot()
+                    time.sleep(0.03)
+                    continue
+
+                if not task:
+                    # 空队列时可执行 idle hook（例如回主界面），并短暂休眠。
+                    if (
+                        self._empty_queue_policy == 'goto_main'
+                        and self._on_idle
+                        and time.time() - self._last_idle_at > 2.0
+                    ):
+                        self._last_idle_at = time.time()
+                        try:
+                            self._on_idle()
+                        except Exception as exc:
+                            logger.debug(f'idle hook error: {exc}')
+                    time.sleep(0.12)
+                    continue
+
+                runner = self._runners.get(task.name)
+                if not runner:
+                    # 缺少 runner 视为失败任务，写回失败间隔后继续循环。
+                    with self._lock:
+                        item = self._tasks.get(task.name)
+                        if item:
+                            self._apply_task_result(
+                                item,
+                                TaskResult(
+                                    success=False,
+                                    error=f'missing runner: {task.name}',
+                                ),
+                            )
+                            self._running_task = None
+                    self._emit_snapshot()
+                    continue
+
+                try:
+                    # 调用任务回调；异常统一转为失败结果，避免线程退出。
+                    result = runner(TaskContext(task_name=task.name, started_at=datetime.now()))
+                    if not isinstance(result, TaskResult):
+                        result = TaskResult(
+                            success=False,
+                            error=f'runner returned invalid result: {type(result)}',
+                        )
+                except Exception as exc:
+                    if isinstance(exc, TaskRetryCurrentError):
+                        logger.warning(f'task `{task.name}` retry requested: {exc}')
+                    else:
+                        logger.exception(f'task `{task.name}` crashed: {exc}')
+                    if self._on_task_error:
+                        try:
+                            self._on_task_error(task.name, exc, traceback.format_exc())
+                        except Exception as hook_exc:
+                            logger.debug(f'task error hook failed: {hook_exc}')
+                    result = TaskResult(success=False, error=str(exc))
+
                 with self._lock:
                     item = self._tasks.get(task.name)
                     if item:
-                        next_start = self._next_enabled_time_start(item, now)
-                        item.next_run = max(now + timedelta(seconds=1), next_start)
-                        logger.debug(
-                            f'task `{item.name}` skipped by enabled_time_range({item.enabled_time_range}), '
-                            f'next_run={item.next_run.strftime("%Y-%m-%d %H:%M:%S")}'
-                        )
+                        self._apply_task_result(item, result)
                     self._running_task = None
+
+                if self._on_task_done:
+                    try:
+                        self._on_task_done(task.name, result)
+                    except Exception as exc:
+                        logger.debug(f'task done hook error: {exc}')
+
                 self._emit_snapshot()
                 time.sleep(0.03)
-                continue
-
-            if not task:
-                # 空队列时可执行 idle hook（例如回主界面），并短暂休眠。
-                if self._empty_queue_policy == 'goto_main' and self._on_idle and time.time() - self._last_idle_at > 2.0:
-                    self._last_idle_at = time.time()
-                    try:
-                        self._on_idle()
-                    except Exception as exc:
-                        logger.debug(f'idle hook error: {exc}')
-                time.sleep(0.12)
-                continue
-
-            runner = self._runners.get(task.name)
-            if not runner:
-                # 缺少 runner 视为失败任务，写回失败间隔后继续循环。
-                with self._lock:
-                    item = self._tasks.get(task.name)
-                    if item:
-                        self._apply_task_result(
-                            item,
-                            TaskResult(
-                                success=False,
-                                error=f'missing runner: {task.name}',
-                            ),
-                        )
-                        self._running_task = None
-                self._emit_snapshot()
-                continue
-
-            try:
-                # 调用任务回调；异常统一转为失败结果，避免线程退出。
-                result = runner(TaskContext(task_name=task.name, started_at=datetime.now()))
-                if not isinstance(result, TaskResult):
-                    result = TaskResult(
-                        success=False,
-                        error=f'runner returned invalid result: {type(result)}',
-                    )
-            except Exception as exc:
-                if isinstance(exc, TaskRetryCurrentError):
-                    logger.warning(f'task `{task.name}` retry requested: {exc}')
-                else:
-                    logger.exception(f'task `{task.name}` crashed: {exc}')
-                if self._on_task_error:
-                    try:
-                        self._on_task_error(task.name, exc, traceback.format_exc())
-                    except Exception as hook_exc:
-                        logger.debug(f'task error hook failed: {hook_exc}')
-                result = TaskResult(success=False, error=str(exc))
-
+        finally:
             with self._lock:
-                item = self._tasks.get(task.name)
-                if item:
-                    self._apply_task_result(item, result)
                 self._running_task = None
-
-            if self._on_task_done:
-                try:
-                    self._on_task_done(task.name, result)
-                except Exception as exc:
-                    logger.debug(f'task done hook error: {exc}')
-
+                current = threading.current_thread()
+                if self._thread is current:
+                    self._thread = None
             self._emit_snapshot()
-            time.sleep(0.03)
 
     @staticmethod
     def _normalize_trigger_text(trigger) -> str:

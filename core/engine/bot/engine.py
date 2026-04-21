@@ -126,15 +126,17 @@ class BotEngine(QObject):
         if self._worker and self._worker.is_alive():
             return True
 
+        command_queue = None
+        event_queue = None
         try:
-            self._command_queue = self._ctx.Queue()
-            self._event_queue = self._ctx.Queue()
+            command_queue = self._ctx.Queue()
+            event_queue = self._ctx.Queue()
             self._worker = self._ctx.Process(
                 target=bot_worker_main,
                 args=(
                     self.config.model_dump(),
-                    self._command_queue,
-                    self._event_queue,
+                    command_queue,
+                    event_queue,
                     dict(self.runtime_paths),
                     self.instance_id,
                 ),
@@ -142,9 +144,22 @@ class BotEngine(QObject):
                 daemon=True,
             )
             self._worker.start()
+            self._command_queue = command_queue
+            self._event_queue = event_queue
             return bool(self._worker.is_alive())
         except Exception as exc:
             self.log_message.emit(f'启动 worker 失败: {exc}')
+            for q in (command_queue, event_queue):
+                if q is None:
+                    continue
+                try:
+                    q.close()
+                except Exception:
+                    pass
+                try:
+                    q.join_thread()
+                except Exception:
+                    pass
             self._worker = None
             self._command_queue = None
             self._event_queue = None
@@ -301,24 +316,24 @@ class BotEngine(QObject):
 
     def _shutdown_worker(self, *, force: bool = True) -> None:
         worker = self._worker
-        if worker is None:
-            return
+        command_queue = self._command_queue
+        event_queue = self._event_queue
 
-        if worker.is_alive():
+        if worker is not None and worker.is_alive():
             try:
                 self._send_command('shutdown', wait=False, ensure_worker=False)
             except Exception:
                 pass
             worker.join(timeout=0.2)
 
-        if force and worker.is_alive():
+        if worker is not None and force and worker.is_alive():
             try:
                 worker.terminate()
             except Exception:
                 pass
             worker.join(timeout=1.0)
 
-        if force and worker.is_alive() and hasattr(worker, 'kill'):
+        if worker is not None and force and worker.is_alive() and hasattr(worker, 'kill'):
             try:
                 worker.kill()
             except Exception:
@@ -330,6 +345,24 @@ class BotEngine(QObject):
         self._event_queue = None
         self._responses.clear()
         self._pending_response_ids.clear()
+
+        for q in (command_queue, event_queue):
+            if q is None:
+                continue
+            try:
+                q.close()
+            except Exception:
+                pass
+            try:
+                q.join_thread()
+            except Exception:
+                pass
+
+        if worker is not None:
+            try:
+                worker.close()
+            except Exception:
+                pass
 
         self.scheduler.patch_state('idle')
         self.state_changed.emit('idle')

@@ -11,6 +11,7 @@ from typing import Callable
 import cv2
 import numpy as np
 from loguru import logger
+from PIL import Image, ImageSequence
 
 from utils.template_paths import normalize_template_platform
 
@@ -39,7 +40,7 @@ class Button:
         self._last_score: float = 0.0
         self._last_metric: str = 'similarity'
         self._match_init = False
-        self.image: np.ndarray | None = None
+        self.image: np.ndarray | list[np.ndarray] | None = None
         Button._instances.add(self)
 
     @classmethod
@@ -116,6 +117,12 @@ class Button:
             return stem
         return str(self.raw_name or '')
 
+    @cached_property
+    def is_gif(self) -> bool:
+        """当前模板文件是否为 GIF。"""
+        file_value = str(self.file or '')
+        return file_value.lower().endswith('.gif')
+
     def _parse_property(self, value):
         """解析属性值：字典类型仅按当前平台取值。"""
         if isinstance(value, dict):
@@ -159,15 +166,45 @@ class Button:
             file_path_str = ''
 
         if file_path_str and os.path.exists(file_path_str):
-            # 使用 imdecode 兼容中文路径
-            image = cv2.imdecode(np.fromfile(file_path_str, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
-            if image is not None:
-                if image.ndim == 2:
-                    image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-                elif image.shape[2] > 3:
-                    image = image[:, :, :3]
-                self.image = self._crop_like_pillow(image, self.area)
+            if self.is_gif:
+                frames = self._load_gif_frames(file_path_str)
+                if frames:
+                    self.image = [self._crop_like_pillow(frame, self.area) for frame in frames]
+            else:
+                # 使用 imdecode 兼容中文路径
+                image = cv2.imdecode(np.fromfile(file_path_str, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
+                normalized = self._normalize_loaded_image(image)
+                if normalized is not None:
+                    self.image = self._crop_like_pillow(normalized, self.area)
         self._match_init = True
+
+    @staticmethod
+    def _normalize_loaded_image(image: np.ndarray | None) -> np.ndarray | None:
+        """统一归一化为 3 通道 BGR 图。"""
+        if image is None:
+            return None
+        if image.ndim == 2:
+            return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        if image.ndim == 3 and image.shape[2] > 3:
+            return image[:, :, :3]
+        return image
+
+    @classmethod
+    def _load_gif_frames(cls, file_path: str) -> list[np.ndarray]:
+        """读取 GIF 全部帧并转换为 BGR。"""
+        frames: list[np.ndarray] = []
+        try:
+            with Image.open(file_path) as gif:
+                for frame in ImageSequence.Iterator(gif):
+                    rgb = frame.convert('RGB')
+                    arr = np.array(rgb)
+                    bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+                    normalized = cls._normalize_loaded_image(bgr)
+                    if normalized is not None:
+                        frames.append(normalized)
+        except Exception as exc:
+            logger.warning(f'加载 GIF 模板失败: {file_path}, error={exc}')
+        return frames
 
     @staticmethod
     def _crop_like_pillow(image: np.ndarray, area: tuple[int, int, int, int]) -> np.ndarray:

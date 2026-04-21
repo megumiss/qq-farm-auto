@@ -411,14 +411,25 @@ class BotExecutorMixin:
         )
         self._task_executor.start()
 
-    def _stop_executor(self):
+    def _stop_executor(self) -> bool:
         """停止执行器并清空执行器持有的任务快照。"""
         self._accept_executor_events = False
         executor = self._task_executor
+        if executor is None:
+            self._executor_tasks = {}
+            return True
+
+        stopped = executor.stop(wait_timeout=1.5)
+        if not stopped:
+            # 二次等待，避免任务线程在长 sleep 阶段导致 stop 超时后误判已停。
+            stopped = executor.stop(wait_timeout=6.0)
+        if not stopped:
+            logger.warning('执行器停止超时，仍在回收中，暂不允许重新启动')
+            return False
+
         self._task_executor = None
-        if executor:
-            executor.stop(wait_timeout=1.5)
         self._executor_tasks = {}
+        return True
 
     def _run_task_main(self, _ctx: TaskContext) -> TaskResult:
         """执行 `task_main` 子流程。"""

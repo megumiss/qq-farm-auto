@@ -50,7 +50,11 @@ class ModuleBase:
         if image is None:
             return False, None, 0.0
         button.ensure_template()
-        if button.image is None:
+        template_value = button.image
+        if template_value is None:
+            return False, None, 0.0
+        templates = template_value if isinstance(template_value, list) else [template_value]
+        if not templates:
             return False, None, 0.0
 
         search_img = image
@@ -66,9 +70,26 @@ class ModuleBase:
             )
             search_img = self._crop_like_pillow(image, search_area)
 
-        # 直接模板匹配
-        result = cv2.matchTemplate(button.image, search_img, cv2.TM_CCOEFF_NORMED)
-        _, similarity, _, upper_left = cv2.minMaxLoc(result)
+        best_similarity = -1.0
+        best_upper_left = (0, 0)
+        best_size = (
+            int(button.area[2] - button.area[0]),
+            int(button.area[3] - button.area[1]),
+        )
+        for template in templates:
+            th, tw = template.shape[:2]
+            sh, sw = search_img.shape[:2]
+            if th > sh or tw > sw or th <= 0 or tw <= 0:
+                continue
+            result = cv2.matchTemplate(template, search_img, cv2.TM_CCOEFF_NORMED)
+            _, similarity, _, upper_left = cv2.minMaxLoc(result)
+            if float(similarity) > best_similarity:
+                best_similarity = float(similarity)
+                best_upper_left = upper_left
+                best_size = (tw, th)
+
+        similarity = best_similarity
+        upper_left = best_upper_left
         hit = float(similarity) > float(threshold)
         if not hit:
             return False, None, float(similarity)
@@ -86,8 +107,7 @@ class ModuleBase:
             return True, area, float(similarity)
 
         # 动态模式（全图检索）下直接使用匹配左上角与按钮原始尺寸还原区域。
-        h = int(button.area[3] - button.area[1])
-        w = int(button.area[2] - button.area[0])
+        w, h = best_size
         area = (
             int(upper_left[0]),
             int(upper_left[1]),
@@ -242,6 +262,83 @@ class ModuleBase:
                 button=area,
                 file=icon_button.file,
                 name=icon_button.name,
+            )
+            out.append(dynamic)
+        return out
+
+    def match_gif_multi(
+        self,
+        gif_button: Button,
+        *,
+        threshold: float = 0.75,
+        roi: tuple[int, int, int, int] | None = None,
+    ) -> list[Button]:
+        """GIF 模板多命中识别（参考 NIKKE `Template.match_multi` 语义）。"""
+        if not bool(getattr(gif_button, 'is_gif', False)):
+            return []
+
+        image = self.device.image
+        if image is None:
+            return []
+
+        gif_button.ensure_template()
+        template_value = gif_button.image
+        if template_value is None:
+            return []
+        templates = template_value if isinstance(template_value, list) else [template_value]
+        if not templates:
+            return []
+
+        search = image
+        offset_x = 0
+        offset_y = 0
+        if roi is not None:
+            x1, y1, x2, y2 = [int(v) for v in roi]
+            sh, sw = image.shape[:2]
+            x1 = max(0, min(x1, sw - 1))
+            y1 = max(0, min(y1, sh - 1))
+            x2 = max(x1 + 1, min(x2, sw))
+            y2 = max(y1 + 1, min(y2, sh))
+            if x2 <= x1 or y2 <= y1:
+                return []
+            search = image[y1:y2, x1:x2]
+            offset_x = x1
+            offset_y = y1
+
+        points_all: list[list[int]] = []
+        best_w = int(gif_button.area[2] - gif_button.area[0])
+        best_h = int(gif_button.area[3] - gif_button.area[1])
+        best_score = -1.0
+        for template in templates:
+            th, tw = template.shape[:2]
+            sh, sw = search.shape[:2]
+            if th > sh or tw > sw or th <= 0 or tw <= 0:
+                continue
+            match_result = cv2.matchTemplate(search, template, cv2.TM_CCOEFF_NORMED)
+            points = np.array(np.where(match_result > float(threshold))).T[:, ::-1]
+            if len(points):
+                points_all.extend(points.tolist())
+            _, local_best, _, _ = cv2.minMaxLoc(match_result)
+            if float(local_best) > best_score:
+                best_score = float(local_best)
+                best_w = int(tw)
+                best_h = int(th)
+
+        if not points_all:
+            return []
+
+        grouped = self._group_points_like_nikke(np.array(points_all, dtype=int), threshold=3)
+        out: list[Button] = []
+        for point in grouped:
+            x = int(point[0]) + offset_x
+            y = int(point[1]) + offset_y
+            area = (x, y, x + best_w, y + best_h)
+            dynamic = Button(
+                area=area,
+                color=gif_button.color,
+                button=area,
+                file=gif_button.file,
+                name=gif_button.name,
             )
             out.append(dynamic)
         return out
