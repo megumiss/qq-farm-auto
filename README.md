@@ -226,7 +226,7 @@ python main.py
   },
   "land_scan": {
     "enabled": false,
-    "priority": 45,
+    "priority": 25,
     "trigger": "interval",
     "daily_time": "04:00",
     "next_run": "2026-01-01 00:00",

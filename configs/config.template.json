@@ -103,7 +103,7 @@
     },
     "land_scan": {
       "enabled": false,
-      "priority": 45,
+      "priority": 25,
       "trigger": "interval",
       "interval_seconds": 1800,
       "enabled_time_range": "00:00:00-23:59:59",
