@@ -52,8 +52,29 @@ LAND_SCAN_TIME_PICK_Y2 = 20
 LAND_SCAN_MATURITY_TIME_PATTERN = re.compile(r'(\d{2}:\d{2}:\d{2})')
 # 地块等级文本正则（中文等级关键词）。
 LAND_SCAN_LEVEL_PATTERN = re.compile(r'(未扩建|普通|红|黑|金)')
+# 地块等级英文值到中文日志文案映射。
+LAND_SCAN_LEVEL_LABELS: dict[str, str] = {
+    'unbuilt': '未扩建',
+    'normal': '普通土地',
+    'red': '红土地',
+    'black': '黑土地',
+    'gold': '金土地',
+}
 # 空地弹窗地块等级 OCR 区域：相对 BTN_LAND_POP_EMPTY 中心 (dx1, dy1, dx2, dy2)。
 LAND_SCAN_LEVEL_REGION_OFFSET = (-60, -50, 40, 50)
+# 已播种地块等级颜色采样点：相对 BTN_CROP_MATURITY_TIME_SUFFIX 中心 (dx, dy)。
+LAND_SCAN_PLOTTED_LEVEL_COLOR_OFFSET = (85, -10)
+# 已播种地块等级颜色采样窗口半径（像素，采样 (2r+1)x(2r+1) 均值）。
+LAND_SCAN_PLOTTED_LEVEL_COLOR_SAMPLE_RADIUS = 1
+# 已播种地块等级颜色判定阈值（RGB 欧氏距离）。
+LAND_SCAN_PLOTTED_LEVEL_COLOR_DISTANCE_THRESHOLD = 42.0
+# 已播种地块等级颜色静态表（RGB）。
+LAND_SCAN_PLOTTED_LEVEL_COLORS_RGB: dict[str, tuple[int, int, int]] = {
+    'normal': (178, 131, 74),
+    'red': (223, 87, 55),
+    'black': (92, 67, 42),
+    'gold': (249, 203, 50),
+}
 # 空地弹窗升级图标 ROI：相对 BTN_LAND_POP_EMPTY 中心 (dx1, dy1, dx2, dy2)。
 LAND_SCAN_UPGRADE_EMPTY_REGION_OFFSET = (-100, -50, 0, -0)
 # 非空地弹窗升级图标 ROI：相对 BTN_CROP_MATURITY_TIME_SUFFIX 中心 (dx1, dy1, dx2, dy2)。
@@ -176,7 +197,7 @@ class TaskLandScan(TaskBase):
             self.ui.device.screenshot()
             # 正常弹窗
             if self.ui.appear(BTN_CROP_REMOVAL, offset=30, static=False) and self.ui.appear(
-                BTN_CROP_MATURITY_TIME_SUFFIX, offset=30, static=False
+                BTN_CROP_MATURITY_TIME_SUFFIX, offset=30, threshold=0.65, static=False
             ):
                 break
             # 空土地弹窗
@@ -192,7 +213,7 @@ class TaskLandScan(TaskBase):
                     '地块巡查: 空地等级OCR | 序号={} text={} 等级={}',
                     cell.label,
                     self._short_text(level_text),
-                    level or '<empty>',
+                    self._level_label(level),
                 )
                 update_level = level or None
                 if not level:
@@ -221,12 +242,13 @@ class TaskLandScan(TaskBase):
                 return
             self.ui.device.sleep(0.2)
 
-        removal_location = self.ui.appear_location(BTN_CROP_MATURITY_TIME_SUFFIX, offset=30, static=False)
+        removal_location = self.ui.appear_location(
+            BTN_CROP_MATURITY_TIME_SUFFIX, offset=30, threshold=0.65, static=False
+        )
         need_upgrade = self._detect_need_upgrade(anchor=removal_location, empty_plot=False)
         need_planting = False
         countdown: str | None = None
 
-        # TODO 识别地块等级
         if removal_location is None:
             logger.warning('地块巡查: 未识别到成熟时间锚点，跳过 OCR | 序号={}', cell.label)
         else:
@@ -249,12 +271,22 @@ class TaskLandScan(TaskBase):
                 '地块巡查: OCR | 序号={} text={} score={:.3f}', cell.label, self._short_text(display_text), score
             )
 
+        level, _, _ = self._detect_plotted_land_level_by_color(removal_location)
+
         updated = self._update_plot_fields(
-            plot_id=cell.label, countdown=countdown, need_upgrade=need_upgrade, need_planting=need_planting
+            plot_id=cell.label,
+            level=level or None,
+            countdown=countdown,
+            need_upgrade=need_upgrade,
+            need_planting=need_planting,
         )
         if updated:
             self._save_plot_update(
-                plot_id=cell.label, countdown=countdown, need_upgrade=need_upgrade, need_planting=need_planting
+                plot_id=cell.label,
+                level=level or None,
+                countdown=countdown,
+                need_upgrade=need_upgrade,
+                need_planting=need_planting,
             )
         return
 
@@ -287,6 +319,62 @@ class TaskLandScan(TaskBase):
         x2 = max(x1 + 1, min(x2, LAND_SCAN_FRAME_WIDTH))
         y2 = max(y1 + 1, min(y2, LAND_SCAN_FRAME_HEIGHT))
         return x1, y1, x2, y2
+
+    def _detect_plotted_land_level_by_color(
+        self,
+        anchor: tuple[int, int] | None,
+    ) -> tuple[str, tuple[int, int, int] | None, float]:
+        """按成熟时间后缀锚点偏移取色，识别已播种地块等级。"""
+        if anchor is None:
+            return '', None, 0.0
+        bgr = self._sample_color_bgr_near_anchor(
+            anchor=anchor,
+            offset=LAND_SCAN_PLOTTED_LEVEL_COLOR_OFFSET,
+            radius=LAND_SCAN_PLOTTED_LEVEL_COLOR_SAMPLE_RADIUS,
+        )
+        if bgr is None:
+            return '', None, 0.0
+        rgb = (int(bgr[2]), int(bgr[1]), int(bgr[0]))
+        best_level = ''
+        best_distance = float('inf')
+        for level, color_rgb in LAND_SCAN_PLOTTED_LEVEL_COLORS_RGB.items():
+            dr = float(rgb[0] - int(color_rgb[0]))
+            dg = float(rgb[1] - int(color_rgb[1]))
+            db = float(rgb[2] - int(color_rgb[2]))
+            distance = float((dr * dr + dg * dg + db * db) ** 0.5)
+            if distance < best_distance:
+                best_distance = distance
+                best_level = str(level)
+        if best_distance > float(LAND_SCAN_PLOTTED_LEVEL_COLOR_DISTANCE_THRESHOLD):
+            return '', rgb, best_distance
+        return best_level, rgb, best_distance
+
+    def _sample_color_bgr_near_anchor(
+        self,
+        *,
+        anchor: tuple[int, int],
+        offset: tuple[int, int],
+        radius: int,
+    ) -> tuple[int, int, int] | None:
+        """相对锚点采样颜色均值（BGR）。"""
+        image = getattr(getattr(self.ui, 'device', None), 'image', None)
+        if image is None:
+            return None
+        h, w = image.shape[:2]
+        cx = int(anchor[0]) + int(offset[0])
+        cy = int(anchor[1]) + int(offset[1])
+        cx = max(0, min(cx, w - 1))
+        cy = max(0, min(cy, h - 1))
+        r = max(0, int(radius))
+        x1 = max(0, cx - r)
+        y1 = max(0, cy - r)
+        x2 = min(w, cx + r + 1)
+        y2 = min(h, cy + r + 1)
+        patch = image[y1:y2, x1:x2]
+        if patch.size <= 0:
+            return None
+        mean_bgr = patch.reshape(-1, 3).mean(axis=0)
+        return int(mean_bgr[0]), int(mean_bgr[1]), int(mean_bgr[2])
 
     def _collect_land_cells(self) -> list[LandCell]:
         """识别左右锚点并推算地块网格。"""
@@ -422,6 +510,14 @@ class TaskLandScan(TaskBase):
         return ''
 
     @staticmethod
+    def _level_label(level: str | None) -> str:
+        """将配置等级值映射为中文日志文案。"""
+        text = str(level or '').strip().lower()
+        if not text:
+            return '<empty>'
+        return str(LAND_SCAN_LEVEL_LABELS.get(text, level))
+
+    @staticmethod
     def _pick_time_tokens_near_suffix(
         items: list[OCRItem],
         anchor: tuple[int, int],
@@ -550,7 +646,7 @@ class TaskLandScan(TaskBase):
             logger.warning(
                 '地块巡查: 地块信息写入配置失败 | 序号={} 等级={} 成熟倒计时={} 需要升级={} 需要播种={} error={}',
                 plot_id,
-                level,
+                self._level_label(level),
                 countdown,
                 need_upgrade,
                 need_planting,
@@ -561,7 +657,7 @@ class TaskLandScan(TaskBase):
         logger.info(
             '地块巡查: 地块信息已更新 | 序号={} 等级={} 成熟倒计时={} 需要升级={} 需要播种={}',
             plot_id,
-            level,
+            self._level_label(level),
             countdown,
             need_upgrade,
             need_planting,
