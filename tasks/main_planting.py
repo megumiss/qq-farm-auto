@@ -227,18 +227,27 @@ class TaskMainPlantingMixin:
         merged.sort(key=lambda p: (p[1], p[0]))
         return merged
 
-    def _collect_need_planting_land_coords_from_detail(self) -> list[tuple[int, int]]:
-        """按土地详情 `need_planting` 获取待播种地块坐标。"""
-        pending_entries = self.parse_land_detail_plots_by_flag('need_planting')
+    def _collect_need_planting_land_coords_from_detail(
+        self,
+        pending_entries: list[dict[str, object]] | None = None,
+    ) -> tuple[list[tuple[int, int]], set[str]]:
+        """按土地详情 `need_planting` 获取待播种地块坐标与地块编号。"""
+        pending_entries = pending_entries or self.parse_land_detail_plots_by_flag('need_planting')
         if not pending_entries:
-            return []
+            return [], set()
+
+        pending_plot_ids = {
+            str(item.get('plot_id', '') or '').strip()
+            for item in pending_entries
+            if str(item.get('plot_id', '')).strip()
+        }
 
         self.ui.device.screenshot()
         land_right_anchor = self.ui.appear_location(BTN_LAND_RIGHT, offset=30, threshold=0.95, static=False)
         land_left_anchor = self.ui.appear_location(BTN_LAND_LEFT, offset=30, threshold=0.95, static=False)
         if land_right_anchor is None and land_left_anchor is None:
             logger.warning('自动播种流程: 空地补充失败，未识别到地块锚点')
-            return []
+            return [], pending_plot_ids
 
         all_lands = get_lands_from_land_anchor(
             (int(land_right_anchor[0]), int(land_right_anchor[1])) if land_right_anchor is not None else None,
@@ -246,7 +255,7 @@ class TaskMainPlantingMixin:
         )
         if not all_lands:
             logger.warning('自动播种流程: 空地补充失败，未生成地块网格')
-            return []
+            return [], pending_plot_ids
 
         center_by_plot_id = {str(cell.label): (int(cell.center[0]), int(cell.center[1])) for cell in all_lands}
         center_by_order = {int(cell.order): (int(cell.center[0]), int(cell.center[1])) for cell in all_lands}
@@ -274,7 +283,45 @@ class TaskMainPlantingMixin:
         logger.info('自动播种流程: 空地补充完成 | count={}', len(merged_coords))
         if missing_refs:
             logger.warning('自动播种流程: 存在未映射地块 | count={}', len(missing_refs))
-        return merged_coords
+        return merged_coords, pending_plot_ids
+
+    def _clear_need_planting_flags_after_plant(self, pending_plot_ids: set[str]) -> None:
+        """播种完成后清理土地详情待播种标记。"""
+        if not pending_plot_ids:
+            return
+
+        plots = getattr(getattr(self.engine.config, 'land', None), 'plots', None)
+        if not isinstance(plots, list):
+            return
+
+        changed_count = 0
+        for item in plots:
+            if not isinstance(item, dict):
+                continue
+            plot_id = str(item.get('plot_id', '') or '').strip()
+            if plot_id not in pending_plot_ids:
+                continue
+            if not bool(item.get('need_planting', False)):
+                continue
+            item['need_planting'] = False
+            changed_count += 1
+
+        if changed_count <= 0:
+            return
+
+        try:
+            self.engine.config.save()
+        except Exception as exc:
+            logger.warning('自动播种流程: 待播种状态回写失败 | error={}', exc)
+            return
+
+        emit_now = getattr(self.engine, '_emit_config_now', None)
+        if callable(emit_now):
+            try:
+                emit_now()
+            except Exception:
+                pass
+        logger.info('自动播种流程: 待播种状态已更新 | count={}', changed_count)
 
     @staticmethod
     def _select_center_land_coord(coords: list[tuple[int, int]]) -> tuple[int, int] | None:
@@ -397,10 +444,10 @@ class TaskMainPlantingMixin:
         """执行整块农田播种流程（识别空地、拉种子、补种购买）。"""
         # 模板匹配到的空地
         detected_land_coords = self._collect_land_coords_for_plant(threshold=0.85, y_range=LAND_MATCH_Y_RANGE)
-        detail_land_coords = self._collect_need_planting_land_coords_from_detail()
+        pending_entries = self.parse_land_detail_plots_by_flag('need_planting')
+        detail_land_coords, pending_plot_ids = self._collect_need_planting_land_coords_from_detail(pending_entries)
         land_coords = self._merge_land_coords(detected_land_coords, detail_land_coords)
-        logger.info(
-            '自动播种流程: 空地识别完成 | count={}', len(land_coords))
+        logger.info('自动播种流程: 空地识别完成 | count={}', len(land_coords))
         if not land_coords:
             logger.info('自动播种流程: 未发现空土地，跳过播种')
             return
@@ -541,6 +588,7 @@ class TaskMainPlantingMixin:
             if dragging:
                 self.engine.device.drag_up()
                 logger.info('自动播种流程: 播种完成')
+                self._clear_need_planting_flags_after_plant(pending_plot_ids)
 
         return
 
