@@ -2,6 +2,7 @@
 
 import ctypes
 import os
+import threading
 import time
 from ctypes import wintypes
 
@@ -25,7 +26,7 @@ class ScreenCapture:
     def __init__(self, save_dir: str = 'screenshots', run_mode: RunMode = RunMode.BACKGROUND):
         self._save_dir = save_dir
         self._run_mode = run_mode
-        self._mss_instance: mss.mss | None = None
+        self._mss_local = threading.local()
         os.makedirs(save_dir, exist_ok=True)
 
     def update_run_mode(self, run_mode: RunMode):
@@ -39,21 +40,24 @@ class ScreenCapture:
         return UNSET
 
     def _get_mss_instance(self) -> mss.mss:
-        """获取并复用当前实例的 mss 句柄。"""
-        if self._mss_instance is None:
-            self._mss_instance = mss.mss()
-        return self._mss_instance
+        """获取当前线程绑定的 mss 句柄。"""
+        sct = getattr(self._mss_local, 'instance', None)
+        if sct is None:
+            sct = mss.mss()
+            self._mss_local.instance = sct
+        return sct
 
     def close(self) -> None:
-        """释放实例级 mss 句柄。"""
-        if self._mss_instance is None:
+        """释放当前线程绑定的 mss 句柄。"""
+        sct = getattr(self._mss_local, 'instance', None)
+        if sct is None:
             return
         try:
-            self._mss_instance.close()
+            sct.close()
         except Exception:
             pass
         finally:
-            self._mss_instance = None
+            self._mss_local.instance = None
 
     def __del__(self):
         """析构时兜底释放 mss 句柄。"""
@@ -77,8 +81,7 @@ class ScreenCapture:
             'height': height,
         }
         try:
-            sct = self._get_mss_instance()
-            screenshot = sct.grab(monitor)
+            screenshot = self._get_mss_instance().grab(monitor)
             image = Image.frombytes('RGB', screenshot.size, screenshot.bgra, 'raw', 'BGRX')
             return image
         except Exception as e:
