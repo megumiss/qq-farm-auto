@@ -27,6 +27,17 @@ class TaskBase:
         """获取任务特性开关字典。"""
         return self.engine.get_task_features(task_name)
 
+    def is_task_enabled(self, task_name: str) -> bool:
+        """按任务名读取调度启用状态。"""
+        tasks_cfg = getattr(getattr(self.engine, 'config', None), 'tasks', None)
+        if tasks_cfg is None:
+            return False
+        if isinstance(tasks_cfg, dict):
+            cfg = tasks_cfg.get(str(task_name))
+        else:
+            cfg = getattr(tasks_cfg, str(task_name), None)
+        return bool(getattr(cfg, 'enabled', False))
+
     @staticmethod
     def has_feature(features: Mapping[str, Any] | None, key: str, default: bool = False) -> bool:
         """读取特性开关并归一化为 bool。"""
