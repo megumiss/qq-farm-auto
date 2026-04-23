@@ -144,8 +144,23 @@ class TaskLandScan(TaskBase):
             # TODO 画面回正
             self.ui.ui_ensure(page_main)
 
+        self._trigger_main_task_if_needed()
         logger.info('地块巡查: 结束')
         return self.ok()
+
+    def _trigger_main_task_if_needed(self) -> None:
+        """存在待播种或待升级地块时，拉起农场巡查任务。"""
+        pending_planting = bool(self.parse_land_detail_plots_by_flag('need_planting'))
+        pending_upgrade = bool(self.parse_land_detail_plots_by_flag('need_upgrade'))
+        if not pending_planting and not pending_upgrade:
+            return
+
+        self.engine._task_executor.task_call("main", force_call=False)
+        logger.info(
+            '地块巡查: 存在待处理地块，执行农场巡查 | 待播种={} 待升级={}',
+            pending_planting,
+            pending_upgrade
+        )
 
     def _scan_cells_by_physical_columns(
         self,
