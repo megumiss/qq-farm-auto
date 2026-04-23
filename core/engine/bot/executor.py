@@ -21,9 +21,15 @@ from core.exceptions import GamePageUnknownError, LoginRepeatError, TaskRetryCur
 from core.platform.device import DeviceStuckError, DeviceTooManyClickError
 from models.config import (
     DEFAULT_TASK_ENABLED_TIME_RANGE,
+    TaskScheduleItemConfig,
     TaskTriggerType,
     normalize_task_enabled_time_range,
     resolve_task_min_interval_seconds,
+)
+from models.task_views import (
+    TASK_FEATURE_CLASS_MAP,
+    TASK_VIEW_CLASS_MAP,
+    TaskViewBase,
 )
 from tasks.friend import TaskFriend
 from tasks.gift import TaskGift
@@ -298,6 +304,124 @@ class BotExecutorMixin:
         if cfg.trigger == TaskTriggerType.DAILY:
             return self._seconds_to_next_daily(cfg.daily_time, current)
         return max(min_interval, int(cfg.interval_seconds))
+
+    def is_task_enabled(self, task_name: str, *, runtime: bool = True) -> bool:
+        """读取任务启用状态（可选返回运行时执行器状态）。"""
+        name = str(task_name or '').strip()
+        if not name:
+            return False
+        if runtime:
+            item = self._executor_tasks.get(name) if isinstance(getattr(self, '_executor_tasks', None), dict) else None
+            if item is not None:
+                return bool(item.enabled)
+        cfg = self._get_task_cfg(name)
+        return bool(cfg and getattr(cfg, 'enabled', False))
+
+    @staticmethod
+    def _feature_bool(value: Any, default: bool) -> bool:
+        """将输入归一化为布尔值。"""
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return bool(default)
+        text = str(value).strip().lower()
+        if text in {'1', 'true', 'yes', 'y', 'on'}:
+            return True
+        if text in {'0', 'false', 'no', 'n', 'off'}:
+            return False
+        return bool(value)
+
+    @staticmethod
+    def _feature_list(value: Any, default: list[str]) -> list[str]:
+        """将输入归一化为字符串列表。"""
+        if not isinstance(value, list):
+            return list(default)
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in value:
+            text = str(item or '').strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            out.append(text)
+        return out
+
+    def _feature_value(self, raw: dict[str, Any], key: str, default: Any) -> Any:
+        """按默认值类型读取并归一化 feature。"""
+        value = raw.get(str(key), default)
+        if isinstance(default, bool):
+            return self._feature_bool(value, default)
+        if isinstance(default, list):
+            return self._feature_list(value, default)
+        if isinstance(default, int) and not isinstance(default, bool):
+            try:
+                return int(value)
+            except Exception:
+                return int(default)
+        if isinstance(default, float):
+            try:
+                return float(value)
+            except Exception:
+                return float(default)
+        if isinstance(default, str):
+            return str(value or default)
+        return value if value is not None else default
+
+    def _build_task_view_base(self, task_name: str) -> TaskViewBase:
+        """构造任务基础视图。"""
+        name = str(task_name or '').strip()
+        cfg = self._get_task_cfg(name)
+        if not isinstance(cfg, TaskScheduleItemConfig):
+            cfg = TaskScheduleItemConfig()
+        return TaskViewBase(
+            name=name,
+            enabled=self.is_task_enabled(name, runtime=True),
+            config_enabled=self.is_task_enabled(name, runtime=False),
+            priority=int(cfg.priority),
+            trigger=cfg.trigger,
+            interval_seconds=int(cfg.interval_seconds),
+            failure_interval_seconds=int(cfg.failure_interval_seconds),
+            daily_time=str(cfg.daily_time),
+            enabled_time_range=str(cfg.enabled_time_range),
+            next_run=str(cfg.next_run),
+            _task_call=lambda force_call: bool(self._task_executor and self._task_executor.task_call(name, force_call)),
+        )
+
+    @staticmethod
+    def _task_view_base_kwargs(base: TaskViewBase) -> dict[str, Any]:
+        """将基础任务视图转为可复用构造参数。"""
+        return {
+            'name': base.name,
+            'enabled': base.enabled,
+            'config_enabled': base.config_enabled,
+            'priority': base.priority,
+            'trigger': base.trigger,
+            'interval_seconds': base.interval_seconds,
+            'failure_interval_seconds': base.failure_interval_seconds,
+            'daily_time': base.daily_time,
+            'enabled_time_range': base.enabled_time_range,
+            'next_run': base.next_run,
+            '_task_call': base._task_call,
+        }
+
+    def build_task_view(self, task_name: str) -> TaskViewBase:
+        """按任务名构造强类型视图。"""
+        name = str(task_name or '').strip()
+        base = self._build_task_view_base(name)
+        base_kwargs = self._task_view_base_kwargs(base)
+        raw = self.get_task_features(name)
+        feature_cls = TASK_FEATURE_CLASS_MAP.get(name)
+        view_cls = TASK_VIEW_CLASS_MAP.get(name)
+        if feature_cls is None or view_cls is None:
+            return TaskViewBase(**base_kwargs)
+
+        feature_defaults = feature_cls()
+        feature_kwargs: dict[str, Any] = {}
+        for field_name in feature_cls.__dataclass_fields__.keys():
+            default_value = getattr(feature_defaults, field_name)
+            feature_kwargs[field_name] = self._feature_value(raw, field_name, default_value)
+        feature = feature_cls(**feature_kwargs)
+        return view_cls(**base_kwargs, feature=feature)
 
     def get_task_features(self, task_name: str) -> dict[str, Any]:
         """获取 `task_features` 信息。"""

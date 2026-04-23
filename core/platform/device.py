@@ -169,8 +169,7 @@ class Device:
         """按窗口 nonclient 配置裁剪预览图。"""
         if image is None:
             return None
-        platform = getattr(self.engine.config.planting, 'window_platform', 'qq')
-        platform_value = platform.value if hasattr(platform, 'value') else str(platform)
+        platform_value = self.engine.config.planting.window_platform.value
         return self.engine.window_manager.crop_window_image_for_preview(image, platform_value)
 
     def set_image(self, image: np.ndarray | None):

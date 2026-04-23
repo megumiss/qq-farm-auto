@@ -47,8 +47,7 @@ class BotRuntimeMixin:
     def update_config(self, config: AppConfig):
         """更新配置并将变更同步到执行器。"""
         self.config = config
-        platform = getattr(config.planting, 'window_platform', 'qq')
-        platform_value = platform.value if hasattr(platform, 'value') else str(platform)
+        platform_value = config.planting.window_platform.value
         normalized_platform = normalize_template_platform(platform_value)
         Button.set_template_platform(normalized_platform)
         if self.cv_detector is not None:
@@ -115,8 +114,7 @@ class BotRuntimeMixin:
         if cap_w <= 0 or cap_h <= 0:
             return int(base_x), int(base_y)
 
-        platform = getattr(self.config.planting, 'window_platform', 'qq')
-        platform_value = platform.value if hasattr(platform, 'value') else str(platform)
+        platform_value = self.config.planting.window_platform.value
         x1, y1, _crop_w, _crop_h = self.window_manager.get_preview_crop_box(cap_w, cap_h, platform_value)
 
         x = int(base_x + x1)
@@ -144,8 +142,7 @@ class BotRuntimeMixin:
         self._fatal_error_stop_requested = False
         self._task_error_delay_overrides.clear()
         self._task_error_type_names.clear()
-        current_platform = getattr(self.config.planting, 'window_platform', 'qq')
-        current_platform_value = current_platform.value if hasattr(current_platform, 'value') else str(current_platform)
+        current_platform_value = self.config.planting.window_platform.value
         normalized_platform = normalize_template_platform(current_platform_value)
         Button.set_template_platform(normalized_platform)
         if self.cv_detector is not None:
@@ -170,10 +167,8 @@ class BotRuntimeMixin:
             )
 
         # [窗口阶段] 调整窗口尺寸与位置，确保截图区域稳定。
-        pos = getattr(self.config.planting, 'window_position', 'left_center')
-        pos_value = pos.value if hasattr(pos, 'value') else str(pos)
-        platform = getattr(self.config.planting, 'window_platform', 'qq')
-        platform_value = platform.value if hasattr(platform, 'value') else str(platform)
+        pos_value = self.config.planting.window_position.value
+        platform_value = self.config.planting.window_platform.value
         self.window_manager.resize_window(pos_value, platform_value)
         self._wait_window_capture_stable(timeout=0.5, interval=0.04)
         window = self.window_manager.refresh_cached_window_info() or self.window_manager.refresh_window_info(

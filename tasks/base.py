@@ -1,16 +1,62 @@
-"""任务基类：统一任务上下文类型声明。"""
+"""任务基类：统一任务上下文类型声明与强类型参数访问。"""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Mapping
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
 from core.engine.task.registry import TaskResult
+from models.config import AppConfig
+from models.task_views import (
+    FriendTaskView,
+    GiftTaskView,
+    LandScanTaskView,
+    MainTaskView,
+    RewardTaskView,
+    SellTaskView,
+    ShareTaskView,
+)
 
 if TYPE_CHECKING:
     from core.engine.bot.local_engine import LocalBotEngine
     from core.ui.ui import UI
+
+
+@dataclass(slots=True)
+class TaskViews:
+    """任务强类型视图入口。"""
+
+    owner: 'TaskBase'
+
+    @property
+    def main(self) -> MainTaskView:
+        return self.owner.engine.build_task_view('main')  # type: ignore[return-value]
+
+    @property
+    def friend(self) -> FriendTaskView:
+        return self.owner.engine.build_task_view('friend')  # type: ignore[return-value]
+
+    @property
+    def gift(self) -> GiftTaskView:
+        return self.owner.engine.build_task_view('gift')  # type: ignore[return-value]
+
+    @property
+    def reward(self) -> RewardTaskView:
+        return self.owner.engine.build_task_view('reward')  # type: ignore[return-value]
+
+    @property
+    def share(self) -> ShareTaskView:
+        return self.owner.engine.build_task_view('share')  # type: ignore[return-value]
+
+    @property
+    def sell(self) -> SellTaskView:
+        return self.owner.engine.build_task_view('sell')  # type: ignore[return-value]
+
+    @property
+    def land_scan(self) -> LandScanTaskView:
+        return self.owner.engine.build_task_view('land_scan')  # type: ignore[return-value]
 
 
 class TaskBase:
@@ -22,21 +68,12 @@ class TaskBase:
     def __init__(self, engine: 'LocalBotEngine', ui: 'UI'):
         self.engine = engine
         self.ui = ui
+        self.task = TaskViews(self)
 
-    def get_features(self, task_name: str) -> dict[str, Any]:
-        """获取任务特性开关字典。"""
-        return self.engine.get_task_features(task_name)
-
-    @staticmethod
-    def has_feature(features: Mapping[str, Any] | None, key: str, default: bool = False) -> bool:
-        """读取特性开关并归一化为 bool。"""
-        if not isinstance(features, Mapping):
-            return bool(default)
-        return bool(features.get(str(key), default))
-
-    def is_feature_enabled(self, task_name: str, key: str, default: bool = False) -> bool:
-        """按任务名读取某个特性开关。"""
-        return self.has_feature(self.get_features(task_name), key, default=default)
+    @property
+    def config(self) -> AppConfig:
+        """当前实例完整配置（强类型）。"""
+        return self.engine.config
 
     @staticmethod
     def parse_truthy(value: Any) -> bool:
@@ -59,7 +96,7 @@ class TaskBase:
 
     def parse_land_detail_plots(self) -> list[dict[str, Any]]:
         """解析土地详情 `config.land.plots`。"""
-        plots_raw = getattr(getattr(self.engine.config, 'land', None), 'plots', [])
+        plots_raw = self.config.land.plots
         if not isinstance(plots_raw, list) or not plots_raw:
             return []
 
@@ -168,7 +205,7 @@ class TaskBase:
         if not plot_ids:
             return
 
-        plots = getattr(getattr(self.engine.config, 'land', None), 'plots', None)
+        plots = self.config.land.plots
         if not isinstance(plots, list):
             return
 
@@ -188,7 +225,7 @@ class TaskBase:
             return
 
         try:
-            self.engine.config.save()
+            self.config.save()
         except Exception as exc:
             logger.warning('{}: 状态回填失败 | flag={} error={}', log_prefix, key, exc)
             return
@@ -209,8 +246,4 @@ class TaskBase:
     @staticmethod
     def fail(error: str, *, next_run_seconds: int | None = None) -> TaskResult:
         """构造失败结果。"""
-        return TaskResult(
-            success=False,
-            next_run_seconds=next_run_seconds,
-            error=str(error or ''),
-        )
+        return TaskResult(success=False, next_run_seconds=next_run_seconds, error=str(error or ''))
