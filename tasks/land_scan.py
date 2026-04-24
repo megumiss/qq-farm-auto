@@ -230,6 +230,8 @@ class TaskLandScan(TaskMainActionsMixin, TaskBase):
                 self._click_and_ocr_cell(cell=cell)
                 self.ui.device.click_button(GOTO_MAIN)
                 self.ui.device.sleep(0.2)
+                self.ui.device.stuck_record_clear()
+                self.ui.device.click_record_clear()
 
         return
 
