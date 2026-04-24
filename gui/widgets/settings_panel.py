@@ -13,7 +13,6 @@ from qfluentwidgets import (
     ComboBox,
     DoubleSpinBox,
     FluentIcon,
-    HyperlinkButton,
     LineEdit,
     PushButton,
     ScrollArea,
@@ -25,9 +24,6 @@ from gui.widgets.fluent_container import StableElevatedCardWidget, TransparentCa
 from models.config import AppConfig, PlantMode, RunMode, WindowPlatform, WindowPosition
 from models.game_data import get_best_crop_for_level, get_crop_names, get_latest_crop_for_level
 from utils.app_paths import user_app_dir
-
-PROJECT_URL = 'https://github.com/megumiss/qq-farm-copilot'
-FREE_NOTICE_TEXT = '本项目仅供学习测试使用，自动化操作可能违反游戏服务条款，由此产生的一切后果由使用者自行承担。'
 
 
 class SettingsPanel(QWidget):
@@ -246,26 +242,6 @@ class SettingsPanel(QWidget):
         self.logs_path_label.setStyleSheet('color: #64748b;')
         advanced_form.addRow(self._field_label('日志路径', advanced_card), self.logs_path_label)
 
-        declaration_card, declaration_form = self._build_group_card(
-            content,
-            title='声明',
-            object_name='settingsDeclarationCard',
-        )
-        layout.addWidget(declaration_card)
-        self.free_notice = CaptionLabel(FREE_NOTICE_TEXT, declaration_card)
-        self.free_notice.setWordWrap(True)
-        self.free_notice.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.free_notice.setStyleSheet('color: #dc2626; font-weight: 700;')
-        notice_row = QWidget(declaration_card)
-        notice_layout = QHBoxLayout(notice_row)
-        notice_layout.setContentsMargins(0, 0, 0, 0)
-        notice_layout.setSpacing(0)
-        notice_layout.addWidget(self.free_notice, 1)
-        declaration_form.addRow(self._field_label('免责声明', declaration_card), notice_row)
-        self.project_link = HyperlinkButton(declaration_card)
-        self.project_link.setText(PROJECT_URL)
-        self.project_link.setUrl(PROJECT_URL)
-        declaration_form.addRow(self._field_label('项目地址', declaration_card), self.project_link)
         layout.addStretch()
 
         for sig in (

@@ -72,3 +72,8 @@ def setup_logger(log_dir: str = 'logs', *, enable_debug: bool = False):
 def update_logger_level(enable_debug: bool):
     """按新配置重建日志输出级别。"""
     return setup_logger(_current_log_dir, enable_debug=enable_debug)
+
+
+def switch_log_directory(log_dir: str):
+    """切换日志目录并保持当前日志级别。"""
+    return setup_logger(log_dir=log_dir, enable_debug=_debug_enabled)
