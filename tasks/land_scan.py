@@ -19,6 +19,7 @@ from core.ui.assets import (
 )
 from core.ui.page import GOTO_MAIN, page_main
 from tasks.base import TaskBase
+from tasks.main_actions import TaskMainActionsMixin
 from utils.land_grid import LandCell, get_lands_from_land_anchor
 from utils.ocr_utils import OCRItem, OCRTool
 
@@ -86,7 +87,7 @@ LAND_SCAN_ANCHOR_STABLE_SECONDS = 0.5
 LAND_SCAN_ANCHOR_STABLE_REQUIRED_HITS = 3
 
 
-class TaskLandScan(TaskBase):
+class TaskLandScan(TaskMainActionsMixin, TaskBase):
     """按预设顺序遍历地块并进行 OCR 收集。"""
 
     def __init__(self, engine, ui, *, ocr_tool: OCRTool | None = None):
@@ -225,12 +226,17 @@ class TaskLandScan(TaskBase):
             col_cells = list(col_map.get(physical_col, []))
             col_cells.sort(key=lambda cell: (int(cell.center[1]), int(cell.center[0])))
             for cell in col_cells:
-                
+                self._run_actions_before_ocr_cell()
                 self._click_and_ocr_cell(cell=cell)
                 self.ui.device.click_button(GOTO_MAIN)
                 self.ui.device.sleep(0.2)
 
         return
+
+    def _run_actions_before_ocr_cell(self) -> None:
+        """点击地块前先做一键收获与三项维护，减少弹窗噪声。"""
+        self._run_feature_harvest()
+        self._run_feature_maintain_actions(enable_weed=True, enable_bug=True, enable_water=True)
 
     def _resolve_scan_columns(self, cells: list[LandCell], *, from_side: str, column_count: int) -> list[int]:
         """根据当前网格确定本轮应扫描的物理列（排除前确定，避免补列）。"""
