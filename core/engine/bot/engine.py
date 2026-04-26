@@ -40,6 +40,11 @@ class _SchedulerSnapshot:
             'running_tasks': 0,
             'pending_tasks': 0,
             'waiting_tasks': 0,
+            'recovery_total': 0,
+            'recovery_last_error': '--',
+            'recovery_last_action': '--',
+            'recovery_last_outcome': '--',
+            'recovery_last_task': '--',
             'elapsed': '--',
             'state': 'idle',
         }

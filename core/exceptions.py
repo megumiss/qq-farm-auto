@@ -11,8 +11,8 @@ class LoginRepeatError(RuntimeError):
     """QQ重复登录。"""
 
 
-class TaskRetryCurrentError(RuntimeError):
-    """微信重新登录"""
+class LoginRecoveryRequiredError(RuntimeError):
+    """检测到重新登录弹窗，需要执行登录恢复流程。"""
 
 
 class BuySeedError(RuntimeError):

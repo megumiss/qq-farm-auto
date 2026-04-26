@@ -115,6 +115,12 @@
     "default_failure_interval": 5,
     "max_failures": 3
   },
+  "recovery": {
+    "task_restart_attempts": 3,
+    "task_retry_delay_seconds": 1,
+    "startup_retry_step_sleep_seconds": 0.5,
+    "startup_stabilize_timeout_seconds": 90.0
+  },
   "planting": {
     "strategy": "latest_level",
     "warehouse_first": true,

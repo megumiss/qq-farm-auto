@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from core.base.button import Button
+from core.engine.bot.error_router import ErrorRouter
+from core.engine.bot.recovery_runner import RecoveryRunner
 from core.engine.task.executor import TaskExecutor
 from core.engine.task.registry import (
     TaskItem,
@@ -67,6 +69,21 @@ class BotInitMixin:
         self._fatal_error_stop_requested = False
         self._task_error_delay_overrides: dict[str, int] = {}
         self._task_error_type_names: dict[str, str] = {}
+        self._task_exception_retry_counts: dict[str, int] = {}
+        self._recovery_total_count: int = 0
+        self._recovery_last_error: str = '--'
+        self._recovery_last_action: str = '--'
+        self._recovery_last_outcome: str = '--'
+        self._recovery_last_task: str = '--'
+
+        recovery_cfg = config.recovery
+        task_restart_attempts = int(recovery_cfg.task_restart_attempts)
+        task_retry_delay_seconds = int(recovery_cfg.task_retry_delay_seconds)
+        self.error_router = ErrorRouter(
+            task_restart_attempts=task_restart_attempts,
+            task_retry_delay_seconds=task_retry_delay_seconds,
+        )
+        self.recovery_runner = RecoveryRunner(self)
 
         self.scheduler.state_changed.connect(self.state_changed.emit)
         self.scheduler.stats_updated.connect(self.stats_updated.emit)

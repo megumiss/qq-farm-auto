@@ -9,8 +9,6 @@ from datetime import datetime, timedelta
 from typing import Callable
 
 from loguru import logger
-
-from core.exceptions import TaskRetryCurrentError
 from core.engine.task.registry import TaskContext, TaskItem, TaskResult, TaskSnapshot
 from models.config import TaskTriggerType, normalize_task_enabled_time_range
 
@@ -345,10 +343,7 @@ class TaskExecutor:
                             error=f'runner returned invalid result: {type(result)}',
                         )
                 except Exception as exc:
-                    if isinstance(exc, TaskRetryCurrentError):
-                        logger.warning(f'task `{task.name}` retry requested: {exc}')
-                    else:
-                        logger.exception(f'task `{task.name}` crashed: {exc}')
+                    logger.exception(f'task `{task.name}` crashed: {exc}')
                     if self._on_task_error:
                         try:
                             self._on_task_error(task.name, exc, traceback.format_exc())

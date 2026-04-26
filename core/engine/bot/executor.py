@@ -6,10 +6,12 @@ import math
 import threading
 from datetime import datetime, timedelta
 from functools import lru_cache
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from loguru import logger
 
+from core.engine.bot.error_router import RecoveryAction, RecoveryPhase
+from core.engine.bot.recovery_runner import RecoveryOutcome, RecoveryResult
 from core.engine.task.executor import TaskExecutor
 from core.engine.task.registry import (
     TaskContext,
@@ -17,8 +19,6 @@ from core.engine.task.registry import (
     TaskResult,
     TaskSnapshot,
 )
-from core.exceptions import GamePageUnknownError, LoginRepeatError, TaskRetryCurrentError
-from core.platform.device import DeviceStuckError, DeviceTooManyClickError
 from models.config import (
     DEFAULT_TASK_ENABLED_TIME_RANGE,
     TaskTriggerType,
@@ -36,9 +36,16 @@ from tasks.share import TaskShare
 from utils.app_paths import load_config_json_object
 from utils.feature_policy import get_forced_off_features
 
+if TYPE_CHECKING:
+    from core.engine.bot.error_router import ErrorRouter
+    from core.engine.bot.recovery_runner import RecoveryRunner
+
 
 class BotExecutorMixin:
     """Bot 执行器与调度相关逻辑。"""
+
+    error_router: ErrorRouter
+    recovery_runner: RecoveryRunner
 
     _NEXT_RUN_PARSE_FORMATS = ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M')
 
@@ -87,6 +94,65 @@ class BotExecutorMixin:
                 emitter.emit(payload)
             except Exception:
                 pass
+
+    def _task_recovery_policy(self) -> tuple[int, int]:
+        """读取任务异常恢复策略（重启次数、重试延迟）。"""
+        recovery_cfg = self.config.recovery
+        restart_limit = int(recovery_cfg.task_restart_attempts)
+        retry_delay = int(recovery_cfg.task_retry_delay_seconds)
+        return max(1, restart_limit), max(1, retry_delay)
+
+    def _sync_recovery_policy_from_config(self) -> None:
+        """将最新配置同步到异常路由器。"""
+        restart_limit, retry_delay = self._task_recovery_policy()
+        self.error_router.update_policy(
+            task_restart_attempts=restart_limit,
+            task_retry_delay_seconds=retry_delay,
+        )
+
+    def _record_recovery_event(
+        self,
+        *,
+        task_name: str,
+        error_key: str,
+        action: RecoveryAction,
+        outcome: RecoveryOutcome,
+    ) -> None:
+        """记录恢复事件并写入运行态指标。
+
+        Args:
+            task_name: 触发恢复的任务名（启动阶段固定为 `startup`）。
+            error_key: 路由层归一化错误分类键。
+            action: 本次恢复动作类型。
+            outcome: 恢复执行结果（重试/跳过/停止）。
+        """
+        self._recovery_total_count += 1
+        self._recovery_last_error = str(error_key or '--')
+        self._recovery_last_action = action.value
+        self._recovery_last_outcome = outcome.result.value
+        self._recovery_last_task = str(task_name or '--')
+        self.scheduler.update_runtime_metrics(
+            recovery_total=self._recovery_total_count,
+            recovery_last_error=self._recovery_last_error,
+            recovery_last_action=self._recovery_last_action,
+            recovery_last_outcome=self._recovery_last_outcome,
+            recovery_last_task=self._recovery_last_task,
+        )
+
+    def _reset_recovery_metrics(self) -> None:
+        """重置恢复指标。"""
+        self._recovery_total_count = 0
+        self._recovery_last_error = '--'
+        self._recovery_last_action = '--'
+        self._recovery_last_outcome = '--'
+        self._recovery_last_task = '--'
+        self.scheduler.update_runtime_metrics(
+            recovery_total=0,
+            recovery_last_error='--',
+            recovery_last_action='--',
+            recovery_last_outcome='--',
+            recovery_last_task='--',
+        )
 
     def _reset_device_runtime_guards(self):
         """任务开始前重置设备卡死/点击守卫记录。"""
@@ -587,6 +653,7 @@ class BotExecutorMixin:
         elif result.success:
             self._task_error_delay_overrides.pop(task_name, None)
             self._task_error_type_names.pop(task_name, None)
+            self._task_exception_retry_counts.pop(task_name, None)
 
         self._persist_task_next_run(task_name)
 
@@ -601,7 +668,13 @@ class BotExecutorMixin:
         self._emit_stats_now()
 
     def _on_executor_task_error(self, task_name: str, exc: Exception, tb_text: str):
-        """任务异常回调：保存异常截图，并默认进入人工接管流程。"""
+        """任务异常回调：保存异常截图，并按路由执行恢复策略。
+
+        Args:
+            task_name: 异常所属任务名。
+            exc: 原始异常对象。
+            tb_text: traceback 文本（用于错误快照落盘）。
+        """
         if self.device:
             try:
                 folder = self.device.save_error_screenshots(
@@ -613,36 +686,81 @@ class BotExecutorMixin:
             except Exception as save_exc:
                 logger.debug(f'save error screenshots failed: {save_exc}')
 
-        if isinstance(exc, TaskRetryCurrentError):
-            self._task_error_type_names[task_name] = type(exc).__name__
-            # 点击修复类异常：1 秒后重跑当前任务，不进入人工接管。
-            self._task_error_delay_overrides[task_name] = 1
-            logger.warning(f'[{self._task_display_name(task_name)}] 触发重试: {type(exc).__name__}，1s后重跑当前任务')
-            return
+        display_name = self._task_display_name(task_name)
+        err_type = type(exc).__name__
+        self._task_error_type_names[task_name] = err_type
 
-        self._task_error_type_names[task_name] = type(exc).__name__
-
-        if isinstance(exc, GamePageUnknownError):
-            self._request_manual_takeover(
-                reason=f'检测到未知页面异常({task_name})，已停止任务',
-            )
-            return
-
-        if isinstance(exc, LoginRepeatError):
-            self._request_manual_takeover(
-                reason=f'检测到重复登录异常({task_name})，已停止任务',
-            )
-            return
-
-        if isinstance(exc, (DeviceStuckError, DeviceTooManyClickError)):
-            self._request_manual_takeover(
-                reason=f'检测到设备卡死异常({task_name})，已停止任务',
-            )
-            return
-
-        self._request_manual_takeover(
-            reason=f'任务异常({task_name}): {type(exc).__name__}，已停止任务',
+        # 1) 先做异常分流，得到统一恢复决策。
+        decision = self.error_router.route(
+            phase=RecoveryPhase.TASK,
+            exc=exc,
         )
+        current_attempt = 1
+        if decision.action == RecoveryAction.RESTART_WINDOW:
+            current_attempt = int(self._task_exception_retry_counts.get(task_name, 0)) + 1
+            self._task_exception_retry_counts[task_name] = current_attempt
+            logger.warning(
+                f'[{display_name}] 异常自动恢复 {current_attempt}/{decision.max_attempts}: {err_type}，开始重启窗口'
+            )
+        else:
+            self._task_exception_retry_counts.pop(task_name, None)
+
+        # 2) 执行恢复动作（登录恢复 / 重启窗口 / 人工接管）。
+        try:
+            outcome = self.recovery_runner.run_task(
+                decision=decision,
+                task_name=task_name,
+                exc=exc,
+                attempt=current_attempt,
+            )
+        except Exception as run_exc:
+            logger.exception(f'[{display_name}] 恢复执行器异常: {run_exc}')
+            outcome = RecoveryOutcome(
+                result=RecoveryResult.STOP,
+                reason=f'任务异常({task_name}): {err_type}，恢复执行器异常({type(run_exc).__name__})',
+            )
+
+        # 3) 无论结果如何都记录一次恢复事件，便于 UI 与日志追踪。
+        self._record_recovery_event(
+            task_name=task_name,
+            error_key=decision.error_key,
+            action=decision.action,
+            outcome=outcome,
+        )
+
+        # 4) 按恢复结果推进调度：重试当前任务 / 跳过本轮 / 停止引擎。
+        if outcome.result == RecoveryResult.RETRY_TASK:
+            delay_seconds = max(1, int(outcome.delay_seconds or decision.retry_delay_seconds))
+            self._task_error_delay_overrides[task_name] = delay_seconds
+            if decision.action == RecoveryAction.RESTART_WINDOW:
+                if outcome.reason == 'restart_success':
+                    logger.warning(
+                        f'[{display_name}] 异常恢复成功 {current_attempt}/{decision.max_attempts}: {err_type}，'
+                        f'{delay_seconds}s后重跑当前任务'
+                    )
+                else:
+                    logger.warning(
+                        f'[{display_name}] 异常恢复失败 {current_attempt}/{decision.max_attempts}: {err_type}，'
+                        f'{delay_seconds}s后继续重试'
+                    )
+            else:
+                logger.warning(f'[{display_name}] 异常恢复: {err_type}，{delay_seconds}s后重试')
+            return
+
+        if outcome.result == RecoveryResult.SKIP_TASK:
+            self._task_exception_retry_counts.pop(task_name, None)
+            self._task_error_type_names.pop(task_name, None)
+            delay_seconds = max(1, int(self._task_seconds_by_trigger(task_name)))
+            self._task_error_delay_overrides[task_name] = delay_seconds
+            logger.warning(f'[{display_name}] 登录恢复成功，本轮任务结束，按调度间隔延后 {delay_seconds}s')
+            return
+
+        self._task_exception_retry_counts.pop(task_name, None)
+        self._task_error_delay_overrides.pop(task_name, None)
+        self._task_error_type_names.pop(task_name, None)
+
+        reason = str(outcome.reason or f'任务异常({task_name}): {err_type}，已停止任务')
+        self._request_manual_takeover(reason=reason)
 
     def _request_manual_takeover(self, reason: str):
         """请求人工接管：异步停止引擎，避免执行器线程自停造成 join 冲突。"""

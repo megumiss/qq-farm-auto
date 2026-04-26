@@ -25,6 +25,7 @@
 - 好友黑名单配置：`config.tasks.friend.features.blacklist`（`list[str]`，在任务设置详情弹窗维护）
 - 偷取统计开关：`config.tasks.friend.features.steal_stats`（默认 `false`；开启后仅在偷取动作后执行 OCR 统计，偷取速度会变慢）
 - 高级配置：`config.safety.debug_log_enabled` 控制 Debug 日志输出
+- 异常恢复配置：`config.recovery`（`task_restart_attempts/task_retry_delay_seconds/startup_retry_step_sleep_seconds/startup_stabilize_timeout_seconds`）
 - 全局日志保留：`%APPDATA%/QQFarmCopilot/app_settings.json -> logging.retention_days`（单位天，默认 `7`；启动与全局设置变更时清理过期 `.log`）
 - 截图频率：`config.screenshot.capture_interval_seconds`（默认 `0.3` 秒；`0` 表示不限制最小截图间隔）
 - 播种稳定超时：`config.planting.planting_stable_timeout_seconds`（默认 `3.0` 秒；用于背景树锚点稳定等待超时）
@@ -50,6 +51,12 @@
 
 - `core/engine/bot/executor.py`
 : 任务注册与调度桥接（自动发现 `_run_task_*`）。
+
+- `core/engine/bot/error_router.py`
+: 异常类型到恢复动作的统一映射（按 `startup/task` 分阶段路由）。
+
+- `core/engine/bot/recovery_runner.py`
+: 执行恢复动作（登录恢复/重启窗口/启动重试）并返回标准化恢复结果。
 
 - `core/engine/task/executor.py`
 : 通用任务执行器（pending/waiting 队列、按固定任务顺序调度、结果回写 next_run）。
