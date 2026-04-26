@@ -665,6 +665,8 @@ class BotExecutorMixin:
         if isinstance(default, list):
             return list(value) if isinstance(value, list) else list(default)
         if isinstance(default, int) and not isinstance(default, bool):
+            if isinstance(value, bool):
+                return int(default)
             try:
                 return int(value)
             except Exception:
@@ -921,12 +923,57 @@ class BotExecutorMixin:
         return task.run(rect=rect)
 
     def _run_task_restart(self, _ctx: TaskContext) -> TaskResult:
-        """执行内置重启任务：重启窗口并完成启动收敛。"""
+        """执行 `restart` 任务：支持定时重启与异常恢复重启。"""
         payload = dict(self._restart_task_payload or {})
+        is_recovery_restart = bool(payload)
+        restart_delay_seconds = 5
+        try:
+            restart_view = self.build_task_view('restart')
+            delay_raw = getattr(restart_view.feature, 'restart_delay_seconds', 5)
+            if isinstance(delay_raw, bool):
+                delay_raw = 5
+            restart_delay_seconds = max(0, int(delay_raw))
+        except Exception:
+            restart_delay_seconds = 5
+
+        if not is_recovery_restart:
+            task_name = 'restart'
+            display_name = self._task_display_name(task_name)
+            valid_shortcut, shortcut_error = self._validate_window_shortcut_for_recovery()
+            if not valid_shortcut:
+                error = f'快捷方式校验失败: {shortcut_error}'
+                logger.error(f'[{display_name}] {error}')
+                return TaskResult(success=False, error=error)
+
+            logger.info(f'[{display_name}] 开始执行定时重启')
+            try:
+                ok = bool(
+                    self._restart_target_window_for_recovery(
+                        task_name=task_name,
+                        attempt=1,
+                        limit=1,
+                        err_type='scheduled_restart',
+                        reopen_delay_seconds=restart_delay_seconds,
+                    )
+                )
+            except Exception as exc:
+                logger.exception(f'[{display_name}] 定时重启执行异常: {exc}')
+                return TaskResult(success=False, error=f'定时重启执行异常: {type(exc).__name__}')
+
+            if ok:
+                logger.info(f'[{display_name}] 定时重启完成')
+                return TaskResult(success=True)
+
+            error = '定时重启失败：未能回到主页面'
+            logger.error(f'[{display_name}] {error}')
+            return TaskResult(success=False, error=error)
+
         source_task = str(payload.get('source_task') or 'unknown')
         err_type = str(payload.get('err_type') or 'Exception')
         attempt = max(1, int(payload.get('attempt') or 1))
         limit = max(1, int(payload.get('limit') or 1))
+        prev_enabled = bool(payload.get('prev_enabled', False))
+        prev_order_index = max(0, int(payload.get('prev_order_index') or 0))
 
         try:
             ok = bool(
@@ -935,6 +982,7 @@ class BotExecutorMixin:
                     attempt=attempt,
                     limit=limit,
                     err_type=err_type,
+                    reopen_delay_seconds=restart_delay_seconds,
                 )
             )
         except Exception as exc:
@@ -943,14 +991,19 @@ class BotExecutorMixin:
         finally:
             self._restart_task_payload = None
             if self._task_executor is not None:
-                self._task_executor.update_task('restart', enabled=False)
+                self._task_executor.update_task(
+                    'restart',
+                    enabled=prev_enabled,
+                    order_index=max(1, prev_order_index),
+                )
             item = self._executor_tasks.get('restart')
             if item is not None:
-                item.enabled = False
+                item.enabled = prev_enabled
+                item.order_index = max(1, prev_order_index)
 
         if ok:
             return TaskResult(success=True)
-        return TaskResult(success=False, error='重启任务执行失败')
+        return TaskResult(success=False, error='异常恢复重启失败')
 
     def _queue_restart_task(
         self,
@@ -964,17 +1017,30 @@ class BotExecutorMixin:
         executor = self._task_executor
         if executor is None:
             return False
+        item = self._executor_tasks.get('restart')
+        prev_enabled = bool(item.enabled) if item is not None else False
+        prev_order_index = int(item.order_index) if item is not None else 0
 
         self._restart_task_payload = {
             'source_task': str(source_task or 'unknown'),
             'err_type': str(err_type or 'Exception'),
             'attempt': int(attempt),
             'limit': int(limit),
+            'prev_enabled': prev_enabled,
+            'prev_order_index': prev_order_index,
         }
         executor.update_task('restart', enabled=True, order_index=0)
         queued = bool(executor.task_call('restart', force_call=True))
         if not queued:
             self._restart_task_payload = None
+            executor.update_task(
+                'restart',
+                enabled=prev_enabled,
+                order_index=max(1, prev_order_index),
+            )
+            if item is not None:
+                item.enabled = prev_enabled
+                item.order_index = max(1, prev_order_index)
         return queued
 
     def _on_executor_snapshot(self, snapshot: TaskSnapshot):
@@ -997,9 +1063,10 @@ class BotExecutorMixin:
             return
 
         if task_name == 'restart' and not result.success:
-            reason = str(result.error or '重启任务失败，已停止任务')
-            self._request_manual_takeover(reason=reason)
-            return
+            error_text = str(result.error or '')
+            if error_text.startswith('异常恢复'):
+                self._request_manual_takeover(reason=error_text or '重启任务失败，已停止任务')
+                return
 
         # 对齐 NIKKE：daily 任务的下次执行时间由执行器统一按 daily_time 计算，
         # 任务实现层无需每次显式返回 next_run_seconds。

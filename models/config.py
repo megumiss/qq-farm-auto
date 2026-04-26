@@ -119,7 +119,7 @@ class TaskTriggerType(str, Enum):
 DEFAULT_MIN_TASK_INTERVAL_SECONDS = 5
 DEFAULT_TASK_NEXT_RUN = '2026-01-01 00:00'
 DEFAULT_TASK_ENABLED_TIME_RANGE = '00:00:00-23:59:59'
-DEFAULT_EXECUTOR_TASK_ORDER = 'land_scan>main>friend>sell>reward>gift>share'
+DEFAULT_EXECUTOR_TASK_ORDER = 'land_scan>main>friend>sell>reward>gift>share>restart'
 
 
 def _normalize_hh_mm_text(text: str, fallback: str) -> str:
@@ -255,6 +255,18 @@ class TaskScheduleItemConfig(ConfigModel):
                     seen.add(text)
                     cleaned.append(text)
                 out[name] = cleaned
+                continue
+            if isinstance(item, bool):
+                out[name] = item
+                continue
+            if isinstance(item, int):
+                out[name] = int(item)
+                continue
+            if isinstance(item, float):
+                out[name] = float(item)
+                continue
+            if isinstance(item, str):
+                out[name] = str(item)
                 continue
             out[name] = bool(item)
         return out

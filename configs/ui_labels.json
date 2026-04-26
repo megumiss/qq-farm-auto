@@ -7,7 +7,8 @@
       "reward": "奖励领取",
       "gift": "物品领取",
       "sell": "出售",
-      "land_scan": "地块巡查"
+      "land_scan": "地块巡查",
+      "restart": "定时重启"
     },
     "feature_labels": {
       "auto_harvest": "收获",
@@ -27,7 +28,8 @@
       "claim_growth_task": "成长任务",
       "auto_svip_gift": "SVIP礼包领取",
       "auto_mall_gift": "商城礼包领取",
-      "auto_mail": "邮件领取"
+      "auto_mail": "邮件领取",
+      "restart_delay_seconds": "重启间隔(秒)"
     },
     "feature_hints": {
       "reward.claim_growth_task": "QQ平台会直接领取",
@@ -64,10 +66,12 @@
       "reward": "奖励领取",
       "gift": "物品领取",
       "sell": "出售",
-      "land_scan": "地块巡查"
+      "land_scan": "地块巡查",
+      "restart": "定时重启"
     },
     "task_hints": {
-      "share": "仅支持微信平台"
+      "share": "仅支持微信平台",
+      "restart": "建议先在设置中配置小程序快捷方式（.lnk）"
     },
     "switch_label": "开关:",
     "enabled": "启用",

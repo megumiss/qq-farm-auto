@@ -36,6 +36,7 @@
 - [x] 一键启动
 - [ ] 异常发送通知
 - [x] 异常自动重启
+- [x] 定时重启窗口
 - [x] 支持QQ/微信平台后台运行
 - [x] 支持QQ/微信平台多开
 
@@ -43,6 +44,7 @@
 
 - 架构：`BotEngine` + `TaskExecutor` + UI 页面识别（`core/ui`）
 - 异常恢复：`executor/runtime` 统一异常分支处理 + 内置 `restart` 任务重启窗口
+- 定时重启：可配置任务 `restart`（默认关闭，间隔 `4` 小时）
 - 调度：统一任务执行器，支持 `INTERVAL` / `DAILY`
 - 实例配置：`%APPDATA%\QQFarmCopilot\instances\<instance_id>\configs\config.json` 中 `tasks` 为**动态字典**
 - 全局设置：`%APPDATA%\QQFarmCopilot\app_settings.json` 支持 `logging.retention_days`（日志保留天数，单位天）
@@ -58,6 +60,7 @@
 - `gift`：物品领取任务（QQSVIP礼包、商城礼包、可选邮件领取；支持分项开关）
 - `sell`：独立出售任务（仓库批量出售）
 - `land_scan`：地块巡查任务（默认关闭；每 30 分钟；按左右滑动分段点击地块并 OCR 采集）
+- `restart`：定时重启任务（默认关闭；每 4 小时；重启窗口并收敛回主页面）
 
 ## 后台/多开说明
 
@@ -147,7 +150,7 @@ python main.py
 - `planting`：种植策略、等级、平台、窗口位置、`warehouse_first`（仓库优先选种；按固定底色数字块识别最左种子）、`skip_event_crops`（是否额外跳过艾草 `SEED_BTN_MUGWORT`；爱心果 `SEED_BTN_HEART_FRUIT` 固定跳过）、等级 OCR 开关、`planting_stable_seconds`（播种稳定时间）、`planting_stable_timeout_seconds`（背景树锚点稳定等待超时）
 - `executor`：调度顺序与默认间隔配置；`min_task_interval_seconds`（任务最小执行间隔）
 - `recovery`：异常恢复策略；`task_restart_attempts`（任务异常重启窗口次数）、`task_retry_delay_seconds`（重启后重试延迟秒数）、`startup_retry_step_sleep_seconds`（启动重试轮询步进）、`startup_stabilize_timeout_seconds`（启动收敛总超时）
-- `executor.task_order`：任务固定顺序配置（示例：`main>friend>land_scan>share>reward>gift>sell`）
+- `executor.task_order`：任务固定顺序配置（示例：`main>friend>land_scan>share>reward>gift>sell>restart`）
 - `land`：农场详情配置；`land.plots` 为 24 格地块状态列表（元素：`{ "plot_id": "1-1", "level": "unbuilt|normal|red|black|gold", "maturity_countdown": "HH:MM:SS", "need_upgrade": false, "need_planting": false }`）；`land.profile` 为个人信息（`level/gold/coupon/exp`，由等级同步 OCR 回写）
 - `tasks`：动态任务字典
 - `tasks.<task>.next_run`：任务下次执行时间（持久化到配置，默认 `2026-01-01 00:00`）
@@ -242,6 +245,18 @@ python main.py
     "enabled_time_range": "00:00:00-23:59:59",
     "failure_interval_seconds": 300,
     "features": {}
+  },
+  "restart": {
+    "enabled": false,
+    "trigger": "interval",
+    "daily_time": "04:00",
+    "next_run": "2026-01-01 00:00",
+    "interval_seconds": 14400,
+    "enabled_time_range": "00:00:00-23:59:59",
+    "failure_interval_seconds": 300,
+    "features": {
+      "restart_delay_seconds": 5
+    }
   }
 }
 ```
@@ -253,6 +268,7 @@ python main.py
 `tasks.<task>.features` 字段说明：
 
 - 布尔开关：`{ "feature_x": true }`
+- 数值参数：`{ "feature_num": 5 }`
 - 列表项（例如好友黑名单）：`{ "blacklist": ["好友A", "好友B"] }`
 
 调度规则：

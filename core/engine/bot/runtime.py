@@ -454,7 +454,15 @@ class BotRuntimeMixin:
         logger.info(f'[{task_name}] 重新登录恢复成功: 已回到主页面')
         return True
 
-    def _restart_target_window_for_recovery(self, *, task_name: str, attempt: int, limit: int, err_type: str) -> bool:
+    def _restart_target_window_for_recovery(
+        self,
+        *,
+        task_name: str,
+        attempt: int,
+        limit: int,
+        err_type: str,
+        reopen_delay_seconds: float = 0.0,
+    ) -> bool:
         """任务异常恢复：重启小程序窗口并等待重新进入主页面。
 
         Args:
@@ -462,6 +470,7 @@ class BotRuntimeMixin:
             attempt: 当前重启尝试次数（从 1 开始）。
             limit: 最大允许重启次数。
             err_type: 原始异常类型名（用于日志）。
+            reopen_delay_seconds: 关闭窗口后到重新拉起之间的等待秒数。
 
         Returns:
             `True` 表示重启并完成初始化；`False` 表示恢复失败。
@@ -474,6 +483,11 @@ class BotRuntimeMixin:
                 if not self._close_window_by_hwnd(hwnd):
                     logger.error(f'异常恢复失败：关闭窗口超时（{attempt}/{limit}）')
                     return False
+
+        delay_seconds = max(0.0, float(reopen_delay_seconds))
+        if delay_seconds > 0:
+            logger.info(f'[{task_name}] 重启流程: 关闭窗口后等待 {delay_seconds:.1f}s')
+            time.sleep(delay_seconds)
 
         window, launched = self._try_launch_window_by_shortcut(
             wait_timeout=self._WINDOW_LAUNCH_WAIT_TIMEOUT_SECONDS,

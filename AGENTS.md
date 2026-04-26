@@ -24,6 +24,7 @@
 - 农场详情配置：`config.land.plots`（固定 24 格，元素结构：`{plot_id, level, maturity_countdown, need_upgrade, need_planting}`；`maturity_countdown` 为 `HH:MM:SS`，`need_upgrade` 表示地块是否可升级，`need_planting` 表示地块是否需要播种）与 `config.land.profile`（`level/gold/coupon/exp`，来源于等级同步 OCR）
 - 好友黑名单配置：`config.tasks.friend.features.blacklist`（`list[str]`，在任务设置详情弹窗维护）
 - 偷取统计开关：`config.tasks.friend.features.steal_stats`（默认 `false`；开启后仅在偷取动作后执行 OCR 统计，偷取速度会变慢）
+- 定时重启任务：`config.tasks.restart`（默认关闭；`trigger=interval`，默认 `interval_seconds=14400`；`features.restart_delay_seconds` 默认 `5` 秒，用于控制关闭窗口到重新打开之间的等待时间）
 - 高级配置：`config.safety.debug_log_enabled` 控制 Debug 日志输出
 - 异常恢复配置：`config.recovery`（`task_restart_attempts/task_retry_delay_seconds/startup_retry_step_sleep_seconds/startup_stabilize_timeout_seconds`）
 - 全局日志保留：`%APPDATA%/QQFarmCopilot/app_settings.json -> logging.retention_days`（单位天，默认 `7`；启动与全局设置变更时清理过期 `.log`）
@@ -56,7 +57,7 @@
 : 通用任务执行器（pending/waiting 队列、按固定任务顺序调度、结果回写 next_run）。
 
 - `tasks/*.py`
-: 业务任务实现（`main/friend/share/reward/gift/sell/land_scan` 及子任务）。
+: 业务任务实现（`main/friend/share/reward/gift/sell/land_scan` 及子任务；`restart` 入口在 `executor.py`）。
 
 - `core/ui/ui.py` + `core/base/module_base.py`
 : 页面识别、导航、弹窗清理、`appear/appear_then_click` 等模板点击能力。
@@ -188,6 +189,9 @@
 - `land_scan`
 : 地块巡查任务（默认关闭，默认 `interval_seconds=1800`）；流程为左滑 120 后扫描右到左前 5 列、右滑 240 后扫描左到右前 4 列，最后回正，并对每个点击地块执行 OCR 采集；从文本中正则提取 `HH:MM:SS` 回写到 `config.land.plots[].maturity_countdown`，并标记 `config.land.plots[].need_upgrade` 与 `config.land.plots[].need_planting`（空地为 `true`）。
 
+- `restart`
+: 定时重启任务（默认关闭，默认 `interval_seconds=14400`）；支持 `features.restart_delay_seconds`（默认 `5` 秒，表示关闭窗口到重新打开之间等待时间），执行时会校验 `window_shortcut_path` 并重启窗口后收敛回主页面。
+
 ## 5. 新增任务标准流程
 
 1. 在 `core/engine/bot/executor.py` 增加 `_run_task_<name>(ctx)`。
@@ -210,7 +214,7 @@
 - `daily_time: "HH:MM"`
 - `next_run: "YYYY-MM-DD HH:MM[:SS]"`（默认 `2026-01-01 00:00`）
 - `failure_interval_seconds: int`（>=1，实际生效下限见 `executor.min_task_interval_seconds`）
-- `features: {str: bool | list[str]}`
+- `features: {str: bool | int | list[str]}`
 
 ## 7. 修改边界与禁令
 

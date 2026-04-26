@@ -105,11 +105,23 @@
       "next_run": "2026-01-01 00:00",
       "failure_interval_seconds": 300,
       "features": {}
+    },
+    "restart": {
+      "enabled": false,
+      "trigger": "interval",
+      "interval_seconds": 14400,
+      "enabled_time_range": "00:00:00-23:59:59",
+      "daily_time": "00:01",
+      "next_run": "2026-01-01 00:00",
+      "failure_interval_seconds": 300,
+      "features": {
+        "restart_delay_seconds": 5
+      }
     }
   },
   "executor": {
     "min_task_interval_seconds": 5,
-    "task_order": "land_scan>main>friend>sell>reward>gift>share",
+    "task_order": "land_scan>main>friend>sell>reward>gift>share>restart",
     "default_success_interval": 5,
     "default_failure_interval": 5
   },

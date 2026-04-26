@@ -10,12 +10,14 @@ from qfluentwidgets import (
     BodyLabel,
     CaptionLabel,
     CheckBox,
+    ComboBox,
     FluentIcon,
     LineEdit,
     ListWidget,
     MessageBoxBase,
     PushButton,
     ScrollArea,
+    SpinBox,
     SubtitleLabel,
     TransparentToolButton,
 )
@@ -139,6 +141,8 @@ class FeaturePanel(QWidget):
         self._feature_hint_map = labels.get('feature_hints', {})
         self._loading = True
         self._bool_widgets: dict[tuple[str, str], CheckBox] = {}
+        self._int_widgets: dict[tuple[str, str], SpinBox] = {}
+        self._interval_widgets: dict[tuple[str, str], tuple[SpinBox, ComboBox]] = {}
         self._list_summary: dict[tuple[str, str], CaptionLabel] = {}
         self._build_ui()
         self._load_config()
@@ -277,20 +281,59 @@ class FeaturePanel(QWidget):
                 form.addRow(self._field_label(label, card), field)
                 continue
 
-            box = CheckBox('启用', card)
-            box.toggled.connect(self._auto_save)
-            self._bool_widgets[(task_name, feature_name)] = box
-            field = QWidget(card)
-            field_layout = QVBoxLayout(field)
-            field_layout.setContentsMargins(0, 0, 0, 0)
-            field_layout.setSpacing(2)
-            field_layout.addWidget(box)
-            if hint_text:
-                hint = CaptionLabel(hint_text, field)
-                hint.setWordWrap(True)
-                hint.setStyleSheet(f'color: {SETTINGS_HINT_COLOR};')
-                field_layout.addWidget(hint)
-            form.addRow(self._field_label(label, card), field)
+            if isinstance(value, bool):
+                box = CheckBox('启用', card)
+                box.toggled.connect(self._auto_save)
+                self._bool_widgets[(task_name, feature_name)] = box
+                field = QWidget(card)
+                field_layout = QVBoxLayout(field)
+                field_layout.setContentsMargins(0, 0, 0, 0)
+                field_layout.setSpacing(2)
+                field_layout.addWidget(box)
+                if hint_text:
+                    hint = CaptionLabel(hint_text, field)
+                    hint.setWordWrap(True)
+                    hint.setStyleSheet(f'color: {SETTINGS_HINT_COLOR};')
+                    field_layout.addWidget(hint)
+                form.addRow(self._field_label(label, card), field)
+                continue
+
+            if isinstance(value, int):
+                if feature_name.endswith('_seconds'):
+                    spin = SpinBox(card)
+                    spin.setRange(0, 99999)
+                    spin.valueChanged.connect(self._auto_save)
+                    unit = ComboBox(card)
+                    unit.addItem('秒', userData=1)
+                    unit.addItem('分钟', userData=60)
+                    unit.addItem('小时', userData=3600)
+                    unit.currentIndexChanged.connect(self._auto_save)
+                    row = QWidget(card)
+                    row_layout = QHBoxLayout(row)
+                    row_layout.setContentsMargins(0, 0, 0, 0)
+                    row_layout.setSpacing(8)
+                    row_layout.addWidget(spin, 1)
+                    row_layout.addWidget(unit)
+                    self._interval_widgets[(task_name, feature_name)] = (spin, unit)
+                    field_widget: QWidget = row
+                else:
+                    spin = SpinBox(card)
+                    spin.setRange(0, 99999)
+                    spin.valueChanged.connect(self._auto_save)
+                    self._int_widgets[(task_name, feature_name)] = spin
+                    field_widget = spin
+                field = QWidget(card)
+                field_layout = QVBoxLayout(field)
+                field_layout.setContentsMargins(0, 0, 0, 0)
+                field_layout.setSpacing(2)
+                field_layout.addWidget(field_widget)
+                if hint_text:
+                    hint = CaptionLabel(hint_text, field)
+                    hint.setWordWrap(True)
+                    hint.setStyleSheet(f'color: {SETTINGS_HINT_COLOR};')
+                    field_layout.addWidget(hint)
+                form.addRow(self._field_label(label, card), field)
+                continue
 
         layout.addLayout(form)
         return card
@@ -299,6 +342,21 @@ class FeaturePanel(QWidget):
         full_key = f'{task_name}.{feature_name}'
         text = self._feature_hint_map.get(full_key, self._feature_hint_map.get(feature_name, ''))
         return str(text or '').strip()
+
+    @staticmethod
+    def _split_interval(seconds: int) -> tuple[int, int]:
+        value = max(0, int(seconds))
+        if value > 0 and value % 3600 == 0:
+            return value // 3600, 3600
+        if value > 0 and value % 60 == 0:
+            return value // 60, 60
+        return value, 1
+
+    @staticmethod
+    def _set_combo_data(combo: ComboBox, value) -> None:
+        idx = combo.findData(value)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
 
     @staticmethod
     def _normalize_list_value(value: Any) -> list[str]:
@@ -372,6 +430,21 @@ class FeaturePanel(QWidget):
             else:
                 feature_map[feature_name] = bool(box.isChecked())
             task_cfg.features = feature_map
+        for (task_name, feature_name), spin in self._int_widgets.items():
+            task_cfg = self.config.tasks.get(task_name)
+            if task_cfg is None:
+                continue
+            feature_map = dict(task_cfg.features or {})
+            feature_map[feature_name] = max(0, int(spin.value()))
+            task_cfg.features = feature_map
+        for (task_name, feature_name), (spin, unit) in self._interval_widgets.items():
+            task_cfg = self.config.tasks.get(task_name)
+            if task_cfg is None:
+                continue
+            feature_map = dict(task_cfg.features or {})
+            factor = max(1, int(unit.currentData() or 1))
+            feature_map[feature_name] = max(0, int(spin.value()) * factor)
+            task_cfg.features = feature_map
         self.config.save()
         self.config_changed.emit(self.config)
 
@@ -386,6 +459,34 @@ class FeaturePanel(QWidget):
             box.setChecked(False if forced else bool(feature_map.get(feature_name, False)))
             if forced:
                 box.setToolTip('该功能固定禁用')
+        for (task_name, feature_name), spin in self._int_widgets.items():
+            task_cfg = self.config.tasks.get(task_name)
+            if task_cfg is None:
+                continue
+            feature_map = task_cfg.features or {}
+            value = feature_map.get(feature_name, 0)
+            if isinstance(value, bool):
+                value = 0
+            try:
+                parsed = int(value)
+            except Exception:
+                parsed = 0
+            spin.setValue(max(0, parsed))
+        for (task_name, feature_name), (spin, unit) in self._interval_widgets.items():
+            task_cfg = self.config.tasks.get(task_name)
+            if task_cfg is None:
+                continue
+            feature_map = task_cfg.features or {}
+            value = feature_map.get(feature_name, 0)
+            if isinstance(value, bool):
+                value = 0
+            try:
+                parsed = int(value)
+            except Exception:
+                parsed = 0
+            number, factor = self._split_interval(max(0, parsed))
+            spin.setValue(number)
+            self._set_combo_data(unit, factor)
         for task_name, feature_name in self._list_summary.keys():
             self._refresh_list_summary(task_name, feature_name)
 
