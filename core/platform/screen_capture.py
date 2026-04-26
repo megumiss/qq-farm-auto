@@ -10,6 +10,7 @@ import mss
 from loguru import logger
 from PIL import Image
 
+from core.exceptions import WindowCaptureError
 from models.config import RunMode
 from utils.image_utils import save_screenshot
 from utils.run_mode_decorator import UNSET
@@ -228,7 +229,9 @@ class ScreenCapture:
         ):
             fail_count = int(self._print_failure_count)
             self._reset_print_failure_state()
-            raise RuntimeError(f'PrintWindow连续失败: {text}, elapsed={elapsed:.1f}s, count={fail_count}')
+            raise WindowCaptureError(
+                f'capture failed continuously: reason={text}, elapsed={elapsed:.1f}s, count={fail_count}'
+            )
 
     @staticmethod
     def _crop_print_image_to_client(hwnd: int, image: Image.Image, window_rect: wintypes.RECT) -> Image.Image:

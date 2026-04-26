@@ -47,16 +47,10 @@
 : 实例会话管理（实例增删改查、当前实例切换、元数据保存）。
 
 - `core/engine/bot/runtime.py`
-: 生命周期与会话控制（start/stop/pause/resume/run_once）、配置更新、可中断睡眠、坐标映射。
+: 生命周期与会话控制（start/stop/pause/resume/run_once）、配置更新、可中断睡眠、坐标映射；并负责启动阶段异常收敛与恢复。
 
 - `core/engine/bot/executor.py`
-: 任务注册与调度桥接（自动发现 `_run_task_*`）。
-
-- `core/engine/bot/error_router.py`
-: 异常类型到恢复动作的统一映射（按 `startup/task` 分阶段路由）。
-
-- `core/engine/bot/recovery_runner.py`
-: 执行恢复动作（登录恢复/重启窗口/启动重试）并返回标准化恢复结果。
+: 任务注册与调度桥接（自动发现 `_run_task_*`），并作为任务异常恢复主入口（NIKKE 风格单层 `try/except` 直分支）。
 
 - `core/engine/task/executor.py`
 : 通用任务执行器（pending/waiting 队列、按固定任务顺序调度、结果回写 next_run）。

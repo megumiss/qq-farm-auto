@@ -11,9 +11,6 @@ from typing import TYPE_CHECKING, cast
 from loguru import logger
 
 from core.base.button import Button
-from core.engine.bot.error_router import RecoveryPhase
-from core.engine.bot.recovery_runner import RecoveryResult
-from core.exceptions import LoginRepeatError
 from core.platform.action_executor import ActionExecutor
 from core.platform.device import Device
 from core.platform.window_manager import WindowInfo
@@ -28,16 +25,11 @@ from models.game_data import get_best_crop_for_level, get_latest_crop_for_level
 from utils.template_paths import normalize_template_platform
 
 if TYPE_CHECKING:
-    from core.engine.bot.error_router import ErrorRouter
     from core.engine.bot.local_engine import LocalBotEngine
-    from core.engine.bot.recovery_runner import RecoveryRunner
 
 
 class BotRuntimeMixin:
     """Bot 生命周期与运行态控制逻辑。"""
-
-    error_router: ErrorRouter
-    recovery_runner: RecoveryRunner
 
     _WINDOW_LAUNCH_WAIT_TIMEOUT_SECONDS = 60.0
     _WINDOW_LAUNCH_POLL_INTERVAL_SECONDS = 1.0
@@ -283,12 +275,12 @@ class BotRuntimeMixin:
         if shortcut_path.suffix.lower() != '.lnk':
             logger.warning(f'窗口快捷方式路径不是 .lnk: {shortcut_text}')
             if emit_hint:
-                self.log_message.emit('快捷方式路径无效：仅支持 .lnk 文件')
+                logger.warning('快捷方式路径无效：仅支持 .lnk 文件')
             return None, False
         if not shortcut_path.is_file():
             logger.warning(f'窗口快捷方式不存在: {shortcut_text}')
             if emit_hint:
-                self.log_message.emit('快捷方式文件不存在，请在设置中重新选择')
+                logger.warning('快捷方式文件不存在，请在设置中重新选择')
             return None, False
 
         baseline_hwnds = {int(info.hwnd) for info in self._list_platform_windows_silent() if int(info.hwnd) > 0}
@@ -301,7 +293,7 @@ class BotRuntimeMixin:
         if not launched_recently:
             try:
                 if emit_hint:
-                    self.log_message.emit(f'未找到窗口，尝试通过快捷方式启动: {shortcut_text}')
+                    logger.info(f'未找到窗口，尝试通过快捷方式启动: {shortcut_text}')
                 os.startfile(shortcut_text)
                 setattr(self, '_last_window_shortcut_launch_at', now)
                 launched_this_round = True
@@ -309,7 +301,7 @@ class BotRuntimeMixin:
             except Exception as exc:
                 logger.error(f'快捷方式启动失败: {shortcut_text}, {exc}')
                 if emit_hint:
-                    self.log_message.emit(f'快捷方式启动失败: {exc}')
+                    logger.error(f'快捷方式启动失败: {exc}')
                 return None, True
         else:
             logger.info('窗口快捷方式刚触发过，跳过重复启动并继续等待窗口出现')
@@ -324,7 +316,7 @@ class BotRuntimeMixin:
             )
             if window is not None:
                 if emit_hint and launched_this_round:
-                    self.log_message.emit(f'已检测到窗口: {window.title}')
+                    logger.info(f'已检测到窗口: {window.title}')
                 return window, (launched_this_round or launched_recently)
             time.sleep(interval)
         return None, (launched_this_round or launched_recently)
@@ -400,7 +392,7 @@ class BotRuntimeMixin:
     ) -> tuple[WindowInfo | None, tuple[int, int, int, int] | None]:
         """窗口拉起后的统一初始化：尺寸校准 + 进入主页面 + 运行态同步。"""
         if emit_hint:
-            self.log_message.emit(f'{reason}，执行窗口初始化...')
+            logger.info(f'{reason}，执行窗口初始化...')
 
         pos = getattr(self.config.planting, 'window_position', 'left_center')
         pos_value = pos.value if hasattr(pos, 'value') else str(pos)
@@ -413,7 +405,7 @@ class BotRuntimeMixin:
         if refreshed is None:
             logger.error('窗口初始化失败: 窗口几何刷新失败')
             if emit_hint:
-                self.log_message.emit('窗口初始化失败：窗口刷新失败')
+                logger.error('窗口初始化失败：窗口刷新失败')
             return None, None
 
         rect = self._apply_window_runtime_context(refreshed)
@@ -421,7 +413,7 @@ class BotRuntimeMixin:
         if self.ui is not None and not self._stabilize_startup_ui():
             logger.error('窗口初始化失败: 启动画面等待超时')
             if emit_hint:
-                self.log_message.emit('窗口初始化失败：未能进入主页面')
+                logger.error('窗口初始化失败：未能进入主页面')
             return None, None
 
         refreshed = self.window_manager.refresh_cached_window_info() or refreshed
@@ -437,7 +429,7 @@ class BotRuntimeMixin:
         Returns:
             `True` 表示恢复成功并回到主页面；否则返回 `False`。
         """
-        self.log_message.emit(f'[{task_name}] 检测到重新登录，开始等待加载并恢复主页面...')
+        logger.info(f'[{task_name}] 检测到重新登录，开始等待加载并恢复主页面...')
         window, _launched = self._resolve_target_window(
             allow_shortcut_launch=True,
             wait_timeout=self._WINDOW_LAUNCH_WAIT_TIMEOUT_SECONDS,
@@ -474,7 +466,7 @@ class BotRuntimeMixin:
             if hwnd > 0:
                 logger.warning(f'[{task_name}] 异常恢复: 正在关闭窗口 hwnd=0x{hwnd:X}')
                 if not self._close_window_by_hwnd(hwnd):
-                    self.log_message.emit(f'异常恢复失败：关闭窗口超时（{attempt}/{limit}）')
+                    logger.error(f'异常恢复失败：关闭窗口超时（{attempt}/{limit}）')
                     return False
 
         window, launched = self._try_launch_window_by_shortcut(
@@ -485,7 +477,7 @@ class BotRuntimeMixin:
         )
         if window is None:
             logger.error(f'[{task_name}] 异常恢复失败: 快捷方式拉起后未找到窗口')
-            self.log_message.emit(f'异常恢复失败：重启窗口未成功（{attempt}/{limit}）')
+            logger.error(f'异常恢复失败：重启窗口未成功（{attempt}/{limit}）')
             return False
         if launched:
             logger.info(f'[{task_name}] 异常恢复: 已重新拉起窗口 hwnd=0x{int(window.hwnd):X}')
@@ -496,11 +488,11 @@ class BotRuntimeMixin:
             reason=f'[{task_name}] 异常恢复重启成功',
         )
         if initialized_window is None:
-            self.log_message.emit(f'异常恢复失败：未能回到主页面（{attempt}/{limit}）')
+            logger.error(f'异常恢复失败：未能回到主页面（{attempt}/{limit}）')
             return False
 
         logger.info(f'[{task_name}] 异常恢复完成: {err_type} | 重启窗口 {attempt}/{limit}')
-        self.log_message.emit(f'异常恢复完成：已重启窗口并回到主页面（{attempt}/{limit}）')
+        logger.info(f'异常恢复完成：已重启窗口并回到主页面（{attempt}/{limit}）')
         return True
 
     def _resolve_target_window(
@@ -540,7 +532,7 @@ class BotRuntimeMixin:
         if self.ui is None:
             return False
 
-        self.log_message.emit('启动后状态检查中：等待加载完成并进入主页面...')
+        logger.info('启动后状态检查中：等待加载完成并进入主页面...')
         recovery_cfg = self.config.recovery
         stabilize_timeout = float(recovery_cfg.startup_stabilize_timeout_seconds)
         retry_step_sleep = float(recovery_cfg.startup_retry_step_sleep_seconds)
@@ -578,7 +570,7 @@ class BotRuntimeMixin:
                 self.ui.ui_wait_loading()
                 current_page = self.ui.ui_get_current_page()
                 if current_page == page_main:
-                    self.log_message.emit('启动后页面已稳定到主页面')
+                    logger.info('启动后页面已稳定到主页面')
                     return True
 
                 page_name = getattr(current_page, 'cn_name', getattr(current_page, 'name', 'unknown'))
@@ -595,49 +587,36 @@ class BotRuntimeMixin:
                     self.ui.ui_ensure(page_main, confirm_wait=1)
                     current_page = self.ui.ui_get_current_page()
                     if current_page == page_main:
-                        self.log_message.emit('启动后页面到达主页面')
+                        logger.info('启动后页面到达主页面')
                         return True
                 last_error = f'page_not_main:{getattr(current_page, "name", "unknown")}'
             except Exception as exc:
-                decision = self.error_router.route(phase=RecoveryPhase.STARTUP, exc=exc)
-                outcome = self.recovery_runner.run_startup(decision=decision, exc=exc)
-                self._engine()._record_recovery_event(
-                    task_name='startup',
-                    error_key=decision.error_key,
-                    action=decision.action,
-                    outcome=outcome,
+                continue_loop, error_text = self._engine()._handle_startup_exception(exc=exc)
+                if not continue_loop:
+                    return False
+                last_error = str(error_text or type(exc).__name__)
+                retry_count += 1
+                logger.info(
+                    f'启动窗口: 检测到启动恢复信号，继续重试启动流程 '
+                    f'(retry={retry_count}, loop={loop_count}) | {last_error}'
                 )
-                last_error = str(outcome.reason or type(exc).__name__)
-                if outcome.result == RecoveryResult.CONTINUE_STARTUP:
-                    retry_count += 1
-                    logger.info(
-                        f'启动窗口: 检测到启动恢复信号，继续重试启动流程 '
-                        f'(retry={retry_count}, loop={loop_count}) | {last_error}'
-                    )
-                    time.sleep(step_sleep)
-                    continue
-
-                if isinstance(exc, LoginRepeatError):
-                    self.log_message.emit('检测到重复登录，请先手动处理后再启动')
-                else:
-                    logger.warning(f'启动窗口: 启动异常，终止收敛 | {last_error}')
-                return False
+                time.sleep(step_sleep)
+                continue
 
             time.sleep(step_sleep)
 
-        self.log_message.emit(f'启动超时：未能进入主页面 ({last_error})')
+        logger.error(f'启动超时：未能进入主页面 ({last_error})')
         return False
 
     def start(self) -> bool:
         """启动当前模块的主流程。"""
         engine = self._engine()
         if engine._executor_running():
-            self.log_message.emit('上一轮任务仍在停止中，请稍候再启动')
+            logger.warning('上一轮任务仍在停止中，请稍候再启动')
             return False
         self._fatal_error_stop_requested = False
-        self._task_error_delay_overrides.clear()
-        self._task_error_type_names.clear()
         self._task_exception_retry_counts.clear()
+        self._restart_task_payload = None
         engine._sync_recovery_policy_from_config()
         engine._reset_recovery_metrics()
         current_platform = getattr(self.config.planting, 'window_platform', 'qq')
@@ -648,7 +627,7 @@ class BotRuntimeMixin:
             self.cv_detector.set_template_platform(normalized_platform)
         asset_count = len(ASSET_NAME_TO_CONST)
         if asset_count == 0:
-            self.log_message.emit('未找到 assets 按钮模板，请先运行 button_extract 工具')
+            logger.error('未找到 assets 按钮模板，请先运行 button_extract 工具')
             return False
 
         window, launched_by_shortcut = self._resolve_target_window(
@@ -660,18 +639,16 @@ class BotRuntimeMixin:
         if not window:
             if str(self.config.window_shortcut_path or '').strip():
                 if launched_by_shortcut:
-                    self.log_message.emit(
-                        '未找到QQ农场窗口，快捷方式启动后等待超时，请检查快捷方式是否可正常打开小程序'
-                    )
+                    logger.error('未找到QQ农场窗口，快捷方式启动后等待超时，请检查快捷方式是否可正常打开小程序')
                 else:
-                    self.log_message.emit('未找到QQ农场窗口，且快捷方式路径无效，请在设置中重新选择 .lnk 文件')
+                    logger.error('未找到QQ农场窗口，且快捷方式路径无效，请在设置中重新选择 .lnk 文件')
             else:
-                self.log_message.emit('未找到QQ农场窗口，请先打开QQ农场小程序或配置快捷方式路径')
+                logger.error('未找到QQ农场窗口，请先打开QQ农场小程序或配置快捷方式路径')
             return False
 
         display_metrics = self.window_manager.get_display_metrics(window.hwnd)
         if display_metrics:
-            self.log_message.emit(
+            logger.info(
                 '屏幕信息: 主屏={screen_width}x{screen_height} 监视器={monitor_width}x{monitor_height} '
                 '工作区={work_width}x{work_height} DPI={dpi} 缩放={scale_percent}%'.format(**display_metrics)
             )
@@ -686,11 +663,9 @@ class BotRuntimeMixin:
         # 统一走 _find_window_silent（已包含平台过滤 + index 规则），避免非 auto 分支绕过平台筛选。
         window = self.window_manager.refresh_cached_window_info() or self._find_window_silent()
         if not window:
-            self.log_message.emit('窗口刷新失败，请检查窗口是否仍存在')
+            logger.error('窗口刷新失败，请检查窗口是否仍存在')
             return False
-        self.log_message.emit(
-            f'窗口已调整（整窗外框目标：540x960 + 非客户区增量）-> 实际外框 {window.width}x{window.height}'
-        )
+        logger.info(f'窗口已调整（整窗外框目标：540x960 + 非客户区增量）-> 实际外框 {window.width}x{window.height}')
 
         rect = self.window_manager.get_capture_rect()
         if not rect:
@@ -746,15 +721,16 @@ class BotRuntimeMixin:
         )
         engine._init_executor()
 
-        self.log_message.emit(f'Bot已启动(executor) - 窗口: {window.title} | assets: {asset_count}个')
+        logger.info(f'Bot已启动(executor) - 窗口: {window.title} | assets: {asset_count}个')
         return True
 
     def stop(self):
         """停止当前模块并释放运行状态。"""
         engine = self._engine()
         self._fatal_error_stop_requested = False
+        self._restart_task_payload = None
         if not engine._stop_executor():
-            self.log_message.emit('执行器仍在停止中，请稍候重试')
+            logger.warning('执行器仍在停止中，请稍候重试')
             return
         self.ui = None
         self.device = None
@@ -778,7 +754,7 @@ class BotRuntimeMixin:
         # 兜底刷新：确保UI在点击停止后立即看到最新状态。
         self.state_changed.emit('idle')
         self.stats_updated.emit(self.scheduler.get_stats())
-        self.log_message.emit('Bot已停止')
+        logger.info('Bot已停止')
 
     def pause(self):
         """暂停当前模块执行。"""

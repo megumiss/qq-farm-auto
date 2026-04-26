@@ -33,15 +33,16 @@
 - [x] 地块巡查
 - [x] 任务调度时间自定义
 - [x] 偷取统计
-- [ ] 异常通知
-- [ ] 自动重启
+- [x] 一键启动
+- [ ] 异常发送通知
+- [x] 异常自动重启
 - [x] 支持QQ/微信平台后台运行
 - [x] 支持QQ/微信平台多开
 
 ## 当前实现概览
 
 - 架构：`BotEngine` + `TaskExecutor` + UI 页面识别（`core/ui`）
-- 异常恢复：`ErrorRouter`（异常分发） + `RecoveryRunner`（恢复执行）
+- 异常恢复：`executor/runtime` 统一异常分支处理 + 内置 `restart` 任务重启窗口
 - 调度：统一任务执行器，支持 `INTERVAL` / `DAILY`
 - 实例配置：`%APPDATA%\QQFarmCopilot\instances\<instance_id>\configs\config.json` 中 `tasks` 为**动态字典**
 - 全局设置：`%APPDATA%\QQFarmCopilot\app_settings.json` 支持 `logging.retention_days`（日志保留天数，单位天）
