@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 class BotRuntimeMixin:
     """Bot 生命周期与运行态控制逻辑。"""
 
-    _WINDOW_LAUNCH_WAIT_TIMEOUT_SECONDS = 60.0
+    _WINDOW_LAUNCH_WAIT_TIMEOUT_SECONDS = 15.0
     _WINDOW_LAUNCH_POLL_INTERVAL_SECONDS = 1.0
     _WINDOW_LAUNCH_COOLDOWN_SECONDS = 15.0
     _WINDOW_CLOSE_WAIT_TIMEOUT_SECONDS = 15.0
@@ -308,7 +308,15 @@ class BotRuntimeMixin:
 
         deadline = time.perf_counter() + max(0.2, float(wait_timeout))
         interval = max(0.1, float(poll_interval))
+        launch_wait_start = time.perf_counter()
+        last_wait_log_at = 0.0
         while time.perf_counter() < deadline:
+            now_perf = time.perf_counter()
+            if emit_hint and (last_wait_log_at <= 0.0 or (now_perf - last_wait_log_at) >= 3.0):
+                elapsed = max(0.0, now_perf - launch_wait_start)
+                remain = max(0.0, deadline - now_perf)
+                logger.info(f'快捷方式启动后等待窗口中: elapsed={elapsed:.1f}s, remain={remain:.1f}s')
+                last_wait_log_at = now_perf
             window = self._find_window_silent(
                 baseline_hwnds=baseline_hwnds,
                 prefer_new_hwnd=True,
@@ -319,6 +327,8 @@ class BotRuntimeMixin:
                     logger.info(f'已检测到窗口: {window.title}')
                 return window, (launched_this_round or launched_recently)
             time.sleep(interval)
+        if emit_hint:
+            logger.warning('快捷方式启动后等待窗口超时')
         return None, (launched_this_round or launched_recently)
 
     @staticmethod
@@ -541,10 +551,21 @@ class BotRuntimeMixin:
         last_error = 'startup_state_unresolved'
         retry_count = 0
         loop_count = 0
+        last_progress_log_at = 0.0
+        pos = getattr(self.config.planting, 'window_position', 'left_center')
+        pos_value = pos.value if hasattr(pos, 'value') else str(pos)
+        platform = getattr(self.config.planting, 'window_platform', 'qq')
+        platform_value = platform.value if hasattr(platform, 'value') else str(platform)
+        cached_window = self.window_manager.refresh_cached_window_info() or self._find_window_silent()
+        last_window_hwnd = int(getattr(cached_window, 'hwnd', 0) or 0)
 
         while time.perf_counter() < deadline:
             loop_count += 1
-            remain = max(0.2, deadline - time.perf_counter())
+            now_perf = time.perf_counter()
+            remain = max(0.2, deadline - now_perf)
+            if loop_count == 1 or (now_perf - last_progress_log_at) >= 3.0:
+                logger.info(f'启动检查中: remain={remain:.1f}s, last_error={last_error}')
+                last_progress_log_at = now_perf
             wait_timeout = min(float(self._WINDOW_LAUNCH_WAIT_TIMEOUT_SECONDS), max(1.0, remain))
             window, _launched = self._resolve_target_window(
                 allow_shortcut_launch=True,
@@ -557,14 +578,19 @@ class BotRuntimeMixin:
                 time.sleep(step_sleep)
                 continue
 
-            rect = self.window_manager.get_capture_rect()
-            if not rect:
-                rect = (window.left, window.top, window.width, window.height)
-            if self.action_executor is not None:
-                self.action_executor.update_window_rect(rect)
-                self.action_executor.update_window_handle(window.hwnd)
-            if self.device is not None:
-                self.device.set_rect(rect)
+            current_hwnd = int(getattr(window, 'hwnd', 0) or 0)
+            if current_hwnd > 0 and current_hwnd != last_window_hwnd:
+                logger.info(f'启动窗口句柄变化: 0x{last_window_hwnd:X} -> 0x{current_hwnd:X}，重新校准窗口尺寸')
+                self.window_manager.resize_window(pos_value, platform_value)
+                self._wait_window_capture_stable(timeout=0.5, interval=0.04)
+                refreshed = self.window_manager.refresh_cached_window_info() or self._find_window_silent()
+                if refreshed is not None:
+                    window = refreshed
+                    current_hwnd = int(getattr(window, 'hwnd', 0) or 0)
+            if current_hwnd > 0:
+                last_window_hwnd = current_hwnd
+
+            rect = self._apply_window_runtime_context(window)
 
             try:
                 self.ui.ui_wait_loading()

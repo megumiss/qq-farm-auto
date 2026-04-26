@@ -246,6 +246,11 @@ class BotEngine(QObject):
             return
 
     def _drain_events(self, max_events: int = 200) -> None:
+        if self._worker is not None and not self._worker.is_alive():
+            self._log_local('ERROR', 'worker 进程已退出，已重置为 idle')
+            self._shutdown_worker(force=False)
+            return
+
         if self._event_queue is None:
             return
 

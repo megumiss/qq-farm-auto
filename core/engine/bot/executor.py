@@ -309,25 +309,24 @@ class BotExecutorMixin:
             logger.error('检测到重复登录，请先手动处理后再启动')
             return False, 'login_repeat'
 
+        error_key = self._error_key_for_exception(exc)
         if isinstance(exc, LoginRecoveryRequiredError):
             self._record_recovery_event(
                 task_name='startup',
-                error_key='login_recovery_required',
+                error_key=error_key,
                 action='retry_startup_loop',
                 outcome='continue_startup',
             )
             return True, str(exc or type(exc).__name__)
 
-        if isinstance(exc, GamePageUnknownError):
-            self._record_recovery_event(
-                task_name='startup',
-                error_key='page_unknown',
-                action='retry_startup_loop',
-                outcome='continue_startup',
-            )
-            return True, str(exc or type(exc).__name__)
-
-        raise exc
+        # 启动阶段统一继续重试（由启动总超时兜底），避免单次截图/页面抖动直接终止启动流程。
+        self._record_recovery_event(
+            task_name='startup',
+            error_key=error_key,
+            action='retry_startup_loop',
+            outcome='continue_startup',
+        )
+        return True, str(exc or type(exc).__name__)
 
     def _save_task_exception_snapshot(self, *, task_name: str, tb_text: str) -> None:
         """保存任务异常截图与 traceback。"""
