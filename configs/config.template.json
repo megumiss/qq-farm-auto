@@ -1,5 +1,7 @@
 {
   "window_shortcut_path": "",
+  "window_shortcut_launch_delay_seconds": 3,
+  "window_restart_delay_seconds": 5,
   "window_title_keyword": "QQ经典农场",
   "window_select_rule": "auto",
   "safety": {
@@ -114,9 +116,7 @@
       "daily_time": "00:01",
       "next_run": "2026-01-01 00:00",
       "failure_interval_seconds": 300,
-      "features": {
-        "restart_delay_seconds": 5
-      }
+      "features": {}
     }
   },
   "executor": {

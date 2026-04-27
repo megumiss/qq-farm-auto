@@ -24,7 +24,7 @@
 - 农场详情配置：`config.land.plots`（固定 24 格，元素结构：`{plot_id, level, maturity_countdown, need_upgrade, need_planting}`；`maturity_countdown` 为 `HH:MM:SS`，`need_upgrade` 表示地块是否可升级，`need_planting` 表示地块是否需要播种）与 `config.land.profile`（`level/gold/coupon/exp`，来源于等级同步 OCR）
 - 好友黑名单配置：`config.tasks.friend.features.blacklist`（`list[str]`，在任务设置详情弹窗维护）
 - 偷取统计开关：`config.tasks.friend.features.steal_stats`（默认 `false`；开启后仅在偷取动作后执行 OCR 统计，偷取速度会变慢）
-- 定时重启任务：`config.tasks.restart`（默认关闭；`trigger=interval`，默认 `interval_seconds=14400`；`features.restart_delay_seconds` 默认 `5` 秒，用于控制关闭窗口到重新打开之间的等待时间）
+- 定时重启任务：`config.tasks.restart`（默认关闭；`trigger=interval`，默认 `interval_seconds=14400`；重启等待时间使用实例级 `config.window_restart_delay_seconds`，默认 `5` 秒）
 - 高级配置：`config.safety.debug_log_enabled` 控制 Debug 日志输出
 - 异常恢复配置：`config.recovery`（`task_restart_attempts/task_retry_delay_seconds/startup_retry_step_sleep_seconds/startup_stabilize_timeout_seconds`）
 - 全局日志保留：`%APPDATA%/QQFarmCopilot/app_settings.json -> logging.retention_days`（单位天，默认 `7`；启动与全局设置变更时清理过期 `.log`）
@@ -33,7 +33,7 @@
 - 播种选种：`config.planting.warehouse_first` 默认开启；开启时优先按 `BgPatchNumberOCR` 在区域 `x:[50,480], y:[地块点击y+40, 地块点击y+80]` 识别最左数字块
 - 活动作物跳过：`SEED_BTN_HEART_FRUIT`（爱心果）固定排除；`config.planting.skip_event_crops` 默认关闭，仅控制是否额外排除 `SEED_BTN_MUGWORT`（艾草）
 - 等级同步：播种前执行等级 OCR；由 `config.planting.level_ocr_enabled` 控制，识别后回写 `config.planting.player_level`；统一 ROI 使用 `tasks/main.py` 内常量（不区分平台）
-- 小程序快捷方式：`config.window_shortcut_path` 保存桌面快捷方式路径（`.lnk`，在设置面板“窗口关键词”上方选择）
+- 小程序快捷方式：`config.window_shortcut_path` 保存桌面快捷方式路径（`.lnk`，在设置面板“窗口关键词”上方选择）；`config.window_shortcut_launch_delay_seconds`（默认 `3` 秒）控制快捷方式拉起后到窗口初始化之间的等待时间
 - 窗口选择：`config.window_select_rule` 仅保存匹配顺序（`auto` / `index:N`），不保存 `hwnd`
 - 视觉按钮来源：`core/ui/assets.py`（由 `tools/button_extract.py` 生成）
 - 版本来源：`utils/version.py::APP_VERSION`（Release 打包前由 `tools/write_version.py --tag <tag>` 自动写入）
@@ -190,7 +190,7 @@
 : 地块巡查任务（默认关闭，默认 `interval_seconds=1800`）；流程为左滑 120 后扫描右到左前 5 列、右滑 240 后扫描左到右前 4 列，最后回正，并对每个点击地块执行 OCR 采集；从文本中正则提取 `HH:MM:SS` 回写到 `config.land.plots[].maturity_countdown`，并标记 `config.land.plots[].need_upgrade` 与 `config.land.plots[].need_planting`（空地为 `true`）。
 
 - `restart`
-: 定时重启任务（默认关闭，默认 `interval_seconds=14400`）；支持 `features.restart_delay_seconds`（默认 `5` 秒，表示关闭窗口到重新打开之间等待时间），执行时会校验 `window_shortcut_path` 并重启窗口后收敛回主页面。
+: 定时重启任务（默认关闭，默认 `interval_seconds=14400`）；重启等待使用实例级 `config.window_restart_delay_seconds`（默认 `5` 秒），执行时会校验 `window_shortcut_path` 并重启窗口后收敛回主页面。
 
 ## 5. 新增任务标准流程
 

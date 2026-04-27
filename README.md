@@ -44,7 +44,7 @@
 
 - 架构：`BotEngine` + `TaskExecutor` + UI 页面识别（`core/ui`）
 - 异常恢复：`executor/runtime` 统一异常分支处理 + 内置 `restart` 任务重启窗口
-- 定时重启：可配置任务 `restart`（默认关闭，间隔 `4` 小时）
+- 定时重启：可配置任务 `restart`（默认关闭，间隔 `4` 小时；重启等待由实例设置控制）
 - 调度：统一任务执行器，支持 `INTERVAL` / `DAILY`
 - 实例配置：`%APPDATA%\QQFarmCopilot\instances\<instance_id>\configs\config.json` 中 `tasks` 为**动态字典**
 - 全局设置：`%APPDATA%\QQFarmCopilot\app_settings.json` 支持 `logging.retention_days`（日志保留天数，单位天）
@@ -144,6 +144,8 @@ python main.py
 
 - `window_title_keyword`：窗口标题关键词（默认 `QQ经典农场`）
 - `window_shortcut_path`：小程序桌面快捷方式路径（`.lnk`）
+- `window_shortcut_launch_delay_seconds`：快捷方式启动后延迟初始化窗口的秒数（默认 `3`）
+- `window_restart_delay_seconds`：窗口重启流程中“关闭后到重新拉起前”的等待秒数（默认 `5`）
 - `window_select_rule`：窗口选择规则（`auto` 或 `index:N`，`auto` 会按当前平台优先匹配）
 - `safety`：运行方式、随机延迟、点击抖动、单轮点击上限、`debug_log_enabled`
 - `screenshot`：截图相关配置；`capture_interval_seconds` 控制最小截图间隔（秒，默认 `0.3`，`0` 表示不限制）
@@ -254,9 +256,7 @@ python main.py
     "interval_seconds": 14400,
     "enabled_time_range": "00:00:00-23:59:59",
     "failure_interval_seconds": 300,
-    "features": {
-      "restart_delay_seconds": 5
-    }
+    "features": {}
   }
 }
 ```

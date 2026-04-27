@@ -256,6 +256,17 @@ class BotRuntimeMixin:
             return False, '快捷方式文件不存在'
         return True, ''
 
+    def _resolve_window_shortcut_launch_delay_seconds(self) -> int:
+        """读取快捷方式启动后的窗口初始化延迟（秒）。"""
+        value = self.config.window_shortcut_launch_delay_seconds
+        if isinstance(value, bool):
+            return 3
+        try:
+            seconds = int(value)
+        except Exception:
+            seconds = 3
+        return max(0, seconds)
+
     def _try_launch_window_by_shortcut(
         self,
         *,
@@ -284,7 +295,7 @@ class BotRuntimeMixin:
         baseline_hwnds = {int(info.hwnd) for info in self._list_platform_windows_silent() if int(info.hwnd) > 0}
 
         now = time.monotonic()
-        last_launch = float(getattr(self, '_last_window_shortcut_launch_at', 0.0) or 0.0)
+        last_launch = float(self._last_window_shortcut_launch_at)
         cooldown = max(0.0, float(self._WINDOW_LAUNCH_COOLDOWN_SECONDS))
         launched_recently = (not force_launch) and last_launch > 0 and (now - last_launch) < cooldown
         launched_this_round = False
@@ -293,7 +304,7 @@ class BotRuntimeMixin:
                 if emit_hint:
                     logger.info(f'未找到窗口，尝试通过快捷方式启动: {shortcut_text}')
                 os.startfile(shortcut_text)
-                setattr(self, '_last_window_shortcut_launch_at', now)
+                self._last_window_shortcut_launch_at = now
                 launched_this_round = True
                 logger.info(f'已触发快捷方式启动: {shortcut_text}')
             except Exception as exc:
@@ -321,6 +332,14 @@ class BotRuntimeMixin:
                 allow_fallback_existing=launched_recently,
             )
             if window is not None:
+                launch_mark = float(self._last_window_shortcut_launch_at)
+                applied_mark = float(self._last_window_shortcut_delay_applied_at)
+                if launch_mark > 0 and launch_mark > applied_mark:
+                    delay_seconds = self._resolve_window_shortcut_launch_delay_seconds()
+                    if delay_seconds > 0:
+                        logger.info(f'快捷方式启动后等待 {delay_seconds}s，再执行窗口初始化')
+                        time.sleep(delay_seconds)
+                    self._last_window_shortcut_delay_applied_at = launch_mark
                 if emit_hint and launched_this_round:
                     logger.info(f'已检测到窗口: {window.title}')
                 return window, (launched_this_round or launched_recently)

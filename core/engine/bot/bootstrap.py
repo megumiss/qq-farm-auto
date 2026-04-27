@@ -68,6 +68,8 @@ class BotInitMixin:
         self._fatal_error_stop_requested = False
         self._task_exception_retry_counts: dict[str, int] = {}
         self._restart_task_payload: dict[str, str | int] | None = None
+        self._last_window_shortcut_launch_at: float = 0.0
+        self._last_window_shortcut_delay_applied_at: float = 0.0
         self._recovery_total_count: int = 0
         self._recovery_last_error: str = '--'
         self._recovery_last_action: str = '--'

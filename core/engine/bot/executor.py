@@ -928,8 +928,7 @@ class BotExecutorMixin:
         is_recovery_restart = bool(payload)
         restart_delay_seconds = 5
         try:
-            restart_view = self.build_task_view('restart')
-            delay_raw = getattr(restart_view.feature, 'restart_delay_seconds', 5)
+            delay_raw = self.config.window_restart_delay_seconds
             if isinstance(delay_raw, bool):
                 delay_raw = 5
             restart_delay_seconds = max(0, int(delay_raw))

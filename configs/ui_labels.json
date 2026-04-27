@@ -28,8 +28,7 @@
       "claim_growth_task": "成长任务",
       "auto_svip_gift": "SVIP礼包领取",
       "auto_mall_gift": "商城礼包领取",
-      "auto_mail": "邮件领取",
-      "restart_delay_seconds": "重启间隔(秒)"
+      "auto_mail": "邮件领取"
     },
     "feature_hints": {
       "reward.claim_growth_task": "QQ平台会直接领取",

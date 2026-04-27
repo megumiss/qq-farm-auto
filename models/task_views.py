@@ -67,11 +67,6 @@ class GiftFeatures:
 
 
 @dataclass(slots=True)
-class RestartFeatures:
-    restart_delay_seconds: int = 5
-
-
-@dataclass(slots=True)
 class MainTaskView(TaskViewBase):
     feature: MainFeatures = field(default_factory=MainFeatures)
 
@@ -108,7 +103,7 @@ class LandScanTaskView(TaskViewBase):
 
 @dataclass(slots=True)
 class RestartTaskView(TaskViewBase):
-    feature: RestartFeatures = field(default_factory=RestartFeatures)
+    feature: EmptyFeatures = field(default_factory=EmptyFeatures)
 
 
 TASK_FEATURE_CLASS_MAP = {
@@ -119,7 +114,7 @@ TASK_FEATURE_CLASS_MAP = {
     'gift': GiftFeatures,
     'sell': EmptyFeatures,
     'land_scan': EmptyFeatures,
-    'restart': RestartFeatures,
+    'restart': EmptyFeatures,
 }
 
 TASK_VIEW_CLASS_MAP = {

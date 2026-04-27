@@ -139,6 +139,32 @@ class SettingsPanel(QWidget):
         shortcut_tip.setStyleSheet('color: #d97706;')
         env_form.addRow(self._field_label('', env_card), shortcut_tip)
 
+        self.shortcut_launch_delay = SpinBox(env_card)
+        self.shortcut_launch_delay.setRange(0, 30)
+        self.shortcut_launch_delay.setSingleStep(1)
+        self.shortcut_launch_delay.setSuffix(' 秒')
+        env_form.addRow(self._field_label('启动延迟', env_card), self.shortcut_launch_delay)
+        shortcut_launch_delay_tip = CaptionLabel(
+            '快捷方式启动后到调整窗口的等待时间，避免加载阶段与窗口调整冲突。',
+            env_card,
+        )
+        shortcut_launch_delay_tip.setWordWrap(True)
+        shortcut_launch_delay_tip.setStyleSheet('color: #d97706;')
+        env_form.addRow(self._field_label('', env_card), shortcut_launch_delay_tip)
+
+        self.window_restart_delay = SpinBox(env_card)
+        self.window_restart_delay.setRange(0, 300)
+        self.window_restart_delay.setSingleStep(1)
+        self.window_restart_delay.setSuffix(' 秒')
+        env_form.addRow(self._field_label('重启等待', env_card), self.window_restart_delay)
+        window_restart_delay_tip = CaptionLabel(
+            '定时重启与异常恢复重启时，关闭窗口后到重新拉起前的等待时间。',
+            env_card,
+        )
+        window_restart_delay_tip.setWordWrap(True)
+        window_restart_delay_tip.setStyleSheet('color: #d97706;')
+        env_form.addRow(self._field_label('', env_card), window_restart_delay_tip)
+
         self.keyword = LineEdit(env_card)
         self.keyword.setPlaceholderText('窗口标题关键字')
         env_form.addRow(self._field_label('窗口关键词', env_card), self.keyword)
@@ -270,6 +296,8 @@ class SettingsPanel(QWidget):
             self.skip_event_crops.toggled,
             self.platform.currentIndexChanged,
             self.run_mode.currentIndexChanged,
+            self.shortcut_launch_delay.valueChanged,
+            self.window_restart_delay.valueChanged,
             self.window_select.currentIndexChanged,
             self.window_position.currentIndexChanged,
             self.delay_min.valueChanged,
@@ -472,6 +500,8 @@ class SettingsPanel(QWidget):
         self._set_combo_data(self.platform, c.planting.window_platform.value)
         self._set_combo_data(self.run_mode, c.safety.run_mode.value)
         self.shortcut_path.setText(str(c.window_shortcut_path or ''))
+        self.shortcut_launch_delay.setValue(int(c.window_shortcut_launch_delay_seconds))
+        self.window_restart_delay.setValue(int(c.window_restart_delay_seconds))
         self.keyword.setText(str(c.window_title_keyword or ''))
         self._set_combo_data(self.window_position, c.planting.window_position.value)
         self.delay_min.setValue(float(c.safety.random_delay_min))
@@ -502,6 +532,8 @@ class SettingsPanel(QWidget):
         c.planting.window_platform = WindowPlatform(platform_value)
         c.safety.run_mode = RunMode(run_mode_value)
         c.window_shortcut_path = str(self.shortcut_path.text() or '').strip()
+        c.window_shortcut_launch_delay_seconds = int(self.shortcut_launch_delay.value())
+        c.window_restart_delay_seconds = int(self.window_restart_delay.value())
         c.window_title_keyword = str(self.keyword.text() or '').strip()
         c.window_select_rule = str(self.window_select.currentData() or 'auto')
         c.planting.window_position = WindowPosition(
