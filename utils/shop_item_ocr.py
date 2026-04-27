@@ -95,6 +95,7 @@ class ShopItemOCR:
         """执行 `norm name` 相关处理。"""
         t = ShopItemOCR._clean_text(text)
         t = t.replace('（', '(').replace('）', ')')
+        t = t.replace('詹菇', '蘑菇')
         return t
 
     @staticmethod
