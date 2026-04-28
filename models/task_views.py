@@ -47,8 +47,12 @@ class MainFeatures:
 @dataclass(slots=True)
 class FriendFeatures:
     auto_steal: bool = False
+    steal_enabled_time_range: str = '00:00:00-23:59:59'
+    steal_limit_count: int = 0
     steal_stats: bool = False
     auto_help: bool = True
+    help_enabled_time_range: str = '00:00:00-23:59:59'
+    help_limit_count: int = 0
     auto_accept_request: bool = True
     blacklist: list[str] = field(default_factory=list)
 

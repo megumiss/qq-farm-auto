@@ -55,7 +55,7 @@
 当前内置任务（通过 `_run_task_*` 自动发现）：
 
 - `main`：农场主流程（收获维护、播种、扩建、升级）
-- `friend`：独立好友任务（支持 `features.blacklist` 列表配置与 `features.steal_stats` 开关；主界面仅显示黑名单条目数，详情弹窗可维护名单）
+- `friend`：独立好友任务（支持 `features.blacklist`、`features.steal_stats`，以及偷菜/帮忙各自的 `enabled_time_range` 与 `limit_count`；主界面仅显示黑名单条目数，详情弹窗可维护名单）
 - `share`：独立分享任务（仅支持微信平台，通常配合每日触发）
 - `reward`：独立任务奖励领取（默认每 6 小时执行一次）
 - `gift`：物品领取任务（QQSVIP礼包、商城礼包、可选邮件领取；支持分项开关）
@@ -195,8 +195,12 @@ python main.py
     "failure_interval_seconds": 60,
     "features": {
       "auto_steal": false,
+      "steal_enabled_time_range": "00:00:00-23:59:59",
+      "steal_limit_count": 0,
       "steal_stats": false,
       "auto_help": true,
+      "help_enabled_time_range": "00:00:00-23:59:59",
+      "help_limit_count": 0,
       "auto_accept_request": true,
       "blacklist": [
         "测试好友-张三",
@@ -271,6 +275,7 @@ python main.py
 
 - 布尔开关：`{ "feature_x": true }`
 - 数值参数：`{ "feature_num": 5 }`
+- 字符串参数（例如启用时段）：`{ "steal_enabled_time_range": "00:00:00-23:59:59" }`
 - 列表项（例如好友黑名单）：`{ "blacklist": ["好友A", "好友B"] }`
 
 调度规则：
