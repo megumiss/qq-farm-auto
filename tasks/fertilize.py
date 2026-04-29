@@ -84,7 +84,7 @@ class TaskFertilize(TaskBase):
             logger.info('自动施肥: 没有命中成熟阈值的地块，结束本轮')
             return self.ok()
 
-        refs_12345, refs_6789 = self._split_plot_refs_by_physical_group(target_plot_refs)
+        refs_12345, refs_6789 = self.split_plot_refs_by_physical_group(target_plot_refs)
         group_pairs: list[tuple[str, list[str]]] = []
         if refs_12345:
             group_pairs.append(('12345', refs_12345))
@@ -181,42 +181,6 @@ class TaskFertilize(TaskBase):
         if hour < 0 or minute < 0 or minute > 59 or second < 0 or second > 59:
             return None
         return hour * 3600 + minute * 60 + second
-
-    @staticmethod
-    def _physical_col_from_plot_ref(plot_ref: str) -> int | None:
-        text = str(plot_ref or '').strip()
-        left, sep, right = text.partition('-')
-        if sep != '-':
-            return None
-        try:
-            logical_col = int(left)
-            logical_row = int(right)
-        except Exception:
-            return None
-        idx = (4 - logical_row) + (logical_col - 1) + 1
-        return max(1, min(9, idx))
-
-    def _split_plot_refs_by_physical_group(self, plot_refs: list[str]) -> tuple[list[str], list[str]]:
-        """按物理列将地块序号拆分为 `1-5` 与 `6-9` 两组。"""
-        uniq_refs: list[str] = []
-        seen_refs: set[str] = set()
-        for ref in plot_refs:
-            text = str(ref or '').strip()
-            if not text or text in seen_refs:
-                continue
-            seen_refs.add(text)
-            uniq_refs.append(text)
-
-        ordered = sorted(
-            uniq_refs,
-            key=lambda ref: (
-                int(self._physical_col_from_plot_ref(ref) or 9),
-                ref,
-            ),
-        )
-        refs_12345 = [ref for ref in ordered if int(self._physical_col_from_plot_ref(ref) or 9) <= 5]
-        refs_6789 = [ref for ref in ordered if int(self._physical_col_from_plot_ref(ref) or 9) > 5]
-        return refs_12345, refs_6789
 
     def _swipe_to_group(self, group_name: str) -> None:
         left_p1 = (350, 190)
