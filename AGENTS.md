@@ -25,6 +25,7 @@
 - 好友黑名单配置：`config.tasks.friend.features.blacklist`（`list[str]`，在任务设置详情弹窗维护）
 - 偷取统计开关：`config.tasks.friend.features.steal_stats`（默认 `false`；开启后仅在偷取动作后执行 OCR 统计，偷取速度会变慢）
 - 定时重启任务：`config.tasks.restart`（默认关闭；`trigger=interval`，默认 `interval_seconds=14400`；重启等待时间使用实例级 `config.window_restart_delay_seconds`，默认 `5` 秒）
+- 自动施肥任务：`config.tasks.fertilize`（默认关闭；`trigger=interval`，默认 `interval_seconds=900`；参数：`maturity_threshold_seconds/auto_buy_fertilizer/fertilizer_purchase_threshold_seconds`）
 - 高级配置：`config.safety.debug_log_enabled` 控制 Debug 日志输出
 - 异常恢复配置：`config.recovery`（`task_restart_attempts/task_retry_delay_seconds/startup_retry_step_sleep_seconds/startup_stabilize_timeout_seconds`）
 - 全局日志保留：`%APPDATA%/QQFarmCopilot/app_settings.json -> logging.retention_days`（单位天，默认 `7`；启动与全局设置变更时清理过期 `.log`）
@@ -58,7 +59,7 @@
 : 通用任务执行器（pending/waiting 队列、按固定任务顺序调度、结果回写 next_run）。
 
 - `tasks/*.py`
-: 业务任务实现（`main/friend/share/reward/gift/sell/land_scan` 及子任务；`restart` 入口在 `executor.py`）。
+: 业务任务实现（`main/fertilize/friend/share/reward/gift/sell/land_scan` 及子任务；`restart` 入口在 `executor.py`）。
 
 - `core/ui/ui.py` + `core/base/module_base.py`
 : 页面识别、导航、弹窗清理、`appear/appear_then_click` 等模板点击能力。
@@ -172,8 +173,10 @@
 4. `water`
 5. `expand`
 6. `plant`（前置等级 OCR）
-7. `fertilize`（当前由策略强制关闭）
-8. `upgrade`
+7. `upgrade`
+
+- `fertilize`
+: 独立自动施肥任务（默认关闭，默认 `interval_seconds=900`）；参数：`features.maturity_threshold_seconds`（默认 `3600` 秒）、`features.auto_buy_fertilizer`（默认 `false`）、`features.fertilizer_purchase_threshold_seconds`（默认 `108000` 秒，30 小时）；每轮按 `land.plots[].maturity_countdown` 筛选地块并施肥，库存不足时可自动进商店补货。
 
 - `friend`
 : 独立好友任务，复用 `TaskFriend`；支持 `features.blacklist: list[str]` 与 `features.steal_stats: bool` 配置。
