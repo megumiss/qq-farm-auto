@@ -7,7 +7,7 @@ from typing import Callable
 
 from PyQt6.QtCore import QRectF, Qt
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QWheelEvent
-from PyQt6.QtWidgets import QFrame, QHBoxLayout, QSizePolicy, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QFrame, QHBoxLayout, QSizePolicy, QToolTip, QVBoxLayout, QWidget
 from qfluentwidgets import BodyLabel, CardWidget, ScrollArea, SegmentedWidget, isDarkTheme
 
 from utils.daily_action_stats import load_daily_actions
@@ -34,12 +34,43 @@ class _BarChart(QWidget):
         self._on_wheel = on_wheel
         self._bar_color = QColor(bar_color)
         self._data: list[tuple[str, int]] = []
+        self._hover_idx = -1
+        self.setMouseTracking(True)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumHeight(140)
 
     def set_data(self, data: list[tuple[str, int]]):
         self._data = data
         self.update()
+
+    def _index_at(self, x: float) -> int:
+        if not self._data:
+            return -1
+        pad_l, pad_r = 56, 16
+        w = self.width() - pad_l - pad_r
+        n = len(self._data)
+        if w <= 0:
+            return -1
+        idx = int((x - pad_l) * n / w)
+        return idx if 0 <= idx < n else -1
+
+    def mouseMoveEvent(self, event):
+        x = event.position().x()
+        idx = self._index_at(x)
+        if idx != self._hover_idx:
+            self._hover_idx = idx
+            self.update()
+        if idx >= 0:
+            d, v = self._data[idx]
+            QToolTip.showText(self.mapToGlobal(event.position().toPoint()), f'{d}\n{_format_count(v)}', self)
+        else:
+            QToolTip.hideText()
+
+    def leaveEvent(self, event):
+        if self._hover_idx >= 0:
+            self._hover_idx = -1
+            self.update()
+        QToolTip.hideText()
 
     def paintEvent(self, event):
         if not self._data:
@@ -78,8 +109,14 @@ class _BarChart(QWidget):
             bh = int(v / max_val * h)
             x = pad_l + i * w // n + (w // n - bar_w) // 2
             y = pad_t + h - bh
-            p.setBrush(bar_c)
-            p.setPen(Qt.PenStyle.NoPen)
+            if i == self._hover_idx:
+                highlight = QColor(bar_c)
+                highlight.setAlpha(60)
+                p.setBrush(highlight)
+                p.setPen(QPen(bar_c.lighter(130), 1.5))
+            else:
+                p.setBrush(bar_c)
+                p.setPen(Qt.PenStyle.NoPen)
             p.drawRoundedRect(QRectF(x, y, bar_w, bh), 3, 3)
 
         sample_step = max(1, n // 6)
@@ -113,19 +150,57 @@ class _DualBarChart(QWidget):
         *,
         left_color: str,
         right_color: str,
+        left_label: str = '',
+        right_label: str = '',
         parent=None,
     ):
         super().__init__(parent)
         self._on_wheel = on_wheel
         self._left_color = QColor(left_color)
         self._right_color = QColor(right_color)
+        self._left_label = left_label
+        self._right_label = right_label
         self._data: list[tuple[str, int, int]] = []
+        self._hover_idx = -1
+        self.setMouseTracking(True)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumHeight(170)
 
     def set_data(self, data: list[tuple[str, int, int]]):
         self._data = data
         self.update()
+
+    def _index_at(self, x: float) -> int:
+        if not self._data:
+            return -1
+        pad_l, pad_r = 56, 16
+        w = self.width() - pad_l - pad_r
+        n = len(self._data)
+        if w <= 0:
+            return -1
+        idx = int((x - pad_l) * n / w)
+        return idx if 0 <= idx < n else -1
+
+    def mouseMoveEvent(self, event):
+        x = event.position().x()
+        idx = self._index_at(x)
+        if idx != self._hover_idx:
+            self._hover_idx = idx
+            self.update()
+        if idx >= 0:
+            d, lv, rv = self._data[idx]
+            l_label = self._left_label or '左'
+            r_label = self._right_label or '右'
+            text = f'{d}\n{l_label}: {_format_count(lv)}\n{r_label}: {_format_count(rv)}'
+            QToolTip.showText(self.mapToGlobal(event.position().toPoint()), text, self)
+        else:
+            QToolTip.hideText()
+
+    def leaveEvent(self, event):
+        if self._hover_idx >= 0:
+            self._hover_idx = -1
+            self.update()
+        QToolTip.hideText()
 
     def paintEvent(self, event):
         if not self._data:
@@ -168,9 +243,22 @@ class _DualBarChart(QWidget):
             right_x = x_center + 1
             base_y = pad_t + h
             p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(self._left_color)
+            if i == self._hover_idx:
+                h_left = QColor(self._left_color)
+                h_left.setAlpha(60)
+                p.setBrush(h_left)
+                p.setPen(QPen(self._left_color.lighter(130), 1.5))
+            else:
+                p.setBrush(self._left_color)
             p.drawRoundedRect(QRectF(left_x, base_y - left_bh, bar_w, left_bh), 2, 2)
-            p.setBrush(self._right_color)
+            p.setPen(Qt.PenStyle.NoPen)
+            if i == self._hover_idx:
+                h_right = QColor(self._right_color)
+                h_right.setAlpha(60)
+                p.setBrush(h_right)
+                p.setPen(QPen(self._right_color.lighter(130), 1.5))
+            else:
+                p.setBrush(self._right_color)
             p.drawRoundedRect(QRectF(right_x, base_y - right_bh, bar_w, right_bh), 2, 2)
 
         sample_step = max(1, n // 6)
@@ -253,6 +341,8 @@ class StealChartPanel(QWidget):
             self._adjust_window,
             left_color='#0ea5e9',
             right_color='#8b5cf6',
+            left_label='收获',
+            right_label='操作',
         )
 
         friend_title = BodyLabel('偷菜 / 帮忙')
@@ -261,6 +351,8 @@ class StealChartPanel(QWidget):
             self._adjust_window,
             left_color='#f43f5e',
             right_color='#14b8a6',
+            left_label='偷菜',
+            right_label='帮忙',
         )
 
         card_layout.addWidget(coin_title)
