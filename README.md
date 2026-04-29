@@ -32,7 +32,7 @@
 - [x] 自动同步等级
 - [x] 地块巡查
 - [x] 任务调度时间自定义
-- [x] 偷取统计
+- [x] 数据统计
 - [x] 一键启动
 - [ ] 异常发送通知
 - [x] 异常自动重启
@@ -48,6 +48,7 @@
 - 调度：统一任务执行器，支持 `INTERVAL` / `DAILY`
 - 实例配置：`%APPDATA%\QQFarmCopilot\instances\<instance_id>\configs\config.json` 中 `tasks` 为**动态字典**
 - 全局设置：`%APPDATA%\QQFarmCopilot\app_settings.json` 支持 `logging.retention_days`（日志保留天数，单位天）
+- 数据统计：`%APPDATA%\QQFarmCopilot\instances\<instance_id>\stats\daily_action_stats.csv` 按天累计 `harvest/operation/friend_steal/friend_help`
 - 任务顺序：`executor.task_order`（使用 `>` 分隔，越靠左越先执行）
 - UI：左侧实时截图、中间实例运行面板、最右侧竖向实例栏（新增/删除/切换/克隆/重命名）
 
@@ -55,7 +56,7 @@
 
 - `main`：农场主流程（收获维护、播种、扩建、升级）
 - `fertilize`：自动施肥任务（默认关闭；每 15 分钟；按地块倒计时阈值筛选并支持自动补货）
-- `friend`：独立好友任务（支持 `features.blacklist` 列表配置与 `features.steal_stats` 开关；主界面仅显示黑名单条目数，详情弹窗可维护名单）
+- `friend`：独立好友任务（支持 `features.blacklist`、`features.steal_stats`，以及偷菜/帮忙各自的 `enabled_time_range` 与 `limit_count`；主界面仅显示黑名单条目数，详情弹窗可维护名单）
 - `share`：独立分享任务（仅支持微信平台，通常配合每日触发）
 - `reward`：独立任务奖励领取（默认每 6 小时执行一次）
 - `gift`：物品领取任务（QQSVIP礼包、商城礼包、可选邮件领取；支持分项开关）
@@ -208,8 +209,12 @@ python main.py
     "failure_interval_seconds": 60,
     "features": {
       "auto_steal": false,
+      "steal_enabled_time_range": "00:00:00-23:59:59",
+      "steal_limit_count": 0,
       "steal_stats": false,
       "auto_help": true,
+      "help_enabled_time_range": "00:00:00-23:59:59",
+      "help_limit_count": 0,
       "auto_accept_request": true,
       "blacklist": [
         "测试好友-张三",
@@ -280,6 +285,7 @@ python main.py
 
 - 布尔开关：`{ "feature_x": true }`
 - 数值参数：`{ "feature_num": 5 }`
+- 字符串参数（例如启用时段）：`{ "steal_enabled_time_range": "00:00:00-23:59:59" }`
 - 列表项（例如好友黑名单）：`{ "blacklist": ["好友A", "好友B"] }`
 
 调度规则：

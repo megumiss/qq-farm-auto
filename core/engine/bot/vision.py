@@ -11,12 +11,20 @@ from PIL import Image as PILImage
 from core.vision.cv_detector import DetectResult
 from models.config import AppConfig, RunMode, resolve_effective_run_mode
 from models.farm_state import Action, ActionType
+from utils.daily_action_stats import record_daily_action
 
 
 class BotVisionMixin:
     """Bot 截图、识别与点击桥接逻辑。"""
 
     config: AppConfig
+
+    def _resolve_instance_id(self) -> str:
+        value = getattr(self, '_instance_id', None)
+        text = str(value or '').strip()
+        if text:
+            return text
+        return 'default'
 
     def _prepare_window(self) -> tuple | None:
         """刷新并激活窗口，返回当前有效截图区域。"""
@@ -79,6 +87,24 @@ class BotVisionMixin:
         stat_key = type_map.get(action_type)
         if stat_key:
             self.scheduler.record_action(stat_key)
+            harvest_count = 1 if action_type == ActionType.HARVEST else 0
+            record_daily_action(
+                self._resolve_instance_id(),
+                harvest=harvest_count,
+                operation=1,
+            )
+
+    def _record_friend_daily_stat(self, stat_type: str, count: int = 1) -> None:
+        """记录好友维度的每日统计。"""
+        safe_count = max(0, int(count))
+        if safe_count <= 0:
+            return
+        stat = str(stat_type or '').strip().lower()
+        if stat == 'steal':
+            record_daily_action(self._resolve_instance_id(), friend_steal=safe_count)
+            return
+        if stat == 'help':
+            record_daily_action(self._resolve_instance_id(), friend_help=safe_count)
 
     def _handle_seed_select_scene(self, detections: list[DetectResult]) -> str | None:
         """处理种子选择场景：命中目标种子后执行点击播种。"""

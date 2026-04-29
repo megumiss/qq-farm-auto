@@ -4,8 +4,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QAbstractItemView, QFormLayout, QFrame, QHBoxLayout, QListWidgetItem, QVBoxLayout, QWidget
+from PyQt6.QtCore import Qt, QTime, pyqtSignal
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QFormLayout,
+    QFrame,
+    QHBoxLayout,
+    QListWidgetItem,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 from qfluentwidgets import (
     BodyLabel,
     CaptionLabel,
@@ -19,11 +28,12 @@ from qfluentwidgets import (
     ScrollArea,
     SpinBox,
     SubtitleLabel,
+    TimeEdit,
     TransparentToolButton,
 )
 
 from gui.widgets.fluent_container import StableElevatedCardWidget, TransparentCardContainer
-from models.config import AppConfig
+from models.config import AppConfig, normalize_task_enabled_time_range
 from utils.app_paths import load_config_json_object
 from utils.feature_policy import is_feature_forced_off
 
@@ -142,6 +152,8 @@ class FeaturePanel(QWidget):
         self._loading = True
         self._bool_widgets: dict[tuple[str, str], CheckBox] = {}
         self._int_widgets: dict[tuple[str, str], SpinBox] = {}
+        self._text_widgets: dict[tuple[str, str], LineEdit] = {}
+        self._time_range_widgets: dict[tuple[str, str], tuple[TimeEdit, TimeEdit]] = {}
         self._interval_widgets: dict[tuple[str, str], tuple[SpinBox, ComboBox]] = {}
         self._list_summary: dict[tuple[str, str], CaptionLabel] = {}
         self._build_ui()
@@ -298,6 +310,39 @@ class FeaturePanel(QWidget):
                 form.addRow(self._field_label(label, card), field)
                 continue
 
+            if isinstance(value, str):
+                if feature_name.endswith('_enabled_time_range'):
+                    start = self._build_time_edit(card)
+                    start.timeChanged.connect(self._auto_save)
+                    end = self._build_time_edit(card)
+                    end.timeChanged.connect(self._auto_save)
+                    row = QWidget(card)
+                    row_layout = QHBoxLayout(row)
+                    row_layout.setContentsMargins(0, 0, 0, 0)
+                    row_layout.setSpacing(8)
+                    row_layout.addWidget(start, 1)
+                    row_layout.addWidget(BodyLabel('~'))
+                    row_layout.addWidget(end, 1)
+                    self._time_range_widgets[(task_name, feature_name)] = (start, end)
+                    field_widget: QWidget = row
+                else:
+                    text_edit = LineEdit(card)
+                    text_edit.textChanged.connect(self._auto_save)
+                    self._text_widgets[(task_name, feature_name)] = text_edit
+                    field_widget = text_edit
+                field = QWidget(card)
+                field_layout = QVBoxLayout(field)
+                field_layout.setContentsMargins(0, 0, 0, 0)
+                field_layout.setSpacing(2)
+                field_layout.addWidget(field_widget)
+                if hint_text:
+                    hint = CaptionLabel(hint_text, field)
+                    hint.setWordWrap(True)
+                    hint.setStyleSheet(f'color: {SETTINGS_HINT_COLOR};')
+                    field_layout.addWidget(hint)
+                form.addRow(self._field_label(label, card), field)
+                continue
+
             if isinstance(value, int):
                 if feature_name.endswith('_seconds'):
                     spin = SpinBox(card)
@@ -357,6 +402,21 @@ class FeaturePanel(QWidget):
         idx = combo.findData(value)
         if idx >= 0:
             combo.setCurrentIndex(idx)
+
+    @staticmethod
+    def _parse_enabled_time_range(text: str) -> tuple[str, str]:
+        normalized = normalize_task_enabled_time_range(text)
+        start, end = normalized.split('-', 1)
+        return start, end
+
+    @staticmethod
+    def _build_time_edit(parent: QWidget) -> TimeEdit:
+        edit = TimeEdit(parent)
+        edit.setDisplayFormat('HH:mm:ss')
+        edit.setSymbolVisible(False)
+        edit.setMinimumWidth(0)
+        edit.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        return edit
 
     @staticmethod
     def _normalize_list_value(value: Any) -> list[str]:
@@ -437,6 +497,22 @@ class FeaturePanel(QWidget):
             feature_map = dict(task_cfg.features or {})
             feature_map[feature_name] = max(0, int(spin.value()))
             task_cfg.features = feature_map
+        for (task_name, feature_name), text_edit in self._text_widgets.items():
+            task_cfg = self.config.tasks.get(task_name)
+            if task_cfg is None:
+                continue
+            feature_map = dict(task_cfg.features or {})
+            feature_map[feature_name] = str(text_edit.text() or '').strip()
+            task_cfg.features = feature_map
+        for (task_name, feature_name), (start, end) in self._time_range_widgets.items():
+            task_cfg = self.config.tasks.get(task_name)
+            if task_cfg is None:
+                continue
+            feature_map = dict(task_cfg.features or {})
+            start_text = start.time().toString('HH:mm:ss')
+            end_text = end.time().toString('HH:mm:ss')
+            feature_map[feature_name] = normalize_task_enabled_time_range(f'{start_text}-{end_text}')
+            task_cfg.features = feature_map
         for (task_name, feature_name), (spin, unit) in self._interval_widgets.items():
             task_cfg = self.config.tasks.get(task_name)
             if task_cfg is None:
@@ -472,6 +548,26 @@ class FeaturePanel(QWidget):
             except Exception:
                 parsed = 0
             spin.setValue(max(0, parsed))
+        for (task_name, feature_name), text_edit in self._text_widgets.items():
+            task_cfg = self.config.tasks.get(task_name)
+            if task_cfg is None:
+                continue
+            feature_map = task_cfg.features or {}
+            text_edit.setText(str(feature_map.get(feature_name, '') or '').strip())
+        for (task_name, feature_name), (start_edit, end_edit) in self._time_range_widgets.items():
+            task_cfg = self.config.tasks.get(task_name)
+            if task_cfg is None:
+                continue
+            feature_map = task_cfg.features or {}
+            start, end = self._parse_enabled_time_range(str(feature_map.get(feature_name, '')))
+            start_time = QTime.fromString(start, 'HH:mm:ss')
+            end_time = QTime.fromString(end, 'HH:mm:ss')
+            if not start_time.isValid():
+                start_time = QTime(0, 0, 0)
+            if not end_time.isValid():
+                end_time = QTime(23, 59, 59)
+            start_edit.setTime(start_time)
+            end_edit.setTime(end_time)
         for (task_name, feature_name), (spin, unit) in self._interval_widgets.items():
             task_cfg = self.config.tasks.get(task_name)
             if task_cfg is None:

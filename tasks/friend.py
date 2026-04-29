@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 from loguru import logger
 
@@ -28,6 +29,7 @@ from core.ui.assets import (
     MAIN_GOTO_FRIEND,
 )
 from core.ui.page import page_friend_list, page_main
+from models.config import normalize_task_enabled_time_range
 from models.farm_state import ActionType
 from tasks.base import TaskBase
 from utils.friend_name_ocr import FriendNameOCR
@@ -86,6 +88,61 @@ class TaskFriend(TaskBase):
         super().__init__(engine, ui)
         self._friend_blacklist: list[str] = []
         self.friend_name_ocr = FriendNameOCR(ocr_tool=ocr_tool)
+        self._task_enabled_time_range = '00:00:00-23:59:59'
+
+    @staticmethod
+    def _parse_limit_count(value: int) -> int:
+        """解析功能次数限制，`0` 表示不限。"""
+        if isinstance(value, bool):
+            return 0
+        try:
+            parsed = int(value)
+        except Exception:
+            parsed = 0
+        return max(0, parsed)
+
+    @staticmethod
+    def _enabled_time_range_seconds(text: str) -> tuple[int, int]:
+        """将 `HH:MM:SS-HH:MM:SS` 启用时间段转换为秒范围。"""
+        normalized = normalize_task_enabled_time_range(text)
+        start_text, end_text = normalized.split('-', 1)
+        sh, sm, ss = start_text.split(':', 2)
+        eh, em, es = end_text.split(':', 2)
+        start = int(sh) * 3600 + int(sm) * 60 + int(ss)
+        end = int(eh) * 3600 + int(em) * 60 + int(es)
+        return start, end
+
+    @classmethod
+    def _is_time_in_range(cls, time_range: str, *, now: datetime | None = None) -> bool:
+        """判断当前时刻是否命中指定启用时间段。"""
+        current_dt = now or datetime.now()
+        start, end = cls._enabled_time_range_seconds(time_range)
+        if start == end:
+            return True
+        current = current_dt.hour * 3600 + current_dt.minute * 60 + current_dt.second
+        if start < end:
+            return start <= current <= end
+        return current >= start or current <= end
+
+    @classmethod
+    def _is_feature_available(
+        cls,
+        *,
+        enabled: bool,
+        task_time_range: str,
+        feature_time_range: str,
+        done_count: int,
+        limit_count: int,
+    ) -> bool:
+        """按开关、调度时段、功能时段与次数限制判断功能是否可执行。"""
+        if not enabled:
+            return False
+        if limit_count > 0 and done_count >= limit_count:
+            return False
+        now = datetime.now()
+        if not cls._is_time_in_range(task_time_range, now=now):
+            return False
+        return cls._is_time_in_range(feature_time_range, now=now)
 
     def run(self, rect: tuple[int, int, int, int]) -> TaskResult:
         """执行主流程：递进遍历可操作好友，直到没有可继续目标。"""
@@ -94,13 +151,26 @@ class TaskFriend(TaskBase):
         enable_help = self.task.friend.feature.auto_help
         enable_accept_request = self.task.friend.feature.auto_accept_request
         enable_steal_stats = self.task.friend.feature.steal_stats
+        steal_time_range = normalize_task_enabled_time_range(self.task.friend.feature.steal_enabled_time_range)
+        help_time_range = normalize_task_enabled_time_range(self.task.friend.feature.help_enabled_time_range)
+        steal_limit_count = self._parse_limit_count(self.task.friend.feature.steal_limit_count)
+        help_limit_count = self._parse_limit_count(self.task.friend.feature.help_limit_count)
+        self._task_enabled_time_range = normalize_task_enabled_time_range(self.task.friend.enabled_time_range)
         self._friend_blacklist = self._read_blacklist(self.task.friend.feature.blacklist)
         logger.info(
-            '好友巡查: 开始 | 偷菜={} 帮忙={} 同意请求={} 偷取统计={}',
+            (
+                '好友巡查: 开始 | 偷菜={} 帮忙={} 同意请求={} 偷取统计={} '
+                '调度时段={} 偷菜时段={} 帮忙时段={} 偷菜上限={} 帮忙上限={}'
+            ),
             enable_steal,
             enable_help,
             enable_accept_request,
             enable_steal_stats,
+            self._task_enabled_time_range,
+            steal_time_range,
+            help_time_range,
+            steal_limit_count,
+            help_limit_count,
         )
         if self._friend_blacklist:
             logger.info('好友巡查: 黑名单已加载 | 数量={}', len(self._friend_blacklist))
@@ -120,6 +190,10 @@ class TaskFriend(TaskBase):
             enable_help=enable_help,
             enable_steal=enable_steal,
             enable_steal_stats=enable_steal_stats,
+            steal_time_range=steal_time_range,
+            help_time_range=help_time_range,
+            steal_limit_count=steal_limit_count,
+            help_limit_count=help_limit_count,
         )
         # 返回主页
         self.back_to_home()
@@ -127,21 +201,92 @@ class TaskFriend(TaskBase):
 
         return self.ok()
 
-    def _run_friend_progressive(self, *, enable_help: bool, enable_steal: bool, enable_steal_stats: bool):
+    def _run_friend_progressive(
+        self,
+        *,
+        enable_help: bool,
+        enable_steal: bool,
+        enable_steal_stats: bool,
+        steal_time_range: str,
+        help_time_range: str,
+        steal_limit_count: int,
+        help_limit_count: int,
+    ):
         """好友任务递进流程：进入详情后执行动作，再切到下一个可操作好友。"""
-        if not self._enter_friend_detail():
+        steal_available = self._is_feature_available(
+            enabled=enable_steal,
+            task_time_range=self._task_enabled_time_range,
+            feature_time_range=steal_time_range,
+            done_count=0,
+            limit_count=steal_limit_count,
+        )
+        help_available = self._is_feature_available(
+            enabled=enable_help,
+            task_time_range=self._task_enabled_time_range,
+            feature_time_range=help_time_range,
+            done_count=0,
+            limit_count=help_limit_count,
+        )
+        if not steal_available and not help_available:
+            logger.info('好友巡查: 当前时段无可执行功能，结束')
+            return
+
+        if not self._enter_friend_detail(enable_steal=steal_available, enable_help=help_available):
             return
 
         self._run_friend_recursive(
             enable_help=enable_help,
             enable_steal=enable_steal,
             enable_steal_stats=enable_steal_stats,
+            steal_time_range=steal_time_range,
+            help_time_range=help_time_range,
+            steal_limit_count=steal_limit_count,
+            help_limit_count=help_limit_count,
+            steal_done_count=0,
+            help_done_count=0,
             no_action=0,
         )
 
-    def _run_friend_recursive(self, *, enable_help: bool, enable_steal: bool, enable_steal_stats: bool, no_action: int):
+    def _run_friend_recursive(
+        self,
+        *,
+        enable_help: bool,
+        enable_steal: bool,
+        enable_steal_stats: bool,
+        steal_time_range: str,
+        help_time_range: str,
+        steal_limit_count: int,
+        help_limit_count: int,
+        steal_done_count: int,
+        help_done_count: int,
+        no_action: int,
+    ):
         """递归处理好友：连续命中无操作按钮达到阈值后退出。"""
-        has_action = self._has_current_friend_actions(enable_help=enable_help, enable_steal=enable_steal)
+        steal_available = self._is_feature_available(
+            enabled=enable_steal,
+            task_time_range=self._task_enabled_time_range,
+            feature_time_range=steal_time_range,
+            done_count=steal_done_count,
+            limit_count=steal_limit_count,
+        )
+        help_available = self._is_feature_available(
+            enabled=enable_help,
+            task_time_range=self._task_enabled_time_range,
+            feature_time_range=help_time_range,
+            done_count=help_done_count,
+            limit_count=help_limit_count,
+        )
+        if not steal_available and not help_available:
+            logger.info(
+                '好友巡查: 功能已全部结束 | 偷菜={}/{} 帮忙={}/{}',
+                steal_done_count,
+                steal_limit_count if steal_limit_count > 0 else '∞',
+                help_done_count,
+                help_limit_count if help_limit_count > 0 else '∞',
+            )
+            return
+
+        has_action = self._has_current_friend_actions(enable_help=help_available, enable_steal=steal_available)
         if not has_action:
             no_action += 1
             logger.info('好友巡查: 当前好友无可执行动作，连续空轮询={}/{}', no_action, FRIEND_NO_ACTION_EXIT_STREAK)
@@ -150,10 +295,20 @@ class TaskFriend(TaskBase):
                 return
         else:
             no_action = 0
-            if enable_steal:
-                self._run_feature_steal(enable_steal_stats=enable_steal_stats)
-            if enable_help:
-                self._run_feature_help()
+            if steal_available and self._run_feature_steal(enable_steal_stats=enable_steal_stats):
+                steal_done_count += 1
+                logger.info(
+                    '好友巡查: 偷菜进度={}/{}',
+                    steal_done_count,
+                    steal_limit_count if steal_limit_count > 0 else '∞',
+                )
+            if help_available and self._run_feature_help():
+                help_done_count += 1
+                logger.info(
+                    '好友巡查: 帮忙进度={}/{}',
+                    help_done_count,
+                    help_limit_count if help_limit_count > 0 else '∞',
+                )
 
         if not self._goto_next_friend():
             logger.info('好友巡查: 切换下一位好友失败，结束好友任务')
@@ -163,6 +318,12 @@ class TaskFriend(TaskBase):
             enable_help=enable_help,
             enable_steal=enable_steal,
             enable_steal_stats=enable_steal_stats,
+            steal_time_range=steal_time_range,
+            help_time_range=help_time_range,
+            steal_limit_count=steal_limit_count,
+            help_limit_count=help_limit_count,
+            steal_done_count=steal_done_count,
+            help_done_count=help_done_count,
             no_action=no_action,
         )
 
@@ -178,15 +339,15 @@ class TaskFriend(TaskBase):
             return False
         return bool(self.ui.appear_any(buttons, offset=30, static=False))
 
-    def _enter_friend_detail(self) -> bool:
+    def _enter_friend_detail(self, *, enable_steal: bool, enable_help: bool) -> bool:
         """从好友列表页进入某个好友详情页。"""
         # 查找列表上的操作图标
         self.ui.device.screenshot()
         list_steal = self._collect_operable_friend_list_icons(
-            enable_steal=self.task.friend.feature.auto_steal,
+            enable_steal=enable_steal,
         )
         list_help = self._collect_operable_friend_list_icons(
-            enable_help=self.task.friend.feature.auto_help,
+            enable_help=enable_help,
         )
         logger.info('好友巡查: 列表可操作目标 | 偷菜={} 帮忙={}', len(list_steal), len(list_help))
 
@@ -467,15 +628,18 @@ class TaskFriend(TaskBase):
         icons = self.ui.sort_buttons_by_location(icons, horizontal=False)
         return icons
 
-    def _run_feature_help(self):
+    def _run_feature_help(self) -> bool:
         """好友帮忙。"""
-        self._help_in_friend_farm()
+        return self._help_in_friend_farm()
 
-    def _run_feature_steal(self, *, enable_steal_stats: bool):
+    def _run_feature_steal(self, *, enable_steal_stats: bool) -> bool:
         """好友偷菜。"""
         if self._run_help_single_action(BTN_STEAL, ActionType.STEAL, '偷好友果实'):
+            self.engine._record_friend_daily_stat('steal')
             if enable_steal_stats:
                 self._ocr_and_record_steal()
+            return True
+        return False
 
     def _ocr_and_record_steal(self):
         """偷取成功后等待总计按钮，基于 OCR 源数据解析并写入统计。"""
@@ -678,9 +842,9 @@ class TaskFriend(TaskBase):
         )
         return total_amount, loss_amount, bean_amount, debug_info
 
-    def _help_in_friend_farm(self):
+    def _help_in_friend_farm(self) -> bool:
         """在好友农场执行浇水/除草/除虫，完成后尝试回家。"""
-        self._run_help_maintain_actions()
+        return self._run_help_maintain_actions()
 
     def _run_help_maintain_actions(self) -> bool:
         """统一执行帮好友浇水/除草/除虫，共用确认计时器。"""
@@ -707,6 +871,7 @@ class TaskFriend(TaskBase):
             if self.ui.appear_then_click_any(action_buttons, offset=30, interval=1, static=False):
                 if clicked_action is not None:
                     self.engine._record_stat(clicked_action)
+                    self.engine._record_friend_daily_stat('help')
                 confirm_timer.clear()
                 continue
 

@@ -23,7 +23,10 @@
 - 任务配置：`%APPDATA%/QQFarmCopilot/instances/<instance_id>/configs/config.json -> tasks`（动态字典，包含持久化 `next_run`）
 - 农场详情配置：`config.land.plots`（固定 24 格，元素结构：`{plot_id, level, maturity_countdown, need_upgrade, need_planting}`；`maturity_countdown` 为 `HH:MM:SS`，`need_upgrade` 表示地块是否可升级，`need_planting` 表示地块是否需要播种）与 `config.land.profile`（`level/gold/coupon/exp`，来源于等级同步 OCR）
 - 好友黑名单配置：`config.tasks.friend.features.blacklist`（`list[str]`，在任务设置详情弹窗维护）
-- 偷取统计开关：`config.tasks.friend.features.steal_stats`（默认 `false`；开启后仅在偷取动作后执行 OCR 统计，偷取速度会变慢）
+- 数据统计开关：`config.tasks.friend.features.steal_stats`（默认 `false`；开启后仅在偷取动作后执行 OCR 统计，偷取速度会变慢）
+- 好友偷菜限制：`config.tasks.friend.features.steal_enabled_time_range`（默认 `00:00:00-23:59:59`）与 `config.tasks.friend.features.steal_limit_count`（默认 `0`，表示不限）
+- 好友帮忙限制：`config.tasks.friend.features.help_enabled_time_range`（默认 `00:00:00-23:59:59`）与 `config.tasks.friend.features.help_limit_count`（默认 `0`，表示不限）
+- 数据统计落盘：`%APPDATA%/QQFarmCopilot/instances/<instance_id>/stats/daily_action_stats.csv`（按天累计 `harvest/operation/friend_steal/friend_help`）
 - 定时重启任务：`config.tasks.restart`（默认关闭；`trigger=interval`，默认 `interval_seconds=14400`；重启等待时间使用实例级 `config.window_restart_delay_seconds`，默认 `5` 秒）
 - 自动施肥任务：`config.tasks.fertilize`（默认关闭；`trigger=interval`，默认 `interval_seconds=900`；参数：`maturity_threshold_seconds/auto_buy_fertilizer/fertilizer_purchase_threshold_seconds`）
 - 高级配置：`config.safety.debug_log_enabled` 控制 Debug 日志输出
@@ -179,7 +182,7 @@
 : 独立自动施肥任务（默认关闭，默认 `interval_seconds=900`）；参数：`features.maturity_threshold_seconds`（默认 `3600` 秒）、`features.auto_buy_fertilizer`（默认 `false`）、`features.fertilizer_purchase_threshold_seconds`（默认 `108000` 秒，30 小时）；每轮按 `land.plots[].maturity_countdown` 筛选地块并施肥，库存不足时可自动进商店补货。
 
 - `friend`
-: 独立好友任务，复用 `TaskFriend`；支持 `features.blacklist: list[str]` 与 `features.steal_stats: bool` 配置。
+: 独立好友任务，复用 `TaskFriend`；支持 `features.blacklist: list[str]`、`features.steal_stats: bool`，以及 `steal/help` 各自的 `enabled_time_range` 与 `limit_count` 配置（功能时段与次数限制在任务调度时段内生效）。
 
 - `share`
 : 独立分享任务，仅执行分享领奖流程（仅支持微信平台；无 `features` 分项开关）。
@@ -218,7 +221,7 @@
 - `daily_time: "HH:MM"`
 - `next_run: "YYYY-MM-DD HH:MM[:SS]"`（默认 `2026-01-01 00:00`）
 - `failure_interval_seconds: int`（>=1，实际生效下限见 `executor.min_task_interval_seconds`）
-- `features: {str: bool | int | list[str]}`
+- `features: {str: bool | int | str | list[str]}`
 
 ## 7. 修改边界与禁令
 
