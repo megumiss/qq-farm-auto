@@ -185,9 +185,12 @@ class TaskLandScan(TaskMainActionsMixin, TaskBase):
         stable_timer = Timer(stable_seconds, count=required_hits)
         last_anchor: tuple[int, int] | None = None
 
+        land_offset = (-30, -30, 160, 30)
+        if anchor_button == BTN_LAND_LEFT:
+            land_offset = (-160, -30, 30, 30)
         while 1:
             self.ui.device.screenshot()
-            location = self.ui.appear_location(anchor_button, offset=30, threshold=0.95, static=False)
+            location = self.ui.appear_location(anchor_button, offset=land_offset, threshold=0.9)
             current_anchor: tuple[int, int] | None = None
             if location is not None:
                 current_anchor = (int(location[0]), int(location[1]))
@@ -452,8 +455,8 @@ class TaskLandScan(TaskMainActionsMixin, TaskBase):
     def _collect_land_cells(self) -> list[LandCell]:
         """识别左右锚点并推算地块网格。"""
         self.ui.device.screenshot()
-        right_anchor = self.ui.appear_location(BTN_LAND_RIGHT, offset=30, threshold=0.95, static=False)
-        left_anchor = self.ui.appear_location(BTN_LAND_LEFT, offset=30, threshold=0.95, static=False)
+        right_anchor = self.ui.appear_location(BTN_LAND_RIGHT, offset=(-30, -30, 160, 30), threshold=0.9)
+        left_anchor = self.ui.appear_location(BTN_LAND_LEFT, offset=(-160, -30, 30, 30), threshold=0.9)
 
         cells = get_lands_from_land_anchor(
             right_anchor, left_anchor, rows=LAND_SCAN_ROWS, cols=LAND_SCAN_COLS, start_anchor='right'

@@ -86,9 +86,7 @@ class TaskMainLandMixin:
         """滑动后重新采集当前组的实时地块坐标。"""
         if not group_refs:
             return []
-        live_targets = self.collect_land_targets_by_flag(
-            'need_upgrade', anchor_threshold=0.95, log_prefix='自动升级流程'
-        )
+        live_targets = self.collect_land_targets_by_flag('need_upgrade', log_prefix='自动升级流程')
         if not live_targets:
             return []
         live_map = {ref: point for ref, point in live_targets}
@@ -191,9 +189,7 @@ class TaskMainLandMixin:
         self.ui.ui_ensure(page_main)
         self.ui.device.click_button(GOTO_MAIN)
 
-        initial_targets = self.collect_land_targets_by_flag(
-            'need_upgrade', anchor_threshold=0.95, log_prefix='自动升级流程'
-        )
+        initial_targets = self.collect_land_targets_by_flag('need_upgrade', log_prefix='自动升级流程')
         if not initial_targets:
             logger.info('自动升级流程: 无待升级地块')
             return None

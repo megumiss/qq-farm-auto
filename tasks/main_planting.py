@@ -317,9 +317,7 @@ class TaskMainPlantingMixin:
         # 模板匹配到的空地
         detected_land_coords = self._collect_land_coords_for_plant(threshold=0.85, y_range=LAND_MATCH_Y_RANGE)
         if self.is_task_enabled('land_scan'):
-            detail_targets = self.collect_land_targets_by_flag(
-                'need_planting', anchor_threshold=0.95, log_prefix='自动播种: 空地补充'
-            )
+            detail_targets = self.collect_land_targets_by_flag('need_planting', log_prefix='自动播种: 空地补充')
         else:
             detail_targets = []
         detail_land_coords = [point for _, point in detail_targets]

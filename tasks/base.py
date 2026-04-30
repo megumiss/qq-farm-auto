@@ -201,11 +201,7 @@ class TaskBase:
         return [item for item in self.parse_land_detail_plots() if self.parse_truthy(item.get(key, default))]
 
     def collect_land_targets_by_flag(
-        self,
-        flag: str,
-        *,
-        anchor_threshold: float = 0.95,
-        log_prefix: str = '土地流程',
+        self, flag: str, *, log_prefix: str = '土地流程'
     ) -> list[tuple[str, tuple[int, int]]]:
         """按土地详情标记收集地块坐标。"""
         pending_entries = self.parse_land_detail_plots_by_flag(flag)
@@ -216,18 +212,8 @@ class TaskBase:
         from utils.land_grid import get_lands_from_land_anchor
 
         self.ui.device.screenshot()
-        land_right_anchor = self.ui.appear_location(
-            BTN_LAND_RIGHT,
-            offset=30,
-            threshold=float(anchor_threshold),
-            static=False,
-        )
-        land_left_anchor = self.ui.appear_location(
-            BTN_LAND_LEFT,
-            offset=30,
-            threshold=float(anchor_threshold),
-            static=False,
-        )
+        land_right_anchor = self.ui.appear_location(BTN_LAND_RIGHT, offset=(-30, -30, 160, 30), threshold=0.9)
+        land_left_anchor = self.ui.appear_location(BTN_LAND_LEFT, offset=(-160, -30, 30, 30), threshold=0.9)
         if land_right_anchor is None and land_left_anchor is None:
             logger.warning('{}: 未识别到地块锚点，跳过本轮', log_prefix)
             return []

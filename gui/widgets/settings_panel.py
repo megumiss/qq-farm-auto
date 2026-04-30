@@ -97,7 +97,7 @@ class SettingsPanel(QWidget):
         plant_form.addRow(self._field_label('', plant_card), warehouse_tip)
         self.skip_event_crops = CheckBox('排除活动作物', plant_card)
         plant_form.addRow(self._field_label('其他设置', plant_card), self.skip_event_crops)
-        event_tip = CaptionLabel('爱心果固定排除；此选项仅控制是否额外排除其他活动作物（当前仅艾草）。', plant_card)
+        event_tip = CaptionLabel('四格作物固定排除；此选项仅控制是否额外排除其他活动作物（当前仅艾草）。', plant_card)
         event_tip.setWordWrap(True)
         event_tip.setStyleSheet('color: #d97706;')
         plant_form.addRow(self._field_label('', plant_card), event_tip)
